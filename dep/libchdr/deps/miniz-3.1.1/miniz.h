@@ -139,13 +139,19 @@
 #define MINIZ_NO_TIME
 
 /* Define MINIZ_NO_DEFLATE_APIS to disable all compression API's. */
+/* The PS5 title's frontend compresses save states and screenshots and reads
+   the cheat database's ZIP archives: its build keeps both APIs. */
+#ifndef SWANSTATION_STANDALONE
 #define MINIZ_NO_DEFLATE_APIS
+#endif
 
 /* Define MINIZ_NO_INFLATE_APIS to disable all decompression API's. */
 /*#define MINIZ_NO_INFLATE_APIS */
 
 /* Define MINIZ_NO_ARCHIVE_APIS to disable all ZIP archive API's. */
+#ifndef SWANSTATION_STANDALONE
 #define MINIZ_NO_ARCHIVE_APIS
+#endif
 
 /* Define MINIZ_NO_ARCHIVE_WRITING_APIS to disable all writing related ZIP archive API's. */
 /*#define MINIZ_NO_ARCHIVE_WRITING_APIS */

@@ -18,6 +18,15 @@ Log_SetChannel(Common::PageFaultHandler);
 #include <signal.h>
 #include <unistd.h>
 #define USE_SIGSEGV 1
+#if defined(__PROSPERO__)
+// PS5: the machine context is the console's (the payload SDK fork places
+// uc_mcontext where the console does), and an access to an unmapped page may
+// arrive as SIGBUS as well as SIGSEGV.
+#include <cerrno>
+#include <ucontext.h>
+#include <ps5platform/context.h>
+#define USE_SIGBUS 1
+#endif
 #endif
 
 namespace Common::PageFaultHandler {
@@ -124,14 +133,16 @@ uint32_t GetHandlerCodeSize()
 #elif defined(USE_SIGSEGV)
 
 static struct sigaction s_old_sigsegv_action;
-#if defined(__APPLE__) || defined(__aarch64__)
+#if defined(__APPLE__) || defined(__aarch64__) || defined(USE_SIGBUS)
 static struct sigaction s_old_sigbus_action;
 #endif
 
 static void SIGSEGVHandler(int sig, siginfo_t* info, void* ctx)
 {
+#if !defined(__PROSPERO__)
   if ((info->si_code != SEGV_MAPERR && info->si_code != SEGV_ACCERR) || s_in_handler)
     return;
+#endif
 
 #if defined(__linux__) || defined(__ANDROID__)
   void* const exception_address = reinterpret_cast<void*>(info->si_addr);
@@ -196,12 +207,12 @@ static void SIGSEGVHandler(int sig, siginfo_t* info, void* ctx)
   }
 
   // call old signal handler
-#if !defined(__APPLE__) && !defined(__aarch64__)
+#if !defined(__APPLE__) && !defined(__aarch64__) && !defined(USE_SIGBUS)
   const struct sigaction& sa = s_old_sigsegv_action;
 #else
   const struct sigaction& sa = (sig == SIGBUS) ? s_old_sigbus_action : s_old_sigsegv_action;
 #endif
-  if (sa.sa_flags & SA_SIGINFO)
+  if ((sa.sa_flags & SA_SIGINFO) && sa.sa_sigaction)
     sa.sa_sigaction(sig, info, ctx);
   else if (sa.sa_handler == SIG_DFL)
     signal(sig, SIG_DFL);
@@ -258,7 +269,7 @@ bool InstallHandler(const void* owner, void* start_pc, uint32_t code_size, Callb
       Log_ErrorPrintf("sigaction(SIGSEGV) failed: %d", errno);
       return false;
     }
-#if defined(__APPLE__) || defined(__aarch64__)
+#if defined(__APPLE__) || defined(__aarch64__) || defined(USE_SIGBUS)
     if (sigaction(SIGBUS, &sa, &s_old_sigbus_action) < 0)
     {
       Log_ErrorPrintf("sigaction(SIGBUS) failed: %d", errno);
@@ -292,7 +303,7 @@ bool RemoveHandler(const void* owner)
     s_veh_handle = nullptr;
 #elif defined(USE_SIGSEGV)
     // restore old signal handler
-#if defined(__APPLE__) || defined(__aarch64__)
+#if defined(__APPLE__) || defined(__aarch64__) || defined(USE_SIGBUS)
     if (sigaction(SIGBUS, &s_old_sigbus_action, nullptr) < 0)
     {
       Log_ErrorPrintf("sigaction(SIGBUS) failed: %d", errno);

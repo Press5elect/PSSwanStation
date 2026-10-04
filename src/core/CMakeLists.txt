@@ -133,7 +133,14 @@ endif()
 
 if(${CPU_ARCH} STREQUAL "x64")
   target_include_directories(core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../../dep/xbyak/xbyak")
-  target_compile_definitions(core PUBLIC "WITH_RECOMPILER=1" "WITH_MMAP_FASTMEM=1")
+  if(SWANSTATION_PS5)
+    # PS5: the kernel's page is 16 KiB and the emulator protects guest RAM in
+    # 4 KiB pages, so the mmap fastmem cannot protect code pages there. The
+    # lookup-table fastmem needs no protection changes and is used instead.
+    target_compile_definitions(core PUBLIC "WITH_RECOMPILER=1")
+  else()
+    target_compile_definitions(core PUBLIC "WITH_RECOMPILER=1" "WITH_MMAP_FASTMEM=1")
+  endif()
   target_sources(core PRIVATE ${RECOMPILER_SRCS}
     cpu_recompiler_code_generator_x64.cpp
   )

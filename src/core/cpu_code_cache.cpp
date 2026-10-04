@@ -25,7 +25,8 @@ static constexpr uint32_t INVALIDATE_THRESHOLD_TO_DISABLE_LINKING = 10;
 #ifdef WITH_RECOMPILER
 
 // Currently remapping the code buffer doesn't work in macOS or Haiku.
-#if !defined(__HAIKU__) && !defined(__APPLE__)
+// PS5: a title's own image cannot be made executable; the buffer is allocated.
+#if !defined(__HAIKU__) && !defined(__APPLE__) && !defined(__PROSPERO__)
 #define USE_STATIC_CODE_BUFFER 1
 #endif
 

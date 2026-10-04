@@ -1,0 +1,176 @@
+# SwanStation for PS5: the title's build (ps5/tools/build.sh drives it).
+#
+# SwanStation is a libretro core. This project compiles the core as it is
+# (dep/, src/common, src/core, src/libretro), links it statically into a title
+# of its own, and adds the frontend in ps5/src: the display, the library, the
+# settings, cheats, audio, the DualSense and the network share.
+#
+# Two builds come from it:
+#   - the title, with ps5/toolchain.cmake (SWANSTATION_PS5 is set there): the
+#     objects are handed to ps5/tools/link.sh, which links them with RADV and
+#     signs the result;
+#   - a host build (no toolchain file), the same frontend on the PC's Vulkan
+#     driver with a headless surface, which ps5/tools/host-test.sh runs to
+#     check the interface and the emulator without a console.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+cmake_minimum_required(VERSION 3.20)
+project(swanstation_ps5 C CXX)
+
+set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set(IMGUI_DIR "${ROOT}/../imgui" CACHE PATH "Dear ImGui (v1.91)")
+set(LIBSMB2_DIR "${ROOT}/../deps-src/libsmb2" CACHE PATH "libsmb2")
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-switch")
+
+# What SwanStation's own top-level CMakeLists.txt sets for its subdirectories.
+set(CPU_ARCH "x64")
+set(USE_EGL OFF)
+set(USE_WAYLAND OFF)
+set(USE_D3D12 OFF)
+set(USE_FBDEV OFF)
+set(USE_EVDEV OFF)
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+if(SWANSTATION_PS5)
+	# A title's file mappings are charged to its small flexible memory:
+	# disc images are read, not mapped.
+	set(LIBRETRO_COMMON_NO_MMAP ON CACHE BOOL "" FORCE)
+endif()
+
+execute_process(COMMAND git describe --tags --always WORKING_DIRECTORY ${ROOT}
+	OUTPUT_VARIABLE GIT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${ROOT}
+	OUTPUT_VARIABLE GIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+string(TIMESTAMP BUILD_TIMESTAMP UTC)
+configure_file(${ROOT}/src/libretro/version.h.in ${CMAKE_BINARY_DIR}/gen/version.h @ONLY)
+
+include(CheckSymbolExists)
+check_symbol_exists(alloca "alloca.h" HAVE_ALLOCA_H)
+if(NOT HAVE_ALLOCA_H)
+	check_symbol_exists(alloca "malloc.h" HAVE_MALLOC_H)
+endif()
+if(NOT SWANSTATION_PS5)
+	check_symbol_exists(mkstemp "stdlib.h" HAVE_MKSTEMP)
+endif()
+configure_file(${ROOT}/src/config.h.cmake ${CMAKE_BINARY_DIR}/gen/config.h)
+include_directories(${CMAKE_BINARY_DIR}/gen)
+
+# The title owns the Vulkan device (src/core/gpu_hw_vulkan.cpp keeps it alive
+# when a game ends).
+add_compile_definitions(SWANSTATION_STANDALONE=1)
+
+# The frontend compresses save states and reads the cheat database's ZIP
+# archives with the core's miniz (dep/libchdr/deps/miniz-3.1.1/miniz.h keeps
+# those APIs when SWANSTATION_STANDALONE is defined).
+set(MINIZ_ARCHIVE_APIS ON CACHE BOOL "" FORCE)
+set(MINIZ_DEFLATE_APIS ON CACHE BOOL "" FORCE)
+add_subdirectory(${ROOT}/dep dep)
+add_subdirectory(${ROOT}/src/common common)
+add_subdirectory(${ROOT}/src/core core)
+
+# libsmb2 (LGPL-2.1): games on SMB shares. Compiled from a checkout, with
+# ps5/smb/config.h; the names the console lacks are bound to ps5/smb/compat.c.
+set(LIBSMB2_NAMES
+	aes aes_reference aes128ccm alloc asn1-ber compat errors hmac hmac-md5 init libsmb2 md4c md5 ntlmssp pdu
+	sha1 sha224-256 sha384-512 smb2-cmd-cancel smb2-cmd-close smb2-cmd-create smb2-cmd-echo smb2-cmd-error
+	smb2-cmd-flush smb2-cmd-ioctl smb2-cmd-lock smb2-cmd-logoff smb2-cmd-negotiate smb2-cmd-notify-change
+	smb2-cmd-oplock-break smb2-cmd-query-directory smb2-cmd-query-info smb2-cmd-read smb2-cmd-session-setup
+	smb2-cmd-set-info smb2-cmd-tree-connect smb2-cmd-tree-disconnect smb2-cmd-write smb2-data-file-info
+	smb2-data-filesystem-info smb2-data-security-descriptor smb2-data-reparse-point smb2-share-enum smb3-seal
+	smb2-signing socket spnego-wrapper sync timestamps unicode usha)
+set(LIBSMB2_SOURCES)
+foreach(name ${LIBSMB2_NAMES})
+	list(APPEND LIBSMB2_SOURCES "${LIBSMB2_DIR}/lib/${name}.c")
+endforeach()
+if(SWANSTATION_PS5)
+	add_library(smb2 STATIC ${LIBSMB2_SOURCES} smb/compat.c)
+	target_include_directories(smb2 BEFORE PRIVATE smb)
+	target_compile_definitions(smb2 PRIVATE HAVE_CONFIG_H "_U_=__attribute__((unused))" SOL_TCP=6
+		getlogin_r=ps5_smb_getlogin_r gethostname=ps5_smb_gethostname readv=ps5_smb_readv writev=ps5_smb_writev
+		getaddrinfo=ps5_smb_getaddrinfo freeaddrinfo=ps5_smb_freeaddrinfo
+		fcntl=ps5_smb_fcntl connect=ps5_smb_connect)
+else()
+	add_library(smb2 STATIC ${LIBSMB2_SOURCES})
+	target_include_directories(smb2 BEFORE PRIVATE smb/host)
+	target_compile_definitions(smb2 PRIVATE HAVE_CONFIG_H "_U_=__attribute__((unused))" _GNU_SOURCE)
+endif()
+target_include_directories(smb2 PRIVATE "${LIBSMB2_DIR}/include" "${LIBSMB2_DIR}/include/smb2" "${LIBSMB2_DIR}/lib")
+target_include_directories(smb2 INTERFACE "${LIBSMB2_DIR}/include")
+target_compile_options(smb2 PRIVATE -w)
+
+set(frontend_sources
+	src/main.cpp
+	src/display.cpp
+	src/host.cpp
+	src/options.cpp
+	src/ui.cpp
+	src/ui_widgets.cpp
+	src/library.cpp
+	src/cheats.cpp
+	src/audio.cpp
+	src/vfs.cpp
+	src/smb.cpp
+	src/covers.cpp
+	src/diag.cpp
+	src/texture.cpp)
+if(SWANSTATION_PS5)
+	list(APPEND frontend_sources
+		src/ps5/pad_ps5.cpp
+		src/ps5/audio_ps5.cpp
+		src/ps5/http_ps5.cpp
+		src/ps5/libc_ps5.cpp
+		src/ps5/threads_ps5.cpp
+		src/ps5/stdio_ps5.cpp
+		src/ps5/platform_ps5.cpp
+		src/ps5/elevation/elevation.cpp
+		src/ps5/elevation/ps5_elevate.cpp)
+else()
+	list(APPEND frontend_sources src/host/platform_host.cpp)
+endif()
+
+set(core_glue_sources
+	${ROOT}/src/libretro/libretro_audio_stream.cpp
+	${ROOT}/src/libretro/libretro_game_settings.cpp
+	${ROOT}/src/libretro/libretro_host_display.cpp
+	${ROOT}/src/libretro/libretro_host_interface.cpp
+	${ROOT}/src/libretro/libretro_settings_interface.cpp)
+
+set(imgui_sources
+	${IMGUI_DIR}/imgui.cpp
+	${IMGUI_DIR}/imgui_draw.cpp
+	${IMGUI_DIR}/imgui_tables.cpp
+	${IMGUI_DIR}/imgui_widgets.cpp
+	${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
+
+add_executable(swanstation ${frontend_sources} ${core_glue_sources} ${imgui_sources})
+target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2)
+target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
+	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen)
+# ImGui's Vulkan backend draws through the core's function table
+# (dep/vulkan-loader), which is filled from the RADV linked into the title.
+target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+	IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DISABLE_DEMO_WINDOWS
+	FE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+# The fonts and the logo are assembled into ui_widgets.cpp's object.
+set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS
+	"${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png")
+set_source_files_properties(${frontend_sources} PROPERTIES COMPILE_OPTIONS "-std=c++20")
+if(SWANSTATION_PS5)
+	target_compile_definitions(swanstation PRIVATE SWANSTATION_PS5=1)
+	# CMake gives the objects and archives, in link order, to link.sh, which
+	# links them with RADV and the console's runtime, then converts and signs.
+	set(CMAKE_CXX_LINK_EXECUTABLE
+		"bash ${CMAKE_CURRENT_SOURCE_DIR}/tools/link.sh <TARGET> <OBJECTS> -- <LINK_LIBRARIES>")
+else()
+	target_compile_definitions(swanstation PRIVATE SWANSTATION_HOST=1)
+	target_link_libraries(swanstation PRIVATE dl pthread)
+endif()

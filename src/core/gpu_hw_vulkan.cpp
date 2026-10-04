@@ -285,8 +285,15 @@ void LibretroVulkanHostDisplay::DestroyRenderDevice()
   DestroyResources();
 
   Vulkan::ShaderCache::Destroy();
+#if defined(SWANSTATION_STANDALONE)
+  // The standalone title (ps5/) makes the Vulkan device once, at start-up, for
+  // its own interface as well as the emulator, and keeps it for as long as it
+  // runs: the context and the function table are the frontend's to destroy.
+  g_vulkan_context->ExecuteCommandBuffer(true);
+#else
   Vulkan::Context::Destroy();
   Vulkan::ResetVulkanLibraryFunctionPointers();
+#endif
 }
 
 bool LibretroVulkanHostDisplay::CreateResources()

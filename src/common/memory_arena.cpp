@@ -19,6 +19,165 @@ Log_SetChannel(Common::MemoryArena);
 #include <unistd.h>
 #endif
 
+#if defined(__PROSPERO__)
+// PS5 (jailbroken, homebrew title): guest memory lives in direct memory through
+// the payload SDK fork's platform layer (ps5platform/shm.h). An anonymous or
+// shm_open mapping would be charged to the title's small flexible memory; one
+// direct-memory object is charged only to the direct pool. Only the lookup-
+// table fastmem is built for the console (src/core/CMakeLists.txt), so the
+// arena has a single view, the emulator's RAM, and nothing is mapped at a
+// fixed address or protected.
+#include <cerrno>
+#include <cstdlib>
+#include <ps5platform/shm.h>
+
+namespace Common {
+
+MemoryArena::MemoryArena() = default;
+
+MemoryArena::~MemoryArena()
+{
+  Destroy();
+}
+
+void* MemoryArena::FindBaseAddressForMapping(size_t size)
+{
+  Log_ErrorPrintf("No address range for a %zu byte mapping: mmap fastmem is not built for this platform", size);
+  return nullptr;
+}
+
+bool MemoryArena::IsValid() const
+{
+  return m_shm != nullptr;
+}
+
+bool MemoryArena::Create(size_t size, bool writable, bool executable)
+{
+  if (IsValid())
+    Destroy();
+
+  ps5_shm* shm = static_cast<ps5_shm*>(std::calloc(1, sizeof(ps5_shm)));
+  if (!shm)
+    return false;
+
+  const int rc = ps5_shm_create(size, shm);
+  if (rc != 0)
+  {
+    Log_ErrorPrintf("ps5_shm_create(%zu) failed: 0x%08x", size, static_cast<unsigned>(rc));
+    std::free(shm);
+    return false;
+  }
+
+  m_shm = shm;
+  m_size = size;
+  m_writable = writable;
+  m_executable = executable;
+  return true;
+}
+
+void MemoryArena::Destroy()
+{
+  if (m_shm)
+  {
+    ps5_shm_destroy(static_cast<ps5_shm*>(m_shm));
+    std::free(m_shm);
+    m_shm = nullptr;
+  }
+}
+
+std::optional<MemoryArena::View> MemoryArena::CreateView(size_t offset, size_t size, bool writable, bool executable,
+                                                         void* fixed_address)
+{
+  void* base_pointer = CreateViewPtr(offset, size, writable, executable, fixed_address);
+  if (!base_pointer)
+    return std::nullopt;
+
+  return View(this, base_pointer, offset, size, writable);
+}
+
+std::optional<MemoryArena::View> MemoryArena::CreateReservedView(size_t size, void* fixed_address /*= nullptr*/)
+{
+  return std::nullopt;
+}
+
+void* MemoryArena::CreateViewPtr(size_t offset, size_t size, bool writable, bool executable,
+                                 void* fixed_address /*= nullptr*/)
+{
+  if (!m_shm || fixed_address)
+    return nullptr;
+
+  void* view = nullptr;
+  const int rc = ps5_shm_map(static_cast<const ps5_shm*>(m_shm), offset, size, nullptr,
+                             PS5_SHM_READ | (writable ? PS5_SHM_WRITE : 0), 0, &view);
+  if (rc != 0)
+  {
+    Log_ErrorPrintf("ps5_shm_map(%zu at %zu) failed: 0x%08x", size, offset, static_cast<unsigned>(rc));
+    return nullptr;
+  }
+
+  m_num_views.fetch_add(1);
+  return view;
+}
+
+bool MemoryArena::FlushViewPtr(void* address, size_t size)
+{
+  return true;
+}
+
+bool MemoryArena::ReleaseViewPtr(void* address, size_t size)
+{
+  const int rc = ps5_shm_unmap(address, size, 0);
+  if (rc != 0)
+  {
+    Log_ErrorPrintf("Failed to unmap previously-created view at %p: 0x%08x", address, static_cast<unsigned>(rc));
+    return false;
+  }
+
+  m_num_views.fetch_sub(1);
+  return true;
+}
+
+void* MemoryArena::CreateReservedPtr(size_t size, void* fixed_address /*= nullptr*/)
+{
+  return nullptr;
+}
+
+bool MemoryArena::ReleaseReservedPtr(void* address, size_t size)
+{
+  return false;
+}
+
+bool MemoryArena::SetPageProtection(void* address, size_t length, bool readable, bool writable, bool executable)
+{
+  return false;
+}
+
+MemoryArena::View::View(MemoryArena* parent, void* base_pointer, size_t arena_offset, size_t mapping_size,
+                        bool writable)
+  : m_parent(parent), m_base_pointer(base_pointer), m_arena_offset(arena_offset), m_mapping_size(mapping_size),
+    m_writable(writable)
+{
+}
+
+MemoryArena::View::View(View&& view)
+  : m_parent(view.m_parent), m_base_pointer(view.m_base_pointer), m_arena_offset(view.m_arena_offset),
+    m_mapping_size(view.m_mapping_size)
+{
+  view.m_parent = nullptr;
+  view.m_base_pointer = nullptr;
+  view.m_arena_offset = 0;
+  view.m_mapping_size = 0;
+}
+
+MemoryArena::View::~View()
+{
+  if (m_parent && m_arena_offset != RESERVED_REGION_OFFSET)
+    m_parent->ReleaseViewPtr(m_base_pointer, m_mapping_size);
+}
+} // namespace Common
+
+#else // !__PROSPERO__
+
 namespace Common {
 
 // Borrowed from Dolphin
@@ -391,3 +550,5 @@ MemoryArena::View::~View()
   }
 }
 } // namespace Common
+
+#endif // __PROSPERO__

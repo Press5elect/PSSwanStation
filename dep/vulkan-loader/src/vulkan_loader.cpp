@@ -41,7 +41,56 @@ void ResetVulkanLibraryFunctionPointers()
 #undef VULKAN_MODULE_ENTRY_POINT
 }
 
-#if defined(_WIN32)
+#if defined(__PROSPERO__)
+
+// PS5: there is no Vulkan loader. RADV (PS5_Vulkan / PS5_Mesa) is linked into
+// the title, and its ICD entry point resolves every command.
+extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance instance, const char* name);
+
+static std::atomic_int vulkan_module_ref_count = {0};
+
+bool LoadVulkanLibrary()
+{
+  if (vulkan_module_ref_count.fetch_add(1) > 0 && vkCreateInstance)
+    return true;
+
+  bool required_functions_missing = false;
+  auto LoadFunction = [&](PFN_vkVoidFunction* func_ptr, const char* name, bool is_required) {
+    if (std::strcmp(name, "vkGetInstanceProcAddr") == 0)
+      *func_ptr = reinterpret_cast<PFN_vkVoidFunction>(&vk_icdGetInstanceProcAddr);
+    else
+      *func_ptr = vk_icdGetInstanceProcAddr(VK_NULL_HANDLE, name);
+    if (!(*func_ptr) && is_required)
+    {
+      std::fprintf(stderr, "Vulkan: Failed to load required module function %s\n", name);
+      required_functions_missing = true;
+    }
+  };
+
+#define VULKAN_MODULE_ENTRY_POINT(name, required)                                                                      \
+  LoadFunction(reinterpret_cast<PFN_vkVoidFunction*>(&name), #name, required);
+#include "vulkan_entry_points.inl"
+#undef VULKAN_MODULE_ENTRY_POINT
+
+  if (required_functions_missing)
+  {
+    ResetVulkanLibraryFunctionPointers();
+    vulkan_module_ref_count = 0;
+    return false;
+  }
+
+  return true;
+}
+
+void UnloadVulkanLibrary()
+{
+  if ((--vulkan_module_ref_count) > 0)
+    return;
+
+  ResetVulkanLibraryFunctionPointers();
+}
+
+#elif defined(_WIN32)
 
 static HMODULE vulkan_module;
 static std::atomic_int vulkan_module_ref_count = {0};

@@ -10,6 +10,13 @@
 #include <sys/mman.h>
 #endif
 
+#if defined(__PROSPERO__)
+// PS5: executable memory comes from the payload SDK fork's platform layer
+// (direct memory, mapped read-write, then given execute: asking for execute
+// at map time is refused, and the title's own data cannot be made executable).
+#include <ps5platform/exec.h>
+#endif
+
 #if defined(__APPLE__) && defined(__aarch64__)
 // pthread_jit_write_protect_np()
 #include <pthread.h>
@@ -34,6 +41,13 @@ bool JitCodeBuffer::Allocate(uint32_t size /* = 64 * 1024 * 1024 */, uint32_t fa
 
 #if defined(_WIN32)
   m_code_ptr = static_cast<uint8_t*>(VirtualAlloc(nullptr, m_total_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+  if (!m_code_ptr)
+    return false;
+#elif defined(__PROSPERO__)
+  // Within 2 GiB of the title's code, so the recompiler's calls into the
+  // emulator reach it with 32-bit displacements.
+  m_code_ptr = static_cast<uint8_t*>(
+    ps5_exec_allocate(m_total_size, reinterpret_cast<uintptr_t>(&ps5_exec_allocate)));
   if (!m_code_ptr)
     return false;
 #elif defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__) || defined(__HAIKU__) || defined(__FreeBSD__)
@@ -87,6 +101,10 @@ bool JitCodeBuffer::Initialize(void* buffer, uint32_t size, uint32_t far_code_si
 
   m_code_ptr = static_cast<uint8_t*>(buffer);
   m_old_protection = static_cast<uint32_t>(old_protect);
+#elif defined(__PROSPERO__)
+  // A buffer in the title's own image cannot be given execute: the caller
+  // falls back to Allocate().
+  return false;
 #elif defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__) || defined(__HAIKU__) || defined(__FreeBSD__)
   if (mprotect(buffer, size, PROT_READ | PROT_WRITE | PROT_EXEC) != 0)
     return false;
@@ -129,6 +147,8 @@ void JitCodeBuffer::Destroy()
   {
 #if defined(_WIN32)
     VirtualFree(m_code_ptr, 0, MEM_RELEASE);
+#elif defined(__PROSPERO__)
+    ps5_exec_release(m_code_ptr);
 #elif defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__) || defined(__HAIKU__) || defined(__FreeBSD__)
     munmap(m_code_ptr, m_total_size);
 #endif
@@ -138,6 +158,8 @@ void JitCodeBuffer::Destroy()
 #if defined(_WIN32)
     DWORD old_protect = 0;
     VirtualProtect(m_code_ptr, m_total_size, m_old_protection, &old_protect);
+#elif defined(__PROSPERO__)
+    // never reached: Initialize() refuses on this platform
 #else
     mprotect(m_code_ptr, m_total_size, m_old_protection);
 #endif

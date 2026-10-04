@@ -8,7 +8,8 @@
 #include "host_interface.h"
 #include "settings.h"
 #include "xxhash.h"
-#if defined(CPU_X86) || defined(CPU_X64)
+// PS5: one CPU, compiled for (-march=znver2): no run-time dispatch.
+#if (defined(CPU_X86) || defined(CPU_X64)) && !defined(__PROSPERO__)
 #include "xxh_x86dispatch.h"
 #endif
 #include <cinttypes>

@@ -54,7 +54,10 @@ public:
   static bool SetPageProtection(void* address, size_t length, bool readable, bool writable, bool executable);
 
 private:
-#if defined(_WIN32)
+#if defined(__PROSPERO__)
+  // PS5: one direct-memory object (ps5platform/shm.h), heap-allocated ps5_shm.
+  void* m_shm = nullptr;
+#elif defined(_WIN32)
   void* m_file_handle = nullptr;
 #elif defined(__linux__) || defined(ANDROID) || defined(__APPLE__) || defined(__FreeBSD__)
   int m_shmem_fd = -1;

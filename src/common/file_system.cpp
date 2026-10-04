@@ -164,6 +164,11 @@ bool IsAbsolutePath(const std::string_view& path)
   return (path.length() >= 3 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
           path[1] == ':' && (path[2] == '/' || path[2] == '\\'));
 #else
+  // A URI ("smb://server/share/file", which a frontend's VFS opens) names its
+  // file whole, as a path from the root does: it is not relative to the
+  // playlist or cue sheet that mentions it.
+  if (path.find("://") != std::string_view::npos)
+    return true;
   return (path.length() >= 1 && path[0] == '/');
 #endif
 }
