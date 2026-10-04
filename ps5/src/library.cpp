@@ -7,10 +7,13 @@
 	drives (when the sandbox was left) and the folders of an SMB share named in
 	network.cfg. Each is scanned on a thread of its own.
 
-	The network list is kept (<root>data/network-games.txt): opening the
-	Network tab shows the kept list without touching the share, so a NAS whose
-	disks sleep is not woken by browsing. The share is asked when there is no
-	kept list, when the user asks for a scan, and when a game is started.
+	All three are looked through when the title starts; the interface shows a
+	tab only for a source that has games.
+
+	The network list is kept (<root>data/network-games.txt): a start shows the
+	kept list without touching the share, so a NAS whose disks sleep is not
+	woken by browsing. The share is asked when there is no kept list, when the
+	user asks for a scan, and when a game is started.
 
 	Files that are parts of a game are folded into it: the tracks a cue sheet
 	names, and the discs of one game named as dumps are ("Game (USA) (Disc
@@ -343,7 +346,7 @@ void run(int source, bool force)
 			if (smb::failures() != failuresBefore)
 			{
 				// The share did not answer to the end: the list is not kept,
-				// and the scan is made again the next time the tab is opened.
+				// and the scan is made again when the user asks for one.
 				status = smb::lastError();
 				if (found.empty())
 				{
@@ -380,6 +383,8 @@ void init()
 	scan(Internal, false);
 	if (platform::usbAvailable())
 		scan(Usb, false);
+	if (!smb::gameFolders().empty())
+		scan(Network, false);
 }
 
 void scan(int source, bool force)

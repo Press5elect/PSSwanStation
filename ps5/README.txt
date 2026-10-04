@@ -68,10 +68,16 @@ In a game
 The library
 -----------
 
-Three tabs: Internal (the games folder), USB and Network. The games played
-lately are on a shelf of their own at the top ("Continue playing"), with when
-and for how long; a game on several discs starts from the disc last in the
-tray.
+Games come from three places: Internal (the games folder), USB and Network.
+Each has a tab at the top once it has games, and a place with none is not
+shown: with games in the folder only there is the one tab, and L1 and R1
+appear when there is a second. Square looks through all three again, so a
+drive plugged in or a share filled since gets its tab. With no games anywhere
+the screen says where each place's games go.
+
+The games played lately are on a shelf of their own at the top ("Continue
+playing"), with when and for how long; a game on several discs starts from
+the disc last in the tray.
 
 Triangle opens a game's details: its description, who made it and when (from
 the game database, by the disc's serial number), how long it was played, and
@@ -90,8 +96,9 @@ of the drive.
 Network (SMB, Windows sharing): name the share in network.cfg, for example
   path = 192.168.1.10/Games/PSX
 with the server by its IP address, and restart SwanStation. The share is
-scanned the first time the Network tab is opened and again with Square. A
-network game is read into memory before it starts ("Load network games into
+scanned at that start and again with Square; the list is kept, so later
+starts show it without asking the share. If the share does not answer, the
+library's bottom line says so and there is no Network tab. A network game is read into memory before it starts ("Load network games into
 memory"; switch it off to start at once and read while playing).
 
 Covers: a cover is looked for in covers/ by the game's file name. With

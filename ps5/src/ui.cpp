@@ -707,8 +707,36 @@ struct LibraryView
 	bool fresh = true;
 };
 LibraryView views[library::SourceCount];
-int source;
+// The source on the screen, and the one that was asked for (with L1 and R1,
+// kept between starts). A source with no games has no tab: the one asked for
+// is shown when it has games, and until then the first that has.
+int source, wantedSource;
+// Until a button is pressed the library goes to the source asked for when its
+// games arrive (a share answers later than the folder does); after that it
+// stays where the user is.
+bool followWanted = true;
 float tabGlow[library::SourceCount];
+
+bool sourceShown(int index)
+{
+	return !views[index].games.empty();
+}
+
+int shownSources()
+{
+	int count = 0;
+	for (int i = 0; i < library::SourceCount; i++)
+		count += sourceShown(i) ? 1 : 0;
+	return count;
+}
+
+// Every place games can be in is looked through again.
+void scanEverything()
+{
+	for (int i = 0; i < library::SourceCount; i++)
+		if (i != library::Usb || options::frontend().usb)
+			library::scan(i, true);
+}
 // The header's mark: its box, the swan sitting in it, and the name. While the
 // swan is in the air (it flies in from the splash, and out when a game
 // starts) the box is empty.
@@ -893,15 +921,20 @@ void drawHeader()
 	if (headerNameAlpha > 0.01f)
 		text(at(136, 36), withAlpha(t.text, headerNameAlpha), AppName, Title, 44);
 
+	// A tab for each place that has games; L1 and R1 when there is a choice.
 	static const char *icons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network };
-	float x = 470;
+	const bool choice = shownSources() > 1;
+	float x = choice ? 470 : 424;
 	for (int i = 0; i < library::SourceCount; i++)
 	{
 		const bool selected = i == source;
+		if (!sourceShown(i))
+		{
+			tabGlow[i] = 0;
+			continue;
+		}
 		tabGlow[i] = approach(tabGlow[i], selected ? 1.f : 0.f, 14.f);
-		std::string label = library::sourceName(i);
-		if (library::scanned(i) && !views[i].games.empty())
-			label += format("  %d", (int)views[i].games.size());
+		const std::string label = library::sourceName(i) + format("  %d", (int)views[i].games.size());
 		const float labelW = toUnits(measure(label, Bold, 26).x);
 		const float tabW = labelW + 92;
 		if (tabGlow[i] > 0.01f)
@@ -910,19 +943,43 @@ void drawHeader()
 		text(at(x + 68, 50), selected ? t.text : t.dim, label, Bold, 26);
 		x += tabW + 12;
 	}
-	buttonGlyph(at(430, 65), 30, L1);
-	buttonGlyph(at(x + 32, 65), 30, R1);
+	if (choice)
+	{
+		buttonGlyph(at(430, 65), 30, L1);
+		buttonGlyph(at(x + 32, 65), 30, R1);
+	}
 	buildTag();
 }
 
 // What is going on besides: a scan, cover downloads.
 std::string libraryStatus()
 {
-	if (library::scanning(source))
+	// The share is asked when the title starts, perhaps before this is.
+	static bool shareWasAsked = !smb::gameFolders().empty();
+	static double shareFailedAt = -1;
+	shareWasAsked = shareWasAsked || library::scanning(library::Network);
+	// The source on the screen first, then the others (theirs have no tab yet,
+	// or are looked through again).
+	for (int n = 0; n < library::SourceCount; n++)
 	{
-		const std::string status = library::scanStatus(source);
-		return status.empty() ? "Scanning\xe2\x80\xa6" : status;
+		const int i = (source + n) % library::SourceCount;
+		if (!library::scanning(i))
+			continue;
+		const std::string status = library::scanStatus(i);
+		if (!status.empty())
+			return status;
+		return i == source ? "Scanning\xe2\x80\xa6" : "Scanning " + library::sourceName(i) + "\xe2\x80\xa6";
 	}
+	// A share that did not answer has no tab to say so on: it is said here,
+	// for a while.
+	if (shareWasAsked && !library::scanning(library::Network))
+	{
+		if (!library::scanned(library::Network) && !smb::lastError().empty())
+			shareFailedAt = clock();
+		shareWasAsked = false;
+	}
+	if (shareFailedAt >= 0 && clock() - shareFailedAt < 8.0)
+		return "Network share: " + smb::lastError();
 	return covers::status();
 }
 
@@ -932,7 +989,7 @@ void emptyLibrary(const std::string& hint, bool busy)
 	const float W = unitsWide(), H = unitsHigh();
 	const float cx = W * 0.5f, cy = H * 0.46f;
 	textCentred(at(cx, cy - 120), withAlpha(t.accent, 0.8f), busy ? icon::Sync : icon::Disc, Title, 84);
-	textCentred(at(cx, cy), t.text, busy ? "Looking for games" : "No games here yet", Bold, 34);
+	textCentred(at(cx, cy), t.text, busy ? "Looking for games" : "No games yet", Bold, 34);
 	const float wrap = 1000;
 	// Centred as a block: wrapped text is left-aligned inside it.
 	const ImVec2 extent = measure(hint, Body, 24);
@@ -1017,23 +1074,33 @@ void libraryPage(bool active)
 	for (int i = 0; i < library::SourceCount; i++)
 		refreshView(i);
 
-	if (active)
+	// Which source is on the screen: only one that has games.
+	const int sourceBefore = source;
+	if (active && in.pressed != 0)
+		followWanted = false;
+	if (followWanted && sourceShown(wantedSource))
+		source = wantedSource;
+	if (!sourceShown(source))
 	{
-		if (hit(R1))
-			source = (source + 1) % library::SourceCount;
-		if (hit(L1))
-			source = (source + library::SourceCount - 1) % library::SourceCount;
-		if (hit(R1 | L1))
-		{
-			options::frontend().source = source;
-			options::saveFrontend();
-			views[source].fresh = true;
-		}
+		source = library::Internal;
+		for (int i = library::SourceCount - 1; i >= 0; i--)
+			if (sourceShown(i))
+				source = i;
+		if (sourceShown(wantedSource))
+			source = wantedSource;
 	}
-	// The share is asked the first time its tab is opened.
-	if (source == library::Network && !library::scanned(source) && !library::scanning(source)
-			&& !smb::gameFolders().empty())
-		library::scan(source, false);
+	if (active && hit(R1 | L1) && shownSources() > 1)
+	{
+		const int step = hit(R1) ? 1 : library::SourceCount - 1;
+		do
+			source = (source + step) % library::SourceCount;
+		while (!sourceShown(source));
+		wantedSource = source;
+		options::frontend().source = source;
+		options::saveFrontend();
+	}
+	if (source != sourceBefore)
+		views[source].fresh = true;
 
 	LibraryView& view = views[source];
 	const int count = (int)view.games.size();
@@ -1044,13 +1111,24 @@ void libraryPage(bool active)
 
 	if (count == 0)
 	{
+		// No games anywhere: what is being looked through, or where games go.
 		libraryWash("");
-		const bool busy = library::scanning(source);
-		std::string hint = source == library::Usb ? usbHint() : library::sourceHint(source);
-		if (busy)
-			hint = library::scanStatus(source);
-		else if (source == library::Network && !smb::lastError().empty())
-			hint = smb::lastError() + "\n" + hint;
+		bool busy = false;
+		std::string hint;
+		for (int i = 0; i < library::SourceCount && !busy; i++)
+			if (library::scanning(i))
+			{
+				busy = true;
+				hint = library::scanStatus(i);
+			}
+		if (!busy)
+		{
+			hint = "On the console:  " + library::sourceHint(library::Internal)
+					+ "\n\nOn a USB drive:  " + usbHint() + "\n\nOn a network share:  ";
+			if (!smb::gameFolders().empty() && !smb::lastError().empty())
+				hint += smb::lastError() + "  ";
+			hint += library::sourceHint(library::Network);
+		}
 		emptyLibrary(hint, busy);
 	}
 	else if (grid)
@@ -1275,7 +1353,7 @@ void libraryPage(bool active)
 	if (hit(Options))
 		push(Page::MainMenu);
 	else if (hit(Square))
-		library::scan(source, true);
+		scanEverything();
 	else if (focus >= 0 && hit(confirmButton))
 	{
 		const library::Game game = view.games[focus];
@@ -1735,9 +1813,7 @@ void mainMenuPage(Frame& f)
 			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { startBios(); }));
 	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
 			"network share again.", [] {
-				for (int i = 0; i < library::SourceCount; i++)
-					if (i != library::Usb || options::frontend().usb)
-						library::scan(i, true);
+				scanEverything();
 				pop();
 			}));
 	items.push_back(action(icon::Info, "About", "Versions, folders and licences.", [] {
@@ -2634,9 +2710,8 @@ void launchPage(Frame& f)
 void init()
 {
 	widgetsInit();
-	source = std::clamp(options::frontend().source, 0, (int)library::SourceCount - 1);
-	if (source == library::Usb && !options::frontend().usb)
-		source = library::Internal;
+	wantedSource = std::clamp(options::frontend().source, 0, (int)library::SourceCount - 1);
+	source = wantedSource;
 }
 
 bool quitRequested()
