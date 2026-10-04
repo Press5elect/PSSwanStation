@@ -59,10 +59,11 @@ fi
 (cd "$vk/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
 
 # Configured every time: the build's date is set here.
+mkdir -p "$build"
 cmake -S "$ps5" -B "$build" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$ps5/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
-    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" > "$build.configure.log" 2>&1 \
-    || { cat "$build.configure.log" >&2; exit 2; }
+    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" > "$build/configure.log" 2>&1 \
+    || { cat "$build/configure.log" >&2; exit 2; }
 cmake --build "$build" --target swanstation --parallel "${JOBS:-$(nproc)}"
 
 app="$out/$title"
