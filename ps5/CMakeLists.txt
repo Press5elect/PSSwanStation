@@ -114,6 +114,7 @@ set(frontend_sources
 	src/options.cpp
 	src/ui.cpp
 	src/ui_widgets.cpp
+	src/swan.cpp
 	src/library.cpp
 	src/cheats.cpp
 	src/audio.cpp
@@ -167,7 +168,7 @@ target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKA
 	FE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 # The fonts and the logo are assembled into ui_widgets.cpp's object.
 set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS
-	"${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png")
+	"${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/logo-box.png")
 set_source_files_properties(${frontend_sources} PROPERTIES COMPILE_OPTIONS "-std=c++20")
 # The build's date, in main.cpp alone so a new day recompiles one file.
 string(TIMESTAMP FE_BUILD_DATE "%Y-%m-%d" UTC)

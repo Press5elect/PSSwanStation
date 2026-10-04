@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SwanStation for PS5 - draws the title's pictures.
 
-  ps5/assets/logo.png      the logo inside the interface (256 x 256)
+  ps5/assets/logo-box.png  the mark's box, without the swan, for the interface (512 x 512)
   ps5/sce_sys/icon0.png    the home screen's icon (512 x 512)
   ps5/sce_sys/pic0.dds     the picture behind the title on the home screen
   ps5/sce_sys/pic1.dds     and while it loads (3840 x 2160, BC7)
@@ -99,7 +99,9 @@ def water(image, y, amplitude, colour, width):
     d.line(points, fill=colour, width=width, joint="curve")
 
 
-def icon(size):
+def icon(size, bird_too=True):
+    """The mark: the swan on its water, in a rounded box. Without the bird it
+    is the box the interface draws its own, moving swan into."""
     k = 2
     s = size * k
     base = gradient((s, s), (30, 62, 130), (10, 16, 40))
@@ -107,12 +109,13 @@ def icon(size):
     base.alpha_composite(glow((s, s), (s * 0.85, s * 0.95), s * 0.70, VIOLET, 0.40))
     water(base, s * 0.800, s * 0.010, (150, 200, 255, 150), max(s // 110, 2))
     water(base, s * 0.865, s * 0.008, (150, 200, 255, 90), max(s // 140, 2))
-    # A soft shadow under the swan lifts it off the background.
-    bird = swan(int(s * 0.92))
-    shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    shadow.paste((0, 0, 0, 110), (int(s * 0.04), int(s * 0.055)), bird.split()[3])
-    base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(s * 0.02)))
-    base.alpha_composite(bird, (int(s * 0.04), int(s * 0.04)))
+    if bird_too:
+        # A soft shadow under the swan lifts it off the background.
+        bird = swan(int(s * 0.92))
+        shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        shadow.paste((0, 0, 0, 110), (int(s * 0.04), int(s * 0.055)), bird.split()[3])
+        base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(s * 0.02)))
+        base.alpha_composite(bird, (int(s * 0.04), int(s * 0.04)))
     # Rounded corners.
     mask = Image.new("L", (s, s), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * 0.19), fill=255)
@@ -279,7 +282,9 @@ def write_dds(path, image):
 def main():
     os.makedirs(ASSETS, exist_ok=True)
     os.makedirs(SCE_SYS, exist_ok=True)
-    icon(256).save(os.path.join(ASSETS, "logo.png"), optimize=True)
+    # The interface draws the swan itself (ps5/src/swan.cpp), so that it can
+    # move: its picture is only the box.
+    icon(512, bird_too=False).save(os.path.join(ASSETS, "logo-box.png"), optimize=True)
     icon(512).convert("RGBA").save(os.path.join(SCE_SYS, "icon0.png"), optimize=True)
     for name, loading in (("pic0", False), ("pic1", True)):
         picture = backdrop(3840, 2160, loading)

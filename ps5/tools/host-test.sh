@@ -46,43 +46,44 @@ database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
 rm -f "$root/data/history.txt"
 
 # Frames, with the animations' clock counting them (SWANSTATION_FRAME_CLOCK):
-# the splash is on the screen until frame 160 and gone by 210.
+# the splash is on the screen until frame 150, the swan lands in the header by 240,
+# and a game's start takes the 63 frames of its flight at the screen.
 cat > "$root/script.txt" <<'SCRIPT'
 90 shot 01-splash
-185 shot 02-splash-leaving
-230 shot 03-library
-235 right
-245 triangle
-260 shot 04-details
-265 right
-273 right
-281 cross
-295 shot 05-details-options
-300 circle
-308 right
-316 cross
-330 shot 06-details-cheats
-335 cross
-350 shot 07-cheat-on
-355 circle
-363 left
-371 left
-379 left
-387 cross
-700 shot 08-game
-705 options
-720 shot 09-menu
-725 down
-735 cross
-745 cross
-800 shot 10-state-saved
-805 options
-812 up
-820 cross
-828 cross
-860 shot 11-library-shelf
+200 shot 02-splash-flight
+270 shot 03-library
+275 right
+285 triangle
+300 shot 04-details
+305 right
+313 right
+321 cross
+335 shot 05-details-options
+340 circle
+348 right
+356 cross
+370 shot 06-details-cheats
+375 cross
+390 shot 07-cheat-on
+395 circle
+403 left
+411 left
+419 left
+497 cross
+810 shot 08-game
+815 options
+830 shot 09-menu
+835 down
+845 cross
+855 cross
+910 shot 10-state-saved
+915 options
+922 up
+930 cross
+938 cross
+970 shot 11-library-shelf
 SCRIPT
-SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=870 \
+SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=990 \
     SWANSTATION_SIZE=${SWANSTATION_SIZE:-1920x1080} "$build/swanstation" > "$root/run.log" 2>&1
 grep -E "game:|cheats:|state:|shot|CRASH" "$root/swanstation-boot.log"
 if grep -q CRASH "$root/swanstation-boot.log"; then

@@ -164,6 +164,7 @@ struct Frontend
 	bool rumble = true;
 	bool swapConfirm = false;	// Circle confirms in the menus
 	bool splash = true;			// the start-up animation
+	int animations = 0;			// 0 everything moves, 1 little does, 2 nothing does
 	int uiScale = 100;			// percent
 	int accent = 0;
 };

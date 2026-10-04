@@ -110,6 +110,7 @@ enum class Page
 	Discs,
 	Cheats,
 	Details,	// the game in `chosen`
+	Launch,		// the swan sees the game in `chosen` off; a: state slot, b: disc
 	Loading,	// a network game being read; a: state slot
 	Message,	// s: title, s2: text
 	Confirm,	// s: title, s2: text, action
@@ -239,6 +240,22 @@ void startBios()
 	begin(bios, -1, 0);
 }
 
+// Starts it: a game on a share is read first (the loading page).
+void launchNow(const library::Game& game, int slot, int disc)
+{
+	const std::string& first = game.discs.empty() ? game.path
+			: game.discs[(size_t)std::clamp(disc, 0, (int)game.discs.size() - 1)];
+	if (smb::isNetworkPath(first) || smb::isNetworkPath(game.path))
+	{
+		const std::string path = first;
+		chosen = game;
+		push(Page::Loading, slot, disc, game.path, game.name);
+		smb::startPrecache(path);
+	}
+	else
+		begin(game, slot, disc);
+}
+
 // `disc`: the one in the tray at the start; -1 for the one last played.
 void launch(const library::Game& game, int slot, int disc = -1)
 {
@@ -250,15 +267,14 @@ void launch(const library::Game& game, int slot, int disc = -1)
 	if (disc < 0)
 		disc = discs > 1 ? history::get(game.path).disc : 0;
 	disc = std::clamp(disc, 0, std::max(discs - 1, 0));
-	const std::string& first = discs > 0 ? game.discs[(size_t)disc] : game.path;
-	if (smb::isNetworkPath(first) || smb::isNetworkPath(game.path))
+	// With the animations full, the swan sees the game off first.
+	if (motion() == MotionFull)
 	{
 		chosen = game;
-		push(Page::Loading, slot, disc, game.path, game.name);
-		smb::startPrecache(first);
+		push(Page::Launch, slot, disc);
+		return;
 	}
-	else
-		begin(game, slot, disc);
+	launchNow(game, slot, disc);
 }
 
 // ------------------------------------------------------------------- lists
@@ -693,9 +709,18 @@ struct LibraryView
 LibraryView views[library::SourceCount];
 int source;
 float tabGlow[library::SourceCount];
-// The header's logo is the splash's while that flies to its place, and its
-// name comes in as the splash's goes: 0 hidden, 1 shown.
-float headerLogoAlpha = 1, headerNameAlpha = 1;
+// The header's mark: its box, the swan sitting in it, and the name. While the
+// swan is in the air (it flies in from the splash, and out when a game
+// starts) the box is empty.
+float headerBoxAlpha = 1, headerNameAlpha = 1;
+bool headerSwanAway;
+
+// The header's box, in pixels.
+void headerBox(ImVec2& a, ImVec2& b)
+{
+	a = at(56, 30);
+	b = at(120, 94);
+}
 // The library is only a background (a game's details are over it).
 bool libraryBehind;
 
@@ -852,8 +877,19 @@ void buildTag(float alpha = 1.f)
 void drawHeader()
 {
 	const Theme& t = theme();
-	if (headerLogoAlpha > 0.01f)
-		logoAt(at(56, 30), at(120, 94), headerLogoAlpha);
+	if (headerBoxAlpha > 0.01f)
+	{
+		ImVec2 a, b, origin;
+		float size = 0;
+		headerBox(a, b);
+		logoBox(a, b, headerBoxAlpha);
+		if (!headerSwanAway)
+		{
+			// It sits there and looks about.
+			swanPlace(a, b, origin, size);
+			swan(origin, size, motion() == MotionFull ? swanIdle(clock()) : SwanPose(), headerBoxAlpha);
+		}
+	}
 	if (headerNameAlpha > 0.01f)
 		text(at(136, 36), withAlpha(t.text, headerNameAlpha), AppName, Title, 44);
 
@@ -935,7 +971,8 @@ void drawCell(LibraryView& view, int index, float x, float y, float cell, bool f
 	float size = cell;
 	if (focused)
 	{
-		const float grow = 14 + 2 * (float)std::sin(clock() * 3.0);
+		// The cover under the cursor is larger, and breathes when things may move.
+		const float grow = 14 + (motion() == MotionFull ? 2 * (float)std::sin(clock() * 3.0) : 0.f);
 		x -= grow * 0.5f;
 		y -= grow * 0.5f;
 		size += grow;
@@ -1351,8 +1388,23 @@ void frontendItems(int kind, std::vector<Item>& items)
 				{ "80%", "90%", "100%", "110%", "120%", "130%" },
 				"Makes the text and everything else of the interface larger or smaller.",
 				[](int i) { options::frontend().uiScale = 80 + i * 10; }));
-		items.push_back(toggle("Start-up animation", &f.splash,
-				"The swan and the name that open SwanStation before the library comes in. Any button skips it."));
+		items.push_back(choice("Animations", f.animations, { "Full", "Reduced", "Off" },
+				"Full: the swan flies from the start-up screen to its corner, looks about while it sits there, "
+				"and flies at the screen when a game starts. Reduced: it stays still, the start-up screen only "
+				"fades, and a game starts at once. Off: nothing moves at all - no start-up screen, and lists and "
+				"pictures jump to their places.",
+				[](int i) { options::frontend().animations = i; }));
+		{
+			Item item = toggle("Start-up animation", &f.splash,
+					"The swan and the name that open SwanStation before the library comes in. Any button skips it.");
+			if (f.animations == 2)
+			{
+				item.enabled = false;
+				item.value = "Off";
+				item.info += " Not shown while Animations is Off.";
+			}
+			items.push_back(std::move(item));
+		}
 		items.push_back(choice("Confirm button", f.swapConfirm ? 1 : 0, { "Cross", "Circle" },
 				"Which button confirms in the menus; the other one goes back. Games are not affected.",
 				[](int i) { options::frontend().swapConfirm = i != 0; }));
@@ -2027,7 +2079,7 @@ void detailsPage(Frame& f)
 	const float W = unitsWide(), H = unitsHigh();
 	const library::Game& game = det.game;
 	const int discs = (int)game.discs.size();
-	const float open = std::clamp((float)((clock() - f.opened) / 0.18), 0.f, 1.f);
+	const float open = motion() == MotionOff ? 1.f : std::clamp((float)((clock() - f.opened) / 0.18), 0.f, 1.f);
 	const float ease = 1.f - (1.f - open) * (1.f - open);
 
 	// The panel, over the dimmed library.
@@ -2292,6 +2344,20 @@ void loadingPage(Frame& f)
 			: options::frontend().ramCache ? "Opening the game on the network share" : "Checking the game's files";
 	text(at(x0 + 44, y0 + 100), t.dim, line, Body, 24);
 	progressBar(at(x0 + 44, y0 + 160), at(x0 + w - 44, y0 + 176), status.progress);
+	if (motion() == MotionFull)
+	{
+		// The swan flies along the bar, over where the reading has got to.
+		const float fraction = std::clamp(status.progress, 0.f, 1.f);
+		const float size = px(96);
+		const float cx = px(x0 + 44) + (px(w - 88)) * fraction;
+		const float cy = px(y0 + 122) + std::sin((float)clock() * 2.3f) * px(4);
+		SwanPose pose;
+		pose.fly = 1;
+		pose.face = -1;
+		pose.beat = (float)clock() * 6.2832f * 2.6f;
+		pose.tilt = -0.06f;
+		swan(ImVec2(cx - size * 0.5f, cy - size * 0.62f), size, pose);
+	}
 	hintBar({ { cancelButton, "Cancel" } });
 
 	const int state = smb::precacheState();
@@ -2364,9 +2430,10 @@ void messagePage(Frame& f, bool confirm)
 
 // The start-up animation. It begins as the picture the console shows while
 // the title loads (sce_sys/pic1.dds): the mark in the middle, the name under
-// it. The water moves, a light breathes behind the mark, the build's line
-// comes in; then the mark and the name fly to their places in the library's
-// header while the library comes up underneath.
+// it. The water moves, a light breathes behind the mark, the swan looks
+// round; then it opens its wings, leaves its box and flies to the box in the
+// library's header, while the library comes up underneath. With the
+// animations limited, the splash only fades into the library.
 struct Splash
 {
 	enum { NotBegun, Showing, Leaving, Over } state = NotBegun;
@@ -2374,11 +2441,18 @@ struct Splash
 	int frames = 0;
 } splash;
 
+float smooth(float x)
+{
+	x = std::clamp(x, 0.f, 1.f);
+	return x * x * (3.f - 2.f * x);
+}
+
 // `t`: seconds shown; `flight`: 0 at rest, 1 landed in the header.
 void drawSplash(float t, float flight)
 {
 	const Theme& th = theme();
 	const float W = unitsWide(), H = unitsHigh();
+	const bool flies = motion() == MotionFull;
 	const float rest = 1.f - std::clamp(flight / 0.35f, 0.f, 1.f);		// what leaves first
 	const float cover = 1.f - flight;									// the splash's own backdrop
 	// Its backdrop, over whatever is behind.
@@ -2398,28 +2472,63 @@ void drawSplash(float t, float flight)
 		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * rest)), 0, std::max(height() / 360.f, 2.f));
 	}
 
-	// The mark: from the middle to the header's corner.
-	const float ease = flight * flight * (3.f - 2.f * flight);
+	// The box in the middle, with a light behind it, breathing. It stays
+	// where it is and goes out once the swan has left it.
 	const float side0 = H * 0.36f, x0 = (W - side0) * 0.5f, y0 = H * 0.22f;
-	const float bob = std::sin(t * 1.7f) * 5.f * (1.f - ease);
-	const float side = side0 + (64 - side0) * ease;
-	const float x = x0 + (56 - x0) * ease, y = y0 + bob + (30 - y0 - bob) * ease;
-	// A light behind it, breathing.
+	const ImVec2 boxA = at(x0, y0), boxB = at(x0 + side0, y0 + side0);
+	const float boxAlpha = flies ? 1.f - smooth((flight - 0.10f) / 0.45f) : cover;
 	const float breath = 0.5f + 0.5f * std::sin(t * 2.1f);
-	const ImVec2 centre = at(x + side * 0.5f, y + side * 0.5f);
+	const ImVec2 centre((boxA.x + boxB.x) * 0.5f, (boxA.y + boxB.y) * 0.5f);
 	for (int ring = 0; ring < 3; ring++)
-		list->AddCircleFilled(centre, px(side * (0.62f + 0.07f * (float)ring + 0.03f * breath)),
+		list->AddCircleFilled(centre, px(side0 * (0.62f + 0.07f * (float)ring + 0.03f * breath)),
 				withAlpha(th.accent, (0.10f - 0.028f * (float)ring) * rest), 96);
-	logoAt(at(x, y), at(x + side, y + side));
+	logoBox(boxA, boxB, boxAlpha);
 
-	// The name: under the mark, then beside it.
+	// The swan.
+	ImVec2 from, to, headerA, headerB;
+	float fromSize = 0, toSize = 0;
+	swanPlace(boxA, boxB, from, fromSize);
+	headerBox(headerA, headerB);
+	swanPlace(headerA, headerB, to, toSize);
+	if (!flies)
+		swan(from, fromSize, SwanPose(), boxAlpha);
+	else if (flight <= 0)
+	{
+		// It looks behind it once, then ahead again, before it leaves.
+		SwanPose pose;
+		pose.look = smooth((t - 0.7f) / 0.45f) * (1.f - smooth((t - 1.6f) / 0.45f));
+		pose.tilt = 0.018f * std::sin(t * 1.3f);
+		swan(from, fromSize, pose);
+	}
+	else
+	{
+		// Up out of the box and over to the header's: an arc, by the middle of
+		// the bird, which gets smaller as it goes.
+		const float e = smooth(flight);
+		const float size = fromSize + (toSize - fromSize) * e;
+		const ImVec2 c0(from.x + fromSize * 0.5f, from.y + fromSize * 0.5f);
+		const ImVec2 c1(to.x + toSize * 0.5f, to.y + toSize * 0.5f);
+		const ImVec2 ctrl(c0.x * 0.72f + c1.x * 0.28f, c1.y + height() * 0.06f);
+		const float u = 1.f - e;
+		const ImVec2 c(u * u * c0.x + 2 * u * e * ctrl.x + e * e * c1.x, u * u * c0.y + 2 * u * e * ctrl.y + e * e * c1.y);
+		SwanPose pose;
+		pose.fly = smooth(flight / 0.14f) * (1.f - smooth((flight - 0.86f) / 0.14f));
+		pose.beat = t * 6.2832f * 3.0f;
+		pose.tilt = 0.30f * std::sin(3.14159f * std::min(flight * 1.25f, 1.f)) * pose.fly;
+		swan(ImVec2(c.x - size * 0.5f, c.y - size * 0.5f), size, pose);
+	}
+
+	// The name: under the mark; it goes out on the way, and the header's own
+	// comes in where the swan lands.
+	const float ease = smooth(flight);
 	const float size0 = H * 0.085f;
 	const float size = size0 + (44 - size0) * ease;
 	const float nameW0 = toUnits(measure(AppName, Huge, size0).x);
 	const float nx = (W - nameW0) * 0.5f + (136 - (W - nameW0) * 0.5f) * ease;
 	const float ny = (y0 + side0 + H * 0.035f) + (36 - (y0 + side0 + H * 0.035f)) * ease;
-	// It goes out on the way, and the header's own comes in where it lands.
-	text(at(nx, ny), withAlpha(th.text, 1.f - std::clamp(flight / 0.55f, 0.f, 1.f)), AppName, Huge, size);
+	text(at(flies ? nx : (W - nameW0) * 0.5f, flies ? ny : y0 + side0 + H * 0.035f),
+			withAlpha(th.text, flies ? 1.f - std::clamp(flight / 0.55f, 0.f, 1.f) : cover), AppName, Huge,
+			flies ? size : size0);
 	// What leaves when the flight begins.
 	if (rest > 0.01f)
 	{
@@ -2434,9 +2543,11 @@ void drawSplash(float t, float flight)
 bool runSplash()
 {
 	if (splash.state == Splash::NotBegun)
-		splash.state = options::frontend().splash && !host::running() ? Splash::Showing : Splash::Over;
+		splash.state = options::frontend().splash && motion() != MotionOff && !host::running()
+				? Splash::Showing : Splash::Over;
 	if (splash.state == Splash::Over)
 		return false;
+	const bool flies = motion() == MotionFull;
 	const double time = clock();
 	if (splash.state == Splash::Showing)
 	{
@@ -2447,7 +2558,7 @@ bool runSplash()
 		const float t = (float)(time - splash.began);
 		backdrop();
 		drawSplash(t, 0);
-		if (t > 2.6f || (in.pressed != 0 && t > 0.3f))
+		if (t > (flies ? 2.4f : 1.2f) || (in.pressed != 0 && t > 0.3f))
 		{
 			splash.state = Splash::Leaving;
 			splash.leaving = time;
@@ -2455,17 +2566,67 @@ bool runSplash()
 		}
 		return true;
 	}
-	const float u = std::clamp((float)((time - splash.leaving) / 0.75), 0.f, 1.f);
-	headerLogoAlpha = 0;
+	const float u = std::clamp((float)((time - splash.leaving) / (flies ? 1.5 : 0.4)), 0.f, 1.f);
+	// The library comes up underneath; its header's box waits for the swan.
+	headerSwanAway = flies;
+	headerBoxAlpha = flies ? smooth((u - 0.30f) / 0.35f) : u;
 	headerNameAlpha = std::clamp((u - 0.5f) / 0.5f, 0.f, 1.f);
 	libraryPage(false);
 	drawSplash((float)(time - splash.began), u);
 	if (u >= 1.f)
 	{
 		splash.state = Splash::Over;
-		headerLogoAlpha = headerNameAlpha = 1;
+		headerSwanAway = false;
+		headerBoxAlpha = headerNameAlpha = 1;
 	}
 	return true;
+}
+
+// ------------------------------------------------------- a game is starting
+
+// The swan leaves its box in the header, turns round and flies at the
+// screen, which goes dark behind it; then the game starts. Only with the
+// animations full; otherwise a game starts at once.
+void launchPage(Frame& f)
+{
+	const float u = std::clamp((float)((clock() - f.opened) / 1.05), 0.f, 1.f);
+	const float t = (float)(clock() - f.opened);
+	headerSwanAway = true;
+	ImVec2 headerA, headerB, from;
+	float fromSize = 0;
+	headerBox(headerA, headerB);
+	swanPlace(headerA, headerB, from, fromSize);
+
+	SwanPose pose;
+	// It turns round first (the screen's middle is to its right), then goes.
+	const float turned = smooth(u / 0.16f);
+	pose.face = 1.f - 2.f * turned;
+	const float go = smooth((u - 0.10f) / 0.90f);
+	pose.fly = smooth((u - 0.06f) / 0.14f);
+	pose.beat = t * 6.2832f * 3.4f;
+	pose.tilt = -0.22f * pose.fly * (1.f - go);
+	// Larger and larger, towards the middle of the screen: at the viewer.
+	const float grow = go * go * go;
+	const float size = fromSize * std::pow(height() * 4.2f / fromSize, grow);
+	const ImVec2 c0(from.x + fromSize * 0.5f, from.y + fromSize * 0.5f);
+	const ImVec2 c1(width() * 0.50f, height() * 0.47f);
+	const float along = smooth(go * 1.15f);
+	const ImVec2 c(c0.x + (c1.x - c0.x) * along, c0.y + (c1.y - c0.y) * along - std::sin(along * 3.14159f) * height() * 0.05f);
+	swan(ImVec2(c.x - size * 0.5f, c.y - size * 0.5f), size, pose);
+	// The dark comes over it at the end.
+	const float dark = smooth((u - 0.62f) / 0.38f);
+	if (dark > 0)
+		draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, (int)(255 * dark)));
+	consumeInput();
+	if (u >= 1.f)
+	{
+		const int slot = f.a, disc = f.b;
+		deferred = [slot, disc] {
+			pop();
+			headerSwanAway = false;
+			launchNow(chosen, slot, disc);
+		};
+	}
 }
 
 } // namespace
@@ -2525,7 +2686,7 @@ void frame()
 		const Page page = f.page;
 		if (game)
 			drawGame(0.72f);
-		else if (page == Page::Details)
+		else if (page == Page::Details || page == Page::Launch)
 		{
 			libraryBehind = true;
 			libraryPage(false);
@@ -2542,6 +2703,7 @@ void frame()
 		case Page::Discs: discsPage(f); break;
 		case Page::Cheats: cheatsPage(f); break;
 		case Page::Details: detailsPage(f); break;
+		case Page::Launch: launchPage(f); break;
 		case Page::Loading: loadingPage(f); break;
 		case Page::Message: messagePage(f, false); break;
 		case Page::Confirm: messagePage(f, true); break;
@@ -2549,7 +2711,7 @@ void frame()
 		if (game)
 			drawMessages();
 		// Circle goes back; OPTIONS, over a game, returns to it at once.
-		if (!deferred && page != Page::Loading)
+		if (!deferred && page != Page::Loading && page != Page::Launch)
 		{
 			if (hit(cancelButton) && page != Page::Details)
 				pop();

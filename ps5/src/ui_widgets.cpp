@@ -39,7 +39,7 @@
 FE_EMBED(fe_font_medium, "Roboto-Medium.ttf");
 FE_EMBED(fe_font_bold, "Roboto-Bold.ttf");
 FE_EMBED(fe_font_symbols, "fa-solid-900.ttf");
-FE_EMBED(fe_logo_png, "logo.png");
+FE_EMBED(fe_logo_box_png, "logo-box.png");
 
 namespace fe::ui
 {
@@ -178,7 +178,7 @@ void widgetsInit()
 	if (!io.Fonts->Build())
 		diag::mark("ui: the font atlas could not be built");
 	diag::mark("ui: fonts %d x %d", io.Fonts->TexWidth, io.Fonts->TexHeight);
-	logoImage = imageFromMemory(fe_logo_png, (size_t)(fe_logo_png_end - fe_logo_png));
+	logoImage = imageFromMemory(fe_logo_box_png, (size_t)(fe_logo_box_png_end - fe_logo_box_png));
 	widgetsFrame();
 }
 
@@ -234,6 +234,9 @@ double clock()
 
 float approach(float value, float target, float speed)
 {
+	// With the animations off, things are where they are going at once.
+	if (motion() == MotionOff)
+		return target;
 	const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 	const float next = value + (target - value) * (1.f - std::exp(-speed * dt));
 	return std::fabs(target - next) < 0.01f ? target : next;
@@ -335,8 +338,8 @@ void backdrop()
 	const float w = width(), h = height();
 	list->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(w, h), current.background, current.background,
 			current.backgroundLow, current.backgroundLow);
-	// Three slow lights in the accent colour.
-	const float t = (float)clock();
+	// Three slow lights in the accent colour (still, with the animations off).
+	const float t = motion() == MotionOff ? 0.f : (float)clock();
 	const ImU32 light = withAlpha(current.accent, 0.16f);
 	const ImU32 cool = IM_COL32(120, 90, 255, 30);
 	glow(list, ImVec2(w * (0.18f + 0.06f * std::sin(t * 0.11f)), h * (0.10f + 0.05f * std::cos(t * 0.13f))), h * 0.75f,
@@ -381,12 +384,25 @@ void glowAt(ImVec2 centre, float radius, ImU32 colour)
 	glow(ImGui::GetBackgroundDrawList(), centre, radius, colour);
 }
 
-void logoAt(ImVec2 a, ImVec2 b, float alpha)
+void logoBox(ImVec2 a, ImVec2 b, float alpha)
 {
-	if (logoImage.id == nullptr)
+	if (logoImage.id == nullptr || alpha <= 0.004f)
 		return;
 	draw()->AddImage((ImTextureID)logoImage.id, a, b, ImVec2(0, 0), ImVec2(1, 1),
 			IM_COL32(255, 255, 255, (int)(std::clamp(alpha, 0.f, 1.f) * 255)));
+}
+
+void swanPlace(ImVec2 boxA, ImVec2 boxB, ImVec2& origin, float& size)
+{
+	// As ps5/tools/make-art.py puts the bird into the icon.
+	const float side = boxB.x - boxA.x;
+	origin = ImVec2(boxA.x + side * 0.04f, boxA.y + side * 0.04f);
+	size = side * 0.92f;
+}
+
+Motion motion()
+{
+	return (Motion)std::clamp(options::frontend().animations, 0, 2);
 }
 
 float pill(ImVec2 at, const std::string& label, bool on, bool enabled, float height, float size)
@@ -406,14 +422,6 @@ float pill(ImVec2 at, const std::string& label, bool on, bool enabled, float hei
 	const ImU32 ink = !enabled ? current.faint : on ? IM_COL32(8, 14, 28, 255) : current.dim;
 	text(ImVec2(at.x + h * 0.5f, at.y + (h - extent.y) * 0.5f), ink, label, Bold, size);
 	return w;
-}
-
-void logo(ImVec2 at, float size)
-{
-	if (logoImage.id == nullptr)
-		return;
-	const float side = px(size);
-	draw()->AddImage((ImTextureID)logoImage.id, at, ImVec2(at.x + side, at.y + side));
 }
 
 void buttonGlyph(ImVec2 centre, float size, uint32_t button)

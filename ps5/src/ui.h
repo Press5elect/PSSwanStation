@@ -135,14 +135,30 @@ void backdrop();
 void wash(const Image& image, float alpha);
 // Lines of small waves across the screen (the splash's water).
 void waves(float alpha);
-// The logo at a place and size in pixels.
-void logoAt(ImVec2 a, ImVec2 b, float alpha = 1.f);
+// The swan (swan.cpp), drawn from shapes so that it can move.
+struct SwanPose
+{
+	float look = 0;		// 0 ahead, as in the mark; towards 1 it looks behind; below 0 it dips its head
+	float fly = 0;		// 0 on the water, 1 in the air: neck out, wings open
+	float beat = 0;		// where the wings are in their beat, in radians
+	float tilt = 0;		// turned about its body, in radians
+	float face = 1;		// 1 facing left, as in the mark; -1 right; between, it is turning round
+};
+// `origin` is the top left of the bird's square, `size` its side, in pixels.
+void swan(ImVec2 origin, float size, const SwanPose& pose, float alpha = 1.f, ImDrawList *list = nullptr);
+// The pose of a swan sitting in its box at `time`: it looks about.
+SwanPose swanIdle(double time);
+// The mark's box (water, light, rounded corners), without the bird.
+void logoBox(ImVec2 a, ImVec2 b, float alpha = 1.f);
+// Where the bird sits in a box: its square's origin and side.
+void swanPlace(ImVec2 boxA, ImVec2 boxB, ImVec2& origin, float& size);
+// How much moves (Settings, Interface): everything, little, or nothing.
+enum Motion { MotionFull, MotionReduced, MotionOff };
+Motion motion();
 // A rounded label: filled when `on`.
 float pill(ImVec2 at, const std::string& label, bool on, bool enabled = true, float height = 60, float size = 24);
 // A soft light.
 void glowAt(ImVec2 centre, float radius, ImU32 colour);
-// The logo, `size` units high, at `at`.
-void logo(ImVec2 at, float size);
 // A controller button's symbol, `size` units across, centred on `centre`.
 void buttonGlyph(ImVec2 centre, float size, uint32_t button);
 // "(x) Start" hints, right-aligned on the bottom bar.

@@ -111,6 +111,12 @@ the menu: "Settings" changes them for every game, "Game settings" for this
 game only. A dot marks a value that is the game's own; Square gives it back
 to the general value.
 
+The swan: with Animations (Interface) on Full it flies from the start-up
+screen to its box in the library's corner, looks about while it sits there,
+and flies at the screen when a game starts. Reduced keeps it still and starts
+games at once; Off stops every movement of the interface and skips the
+start-up screen.
+
 The picture: the internal resolution starts at 8x. Lower it (Enhancement,
 Internal Resolution Scale) if a game does not hold its speed; "Show frame
 rate" (Interface) tells.
