@@ -39,6 +39,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <map>
 #include <mutex>
 #include <sys/stat.h>
 
@@ -53,6 +54,9 @@ bool coreReady;
 bool isRunning;
 bool isPaused;
 GameInfo current;
+// The first disc's serial, of a game on several: its cheats serve the discs
+// that have none of their own.
+std::string firstDiscSerial;
 std::string errorText;
 retro_system_av_info av{};
 double pacing;
@@ -496,6 +500,15 @@ std::string statePathFor(const std::string& gamePath, int slot)
 
 constexpr char StateMagic[8] = { 'S', 'W', 'P', 'S', '5', 'S', 'T', '1' };
 
+std::string timeText(time_t t)
+{
+	char text[64];
+	struct tm tm;
+	localtime_r(&t, &tm);
+	strftime(text, sizeof(text), "%Y-%m-%d %H:%M", &tm);
+	return text;
+}
+
 void applyControllerTypes()
 {
 	static const unsigned devices[4] = {
@@ -513,30 +526,44 @@ void applyControllerTypes()
 
 // The serial of each game that ran, by its path: a game's own options are
 // then known before it starts the next time (<root>data/game-ids.txt).
-std::string knownSerial(const std::string& path)
+// Read once; the library asks for every game it shows.
+std::map<std::string, std::string>& serialsByPath()
 {
-	FILE *f = fopen((rootDir + "data/game-ids.txt").c_str(), "r");
-	if (f == nullptr)
-		return "";
-	char line[2048];
-	std::string found;
-	while (fgets(line, sizeof(line), f) != nullptr)
+	static std::map<std::string, std::string> known;
+	static bool loaded;
+	if (!loaded)
 	{
-		char *tab = strchr(line, '\t');
-		if (tab == nullptr)
-			continue;
-		*tab = 0;
-		if (path == trim(tab + 1))
-			found = line;
+		loaded = true;
+		FILE *f = fopen((rootDir + "data/game-ids.txt").c_str(), "r");
+		if (f != nullptr)
+		{
+			char line[2048];
+			while (fgets(line, sizeof(line), f) != nullptr)
+			{
+				char *tab = strchr(line, '\t');
+				if (tab == nullptr)
+					continue;
+				*tab = 0;
+				known[trim(tab + 1)] = line;
+			}
+			fclose(f);
+		}
 	}
-	fclose(f);
-	return found;
+	return known;
+}
+
+std::string lookupSerial(const std::string& path)
+{
+	const auto& known = serialsByPath();
+	const auto it = known.find(path);
+	return it == known.end() ? "" : it->second;
 }
 
 void rememberSerial(const std::string& path, const std::string& serial)
 {
-	if (path.empty() || serial.empty() || knownSerial(path) == serial)
+	if (path.empty() || serial.empty() || lookupSerial(path) == serial)
 		return;
+	serialsByPath()[path] = serial;
 	const std::string file = rootDir + "data/game-ids.txt";
 	FILE *f = fopen(file.c_str(), "a");
 	if (f == nullptr)
@@ -619,7 +646,32 @@ std::string lastError()
 	return errorText;
 }
 
-bool start(const std::string& path, int stateSlot)
+std::string knownSerial(const std::string& gamePath)
+{
+	return lookupSerial(gamePath);
+}
+
+namespace
+{
+// The serial of the disc in the tray. For a playlist the emulator keeps the
+// first disc's as the running game's, whichever disc is in.
+std::string traySerial()
+{
+	if (diskSet && disk.get_num_images != nullptr && disk.get_num_images() > 1 && disk.get_image_path != nullptr)
+	{
+		char path[4096] = "";
+		if (disk.get_image_path(disk.get_image_index(), path, sizeof(path)) && path[0] != 0)
+		{
+			const std::string serial = readSerial(path);
+			if (!serial.empty())
+				return serial;
+		}
+	}
+	return System::GetRunningCode();
+}
+}
+
+bool start(const std::string& path, int stateSlot, int disc, const std::string& serialHint)
 {
 	if (!coreReady)
 		return false;
@@ -631,8 +683,11 @@ bool start(const std::string& path, int stateSlot)
 	current.path = path;
 	current.title = path.empty() ? "PlayStation BIOS" : fileTitle(path);
 	// A game's own options, when it ran before, are in place before it boots.
-	options::loadGame(knownSerial(path));
+	options::loadGame(!serialHint.empty() ? serialHint : lookupSerial(path));
 	applyControllerTypes();
+	// The disc in the tray at the start, of a playlist's.
+	if (disc > 0 && diskSet && disk.set_initial_image != nullptr)
+		disk.set_initial_image((unsigned)disc, path.c_str());
 
 	hwRenderSet = false;
 	hwImageValid = false;
@@ -677,12 +732,19 @@ bool start(const std::string& path, int stateSlot)
 		hwRender.context_reset();
 	}
 	retro_get_system_av_info(&av);
-	current.serial = System::GetRunningCode();
-	diag::mark("game: running, serial %s, %.2f fps, %u x %u", current.serial.c_str(), av.timing.fps,
-			av.geometry.base_width, av.geometry.base_height);
+	firstDiscSerial = System::GetRunningCode();
+	current.serial = traySerial();
+	diag::mark("game: running, serial %s, disc %d of %d, %.2f fps, %u x %u", current.serial.c_str(), discIndex() + 1,
+			std::max(discCount(), 1), av.timing.fps, av.geometry.base_width, av.geometry.base_height);
 	rememberSerial(path, current.serial);
+	if (!path.empty())
+	{
+		history::begin(path);
+		if (discCount() > 1)
+			history::setDisc(path, discIndex());
+	}
 	options::loadGame(current.serial);
-	cheats::loadFor(current.serial);
+	cheats::loadFor(current.serial, firstDiscSerial);
 	cheats::apply();
 	pacing = 1.0;
 	ranThisSecond = 0;
@@ -702,6 +764,9 @@ void stop()
 	diag::mark("game: stopping");
 	if (options::frontend().autoSaveOnExit && !current.path.empty())
 		saveState(ResumeSlot);
+	if (!current.path.empty() && discCount() > 1)
+		history::setDisc(current.path, discIndex());
+	history::end();
 	setPaused(true);
 	// As a libretro frontend does: the hardware context goes first (the
 	// emulator falls back to its software renderer and lets go of the
@@ -890,20 +955,18 @@ bool stateExists(int slot, std::string *when)
 	if (stat(statePath(slot).c_str(), &st) != 0)
 		return false;
 	if (when != nullptr)
-	{
-		char text[64];
-		const time_t t = st.st_mtime;
-		struct tm tm;
-		localtime_r(&t, &tm);
-		strftime(text, sizeof(text), "%Y-%m-%d %H:%M", &tm);
-		*when = text;
-	}
+		*when = timeText(st.st_mtime);
 	return true;
 }
 
-bool stateExistsFor(const std::string& gamePath, int slot)
+bool stateExistsFor(const std::string& gamePath, int slot, std::string *when)
 {
-	return fileExists(statePathFor(gamePath, slot));
+	struct stat st;
+	if (stat(statePathFor(gamePath, slot).c_str(), &st) != 0)
+		return false;
+	if (when != nullptr)
+		*when = timeText(st.st_mtime);
+	return true;
 }
 
 int discCount()
@@ -936,7 +999,20 @@ bool setDisc(int index)
 	const bool inserted = disk.set_eject_state(false);
 	diag::mark("disc: %d %s", index + 1, chosen && inserted ? "inserted" : "could not be inserted");
 	if (chosen && inserted)
+	{
 		addMessage("Inserted " + discLabel(index));
+		history::setDisc(current.path, index);
+		// The other disc has a serial of its own, and with it its own cheats
+		// and settings.
+		const std::string serial = traySerial();
+		if (!serial.empty() && serial != current.serial)
+		{
+			current.serial = serial;
+			options::loadGame(serial);
+			cheats::loadFor(serial, firstDiscSerial);
+			cheats::apply();
+		}
+	}
 	return chosen && inserted;
 }
 

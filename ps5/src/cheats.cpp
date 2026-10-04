@@ -52,7 +52,7 @@ namespace fe::cheats
 namespace
 {
 std::vector<Cheat> entries;
-std::string serial;
+std::string loadedSerial;
 std::string summaryText;
 
 std::string cheatsArchive()
@@ -304,7 +304,7 @@ void parse(const std::string& text, bool patch, std::vector<Cheat>& out)
 
 std::string stateFile()
 {
-	return rootDir + "data/cheats/" + serial + ".txt";
+	return rootDir + "data/cheats/" + loadedSerial + ".txt";
 }
 
 std::string keyOf(const Cheat& cheat)
@@ -341,7 +341,7 @@ void loadState()
 
 void saveState()
 {
-	if (serial.empty())
+	if (loadedSerial.empty())
 		return;
 	bool any = false;
 	for (const Cheat& cheat : entries)
@@ -399,20 +399,20 @@ void init()
 	diag::mark("cheats: database: %s", summaryText.c_str());
 }
 
-void loadFor(const std::string& gameSerial)
+void loadFor(const std::string& gameSerial, const std::string& firstDisc)
 {
 	unload();
-	serial = gameSerial;
-	if (serial.empty())
+	loadedSerial = gameSerial;
+	if (loadedSerial.empty())
 		return;
 	std::string text;
 	std::vector<Cheat> patches, codes;
-	if (readFromArchive(patchesArchive(), serial + ".cht", text))
+	if (readFromArchive(patchesArchive(), loadedSerial + ".cht", text))
 		parse(text, true, patches);
-	if (readFromArchive(cheatsArchive(), serial + ".cht", text))
+	if (readFromArchive(cheatsArchive(), loadedSerial + ".cht", text))
 		parse(text, false, codes);
 	std::vector<uint8_t> own;
-	if (readFile(rootDir + "cheats/" + serial + ".cht", own))
+	if (readFile(rootDir + "cheats/" + loadedSerial + ".cht", own))
 		parse(std::string(own.begin(), own.end()), false, codes);
 	// The cheat archive's files end with the game's patches again (under
 	// "PATCHES LISTED BELOW"): an entry both have is kept once, as a patch.
@@ -429,13 +429,20 @@ void loadFor(const std::string& gameSerial)
 	int on = 0;
 	for (const Cheat& cheat : entries)
 		on += cheat.enabled;
-	diag::mark("cheats: %s: %d entries (%d patches), %d on", serial.c_str(), (int)entries.size(), (int)patches.size(), on);
+	diag::mark("cheats: %s: %d entries (%d patches), %d on", loadedSerial.c_str(), (int)entries.size(), (int)patches.size(), on);
+	if (entries.empty() && !firstDisc.empty() && firstDisc != gameSerial)
+		loadFor(firstDisc);
+}
+
+const std::string& serial()
+{
+	return loadedSerial;
 }
 
 void unload()
 {
 	entries.clear();
-	serial.clear();
+	loadedSerial.clear();
 	options::clearOverrides();
 }
 
@@ -446,6 +453,9 @@ std::vector<Cheat>& list()
 
 void apply()
 {
+	// From a game's details, before it runs, the choice is only kept.
+	if (!host::running())
+		return;
 	retro_cheat_reset();
 	options::clearOverrides();
 	unsigned index = 0;

@@ -30,44 +30,59 @@ cmake --build "$build" --target swanstation --parallel "${JOBS:-$(nproc)}"
 mkdir -p "$root/games" "$root/assets" "$root/data"
 disc() { [[ -f "$root/games/$1.cue" ]] || python3 "$ps5/tools/make-test-disc.py" "$root/games/$1.cue" --serial "$2" --colour "$3"; }
 # Serials the cheat database knows, so its entries can be seen and switched.
-disc "Patch Test (Europe)" SCES-00568 804020
 disc "Choice Test (Europe)" SLES-01208 205030
+disc "Patch Test (Europe)" SCES-00568 804020
 disc "Two Discs (USA) (Disc 1)" SLUS-99901 602060
 disc "Two Discs (USA) (Disc 2)" SLUS-99902 206060
 chtdb=${CHTDB_DIR:-$src/../deps-src}
 for archive in cheats.zip patches.zip; do
     [[ -f $chtdb/$archive ]] && cp -- "$chtdb/$archive" "$root/assets/"
 done
+database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
+[[ -f "$database/metadat/developer/Sony - PlayStation.dat" && ! -f $root/assets/gamedb.zip ]] \
+    && python3 "$ps5/tools/make-gamedb.py" "$database" "$root/assets/gamedb.zip"
 # The software rasteriser of a PC draws 1x quickly enough to script against.
 [[ -f $root/data/options.cfg ]] || printf 'swanstation_GPU_ResolutionScale = "1"\n' > "$root/data/options.cfg"
+rm -f "$root/data/history.txt"
 
+# Frames, with the animations' clock counting them (SWANSTATION_FRAME_CLOCK):
+# the splash is on the screen until frame 160 and gone by 210.
 cat > "$root/script.txt" <<'SCRIPT'
-40 shot 01-library
-45 right
-60 cross
-400 shot 02-game
-405 options
-420 shot 03-menu
-425 down
-432 down
-439 down
-446 cross
-460 shot 04-cheats
-465 cross
-480 shot 05-cheat-on
-485 circle
-495 up
-502 up
-509 cross
-520 cross
-600 shot 06-state-saved
-605 options
-612 up
-620 cross
-628 cross
-650 shot 07-library-again
+90 shot 01-splash
+185 shot 02-splash-leaving
+230 shot 03-library
+235 right
+245 triangle
+260 shot 04-details
+265 right
+273 right
+281 cross
+295 shot 05-details-options
+300 circle
+308 right
+316 cross
+330 shot 06-details-cheats
+335 cross
+350 shot 07-cheat-on
+355 circle
+363 left
+371 left
+379 left
+387 cross
+700 shot 08-game
+705 options
+720 shot 09-menu
+725 down
+735 cross
+745 cross
+800 shot 10-state-saved
+805 options
+812 up
+820 cross
+828 cross
+860 shot 11-library-shelf
 SCRIPT
-SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=660 \
+SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=870 \
     SWANSTATION_SIZE=${SWANSTATION_SIZE:-1920x1080} "$build/swanstation" > "$root/run.log" 2>&1
 grep -E "game:|cheats:|state:|shot|CRASH" "$root/swanstation-boot.log"
 if grep -q CRASH "$root/swanstation-boot.log"; then

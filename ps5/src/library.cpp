@@ -13,10 +13,11 @@
 	kept list, when the user asks for a scan, and when a game is started.
 
 	Files that are parts of a game are folded into it: the tracks a cue sheet
-	names, the discs a playlist (.m3u) names, and the discs of one game named
-	as dumps are ("Game (USA) (Disc 1).chd", "... (Disc 2).chd"), for which a
-	playlist is written in data/cache/playlists/. A playlist is what lets the
-	discs of a game share one memory card.
+	names, and the discs of one game named as dumps are ("Game (USA) (Disc
+	1).chd", "... (Disc 2).chd"), for which a playlist is written in
+	data/cache/playlists/. A playlist is what lets the discs of a game share
+	one memory card. Playlists found in the folders (.m3u) are not shown: their
+	discs are there themselves and are grouped the same way.
 */
 #include "fe.h"
 
@@ -57,7 +58,9 @@ struct Found
 
 bool isGameExtension(const std::string& ext)
 {
-	static const char *known[] = { ".chd", ".cue", ".pbp", ".iso", ".img", ".bin", ".ecm", ".mds", ".m3u", ".exe",
+	// Playlists (.m3u) are left out: the discs they list are in the folder
+	// themselves, and are put together here by their "(Disc N)" names.
+	static const char *known[] = { ".chd", ".cue", ".pbp", ".iso", ".img", ".bin", ".ecm", ".mds", ".exe",
 			".psexe", ".psf", ".minipsf" };
 	for (const char *e : known)
 		if (ext == e)
@@ -191,28 +194,6 @@ std::string safeName(std::string name)
 
 std::vector<Game> build(std::vector<Found> found, int source)
 {
-	// What a cue sheet or a playlist names is a part of it.
-	std::set<std::string> parts;
-	for (const Found& file : found)
-	{
-		const std::string ext = extension(file.path);
-		if (ext == ".m3u")
-		{
-			const std::string text = readSmall(file.path);
-			size_t at = 0;
-			while (at < text.size())
-			{
-				size_t end = text.find('\n', at);
-				if (end == std::string::npos)
-					end = text.size();
-				const std::string line = trim(text.substr(at, end - at));
-				at = end + 1;
-				if (!line.empty() && line[0] != '#')
-					parts.insert(lowercase(line[0] == '/' || line.find("://") != std::string::npos ? line
-							: folderOf(file.path) + line));
-			}
-		}
-	}
 	// A .bin (or .img) beside a cue sheet of the same folder belongs to the
 	// cue; on a share the cue is not read for this, the names decide.
 	std::set<std::string> cueFolders;
@@ -234,9 +215,10 @@ std::vector<Game> build(std::vector<Found> found, int source)
 	for (const Found& file : found)
 	{
 		const std::string ext = extension(file.path);
-		const std::string title = fileTitle(file.path);
-		if (parts.count(lowercase(file.path)) != 0)
+		// A kept list of an earlier build may still name playlists.
+		if (!isGameExtension(ext))
 			continue;
+		const std::string title = fileTitle(file.path);
 		if (ext == ".bin" || ext == ".img")
 		{
 			const std::string lower = lowercase(title);
@@ -246,7 +228,7 @@ std::vector<Game> build(std::vector<Found> found, int source)
 				continue;
 		}
 		std::string base;
-		const int disc = ext == ".m3u" ? 0 : discNumber(title, base);
+		const int disc = discNumber(title, base);
 		if (disc > 0)
 		{
 			groups[folderOf(file.path) + base].push_back({ disc, file });

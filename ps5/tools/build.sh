@@ -19,6 +19,11 @@
 #   CHTDB_DIR         a folder holding cheats.zip and patches.zip from the
 #                     DuckStation chtdb release (default: ../deps-src); without
 #                     them the title is staged with no cheat database
+#   LIBRETRO_DATABASE_DIR  a checkout of github.com/libretro/libretro-database
+#                     (default: ../deps-src/libretro-database; only its
+#                     metadat/developer and metadat/redump PlayStation lists are
+#                     read), from which the game database is made; without it
+#                     the title has no descriptions
 #   NETWORK_PATH      server/share/folder, written into the staged network.cfg
 #                     (a build for one's own console; never in the repository)
 #
@@ -53,11 +58,11 @@ if (( missing )); then
 fi
 (cd "$vk/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
 
-if [[ ! -f $build/build.ninja ]]; then
-    cmake -S "$ps5" -B "$build" -G Ninja \
-        -DCMAKE_TOOLCHAIN_FILE="$ps5/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
-        -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2"
-fi
+# Configured every time: the build's date is set here.
+cmake -S "$ps5" -B "$build" -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$ps5/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
+    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" > "$build.configure.log" 2>&1 \
+    || { cat "$build.configure.log" >&2; exit 2; }
 cmake --build "$build" --target swanstation --parallel "${JOBS:-$(nproc)}"
 
 app="$out/$title"
@@ -86,6 +91,13 @@ for archive in cheats.zip patches.zip; do
     fi
 done
 (( staged_db )) || echo "No cheat database staged: $chtdb has no cheats.zip or patches.zip" >&2
+# The game database: descriptions and the serials of discs by their names.
+database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
+if [[ -f "$database/metadat/developer/Sony - PlayStation.dat" ]]; then
+    python3 "$ps5/tools/make-gamedb.py" "$database" "$app/assets/gamedb.zip"
+else
+    echo "No game database staged: $database is not a libretro-database checkout" >&2
+fi
 if [[ -n ${NETWORK_PATH:-} ]]; then
     {
         echo "# SwanStation - games on a network share (SMB / Windows sharing)."

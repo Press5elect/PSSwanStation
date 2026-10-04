@@ -28,6 +28,9 @@ struct Image
 {
 	void *id = nullptr;
 	int width = 0, height = 0;
+	// The same picture a few pixels across and blurred: stretched over the
+	// screen it is only its colours. Null for the logo.
+	void *soft = nullptr;
 };
 // The picture in a file. Decoded on a thread of its own: empty until it is
 // ready, and for a file that is no picture.
@@ -78,7 +81,7 @@ constexpr const char *Sync = "\xef\x80\xa1";		// f021
 constexpr const char *Bolt = "\xef\x83\xa7";		// f0e7
 }
 
-enum Font { Body, Bold, Title };
+enum Font { Body, Bold, Title, Huge };
 
 struct Theme
 {
@@ -127,6 +130,17 @@ ImU32 mix(ImU32 a, ImU32 b, float t);
 
 // The screen's background when no game is behind the interface.
 void backdrop();
+// A picture spread over the whole screen behind everything, faintly: the
+// focused game's cover as the library's light.
+void wash(const Image& image, float alpha);
+// Lines of small waves across the screen (the splash's water).
+void waves(float alpha);
+// The logo at a place and size in pixels.
+void logoAt(ImVec2 a, ImVec2 b, float alpha = 1.f);
+// A rounded label: filled when `on`.
+float pill(ImVec2 at, const std::string& label, bool on, bool enabled = true, float height = 60, float size = 24);
+// A soft light.
+void glowAt(ImVec2 centre, float radius, ImU32 colour);
 // The logo, `size` units high, at `at`.
 void logo(ImVec2 at, float size);
 // A controller button's symbol, `size` units across, centred on `centre`.

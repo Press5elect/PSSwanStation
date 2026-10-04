@@ -29,6 +29,9 @@ std::string shownRoot();
 constexpr const char *AppName = "SwanStation";
 constexpr const char *TitleId = "PPSA99248";
 extern const int BuildNumber;
+// "2026-10-04", and who makes the builds.
+extern const char *const BuildDate;
+constexpr const char *Developer = "Press5elect";
 
 // ------------------------------------------------------------------ diag.cpp
 namespace diag
@@ -160,6 +163,7 @@ struct Frontend
 	float deadZone = 0.10f;
 	bool rumble = true;
 	bool swapConfirm = false;	// Circle confirms in the menus
+	bool splash = true;			// the start-up animation
 	int uiScale = 100;			// percent
 	int accent = 0;
 };
@@ -230,7 +234,10 @@ void setPaused(bool paused);
 const GameInfo& game();
 // Starts a game; an empty path boots the BIOS. `stateSlot` >= 0 loads that
 // state as it starts, -2 the resume state. False when the core refused.
-bool start(const std::string& path, int stateSlot = -1);
+// `disc` is the one in the tray at the start, of a game on several; `serial`
+// is that disc's, when the caller knows it, so the game's own settings are in
+// place before it boots.
+bool start(const std::string& path, int stateSlot = -1, int disc = 0, const std::string& serial = "");
 void stop();
 void reset();
 // Runs the core for one display refresh (none, one or two emulated frames).
@@ -251,7 +258,11 @@ constexpr int ResumeSlot = -2;
 bool saveState(int slot);
 bool loadState(int slot);
 bool stateExists(int slot, std::string *when = nullptr);
-bool stateExistsFor(const std::string& gamePath, int slot);
+bool stateExistsFor(const std::string& gamePath, int slot, std::string *when = nullptr);
+// The serial a game ran under before (<root>data/game-ids.txt), or empty.
+std::string knownSerial(const std::string& gamePath);
+// Read from a disc image now, without starting it; empty when it has none.
+std::string readSerial(const std::string& imagePath);
 std::string statePath(int slot);
 std::string stateThumbPath(int slot);
 
@@ -407,8 +418,12 @@ struct Cheat
 void init();
 // Loads the running game's cheats and patches from the databases (and the
 // user's own <root>cheats/<serial>.cht), with what was switched on before.
-void loadFor(const std::string& serial);
+// A later disc of a game often has no file of its own in the database: the
+// first disc's (`firstDisc`) is then used.
+void loadFor(const std::string& serial, const std::string& firstDisc = "");
 void unload();
+// The serial the list was found under.
+const std::string& serial();
 std::vector<Cheat>& list();
 // Switches one on or off (others of its group go off), saves and applies.
 void setEnabled(size_t index, bool enabled);
@@ -420,6 +435,41 @@ void runOnce(size_t index);
 void apply();
 // How many cheats and patches the databases hold, for the About page.
 std::string summary();
+}
+
+// ---------------------------------------------------------------- gamedb.cpp
+namespace gamedb
+{
+struct Info
+{
+	std::string serial, name, developer, publisher, genre, description;
+	int year = 0, month = 0, players = 0;
+};
+void init();
+bool find(const std::string& serial, Info& out);
+// The serial of the disc whose image file is named so (Redump's names), or empty.
+std::string serialByName(const std::string& fileTitle);
+std::string summary();
+}
+
+// --------------------------------------------------------------- history.cpp
+namespace history
+{
+struct Entry
+{
+	int64_t lastPlayed = 0;		// seconds since 1970; 0: never
+	uint64_t seconds = 0;		// played in all
+	int disc = 0;				// the disc last in the tray (of a game on several)
+};
+void init();
+// By the game's path in the library.
+Entry get(const std::string& gamePath);
+void begin(const std::string& gamePath);
+void end();
+void setDisc(const std::string& gamePath, int disc);
+// The paths of the games played, the latest first.
+std::vector<std::string> recent(size_t most);
+unsigned generation();
 }
 
 // ----------------------------------------------------------------- ui.cpp

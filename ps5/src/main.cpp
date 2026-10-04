@@ -25,7 +25,9 @@ namespace fe
 
 std::string rootDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 1;
+const int BuildNumber = 2;
+// The day the build was configured (ps5/CMakeLists.txt).
+const char *const BuildDate = FE_BUILD_DATE;
 
 // ------------------------------------------------------------------ helpers
 
@@ -188,6 +190,8 @@ int main(int, char **)
 		platform::quit();
 	}
 	cheats::init();
+	gamedb::init();
+	history::init();
 	library::init();
 	covers::init();
 	ui::init();

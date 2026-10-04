@@ -31,9 +31,12 @@ namespace
 constexpr int MaxSide = 512;
 constexpr size_t MaxKept = 220;
 
+constexpr int SoftSide = 24;
+
 struct Entry
 {
 	display::Texture *texture = nullptr;
+	display::Texture *soft = nullptr;
 	int width = 0, height = 0;
 	uint64_t used = 0;
 	bool pending = false;
@@ -44,7 +47,34 @@ struct Decoded
 	std::string path;
 	int width = 0, height = 0;
 	std::vector<uint8_t> pixels;
+	std::vector<uint8_t> soft;		// SoftSide x SoftSide
 };
+
+// The picture as a few blurred pixels.
+void soften(Decoded& out)
+{
+	std::vector<uint8_t> small((size_t)SoftSide * SoftSide * 4);
+	stbir_resize_uint8(out.pixels.data(), out.width, out.height, 0, small.data(), SoftSide, SoftSide, 0, 4);
+	std::vector<uint8_t> blurred(small.size());
+	for (int pass = 0; pass < 3; pass++)
+	{
+		for (int y = 0; y < SoftSide; y++)
+			for (int x = 0; x < SoftSide; x++)
+				for (int c = 0; c < 4; c++)
+				{
+					int sum = 0;
+					for (int dy = -1; dy <= 1; dy++)
+						for (int dx = -1; dx <= 1; dx++)
+							sum += small[((size_t)std::clamp(y + dy, 0, SoftSide - 1) * SoftSide
+									+ (size_t)std::clamp(x + dx, 0, SoftSide - 1)) * 4 + c];
+					blurred[((size_t)y * SoftSide + x) * 4 + c] = (uint8_t)(sum / 9);
+				}
+		small.swap(blurred);
+	}
+	for (size_t i = 3; i < small.size(); i += 4)
+		small[i] = 255;
+	out.soft = std::move(small);
+}
 
 std::map<std::string, Entry> entries;
 std::mutex mutex;
@@ -99,8 +129,8 @@ void work()
 		Decoded decoded;
 		decoded.path = path;
 		std::vector<uint8_t> file;
-		if (readFile(path, file) && !file.empty())
-			decode(file.data(), file.size(), decoded);
+		if (readFile(path, file) && !file.empty() && decode(file.data(), file.size(), decoded))
+			soften(decoded);
 		std::lock_guard<std::mutex> lock(mutex);
 		ready.push_back(std::move(decoded));
 	}
@@ -115,7 +145,8 @@ Image image(const std::string& path)
 	Entry& entry = entries[path];
 	entry.used = display::frameCount();
 	if (entry.texture != nullptr)
-		return { display::textureId(entry.texture), entry.width, entry.height };
+		return { display::textureId(entry.texture), entry.width, entry.height,
+				entry.soft != nullptr ? display::textureId(entry.soft) : nullptr };
 	if (!entry.pending && entry.width == 0)
 	{
 		entry.pending = true;
@@ -142,7 +173,7 @@ Image imageFromMemory(const uint8_t *data, size_t size)
 	display::Texture *texture = display::createTexture(decoded.width, decoded.height, decoded.pixels.data());
 	if (texture == nullptr)
 		return {};
-	return { display::textureId(texture), decoded.width, decoded.height };
+	return { display::textureId(texture), decoded.width, decoded.height, nullptr };
 }
 
 void imagesFrame()
@@ -169,6 +200,8 @@ void imagesFrame()
 			continue;
 		}
 		entry.texture = display::createTexture(decoded.width, decoded.height, decoded.pixels.data());
+		if (!decoded.soft.empty())
+			entry.soft = display::createTexture(SoftSide, SoftSide, decoded.soft.data());
 		entry.width = decoded.width;
 		entry.height = decoded.height;
 	}
@@ -187,6 +220,7 @@ void imagesFrame()
 	{
 		const auto it = entries.find(idle[i].second);
 		display::destroyTexture(it->second.texture);
+		display::destroyTexture(it->second.soft);
 		entries.erase(it);
 	}
 }

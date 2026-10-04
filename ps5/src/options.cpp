@@ -228,6 +228,7 @@ void loadFrontend()
 		INT("controller2", controller[1], 0, 3);
 		BOOL("rumble", rumble);
 		BOOL("swap_confirm", swapConfirm);
+		BOOL("splash", splash);
 		INT("ui_scale", uiScale, 75, 150);
 		INT("accent", accent, 0, 7);
 		else if (!strcmp(key, "dead_zone")) current.deadZone = std::clamp(value, 0.f, 0.5f);
@@ -246,12 +247,12 @@ void saveFrontend()
 	fprintf(f, "view = %d\nsource = %d\ncovers = %d\nusb = %d\nram_cache = %d\nnotifications = %d\nscaling = %d\n"
 			"linear_filter = %d\nvolume = %d\nshow_fps = %d\nsync_to_display = %d\nauto_save = %d\nauto_load = %d\n"
 			"controller1 = %d\ncontroller2 = %d\ndead_zone = %.2f\nrumble = %d\nswap_confirm = %d\nui_scale = %d\n"
-			"accent = %d\n",
+			"accent = %d\nsplash = %d\n",
 			current.view, current.source, (int)current.covers, (int)current.usb, (int)current.ramCache,
 			(int)current.notifications, current.scaling, (int)current.linearFilter, current.volume,
 			(int)current.showFps, (int)current.syncToDisplay, (int)current.autoSaveOnExit,
 			(int)current.autoLoadOnStart, current.controller[0], current.controller[1], current.deadZone,
-			(int)current.rumble, (int)current.swapConfirm, current.uiScale, current.accent);
+			(int)current.rumble, (int)current.swapConfirm, current.uiScale, current.accent, (int)current.splash);
 	fclose(f);
 	chmod(path.c_str(), 0666);
 }

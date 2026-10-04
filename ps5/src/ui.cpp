@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <map>
 
 namespace fe::ui
@@ -192,38 +193,72 @@ float fontsHeight(const std::string& value, float wrapUnits, float size = 23)
 
 // ---------------------------------------------------------------- starting
 
-void begin(const std::string& path, int slot)
+// For launch(): from the beginning, whatever "continue where I left off" says.
+constexpr int FromBeginning = -3;
+
+void detailsRestore();
+std::string quickSerial(const library::Game& game, int disc);
+
+void begin(const library::Game& game, int slot, int disc)
 {
-	if (host::start(path, slot))
+	// The serial of the disc that starts, when it is known without waiting for
+	// a share: the game's own settings are then in place before it boots.
+	std::string serial = quickSerial(game, disc);
+	const std::string& first = game.discs.empty() ? game.path
+			: game.discs[(size_t)std::clamp(disc, 0, (int)game.discs.size() - 1)];
+	if (!game.path.empty() && !smb::isNetworkPath(first))
+	{
+		const std::string read = host::readSerial(first);
+		if (!read.empty())
+			serial = read;
+	}
+	if (host::start(game.path, slot, disc, serial))
 	{
 		stack.clear();
 		return;
 	}
 	std::string why = host::lastError();
+	// A game on several discs is started through a playlist of them; if that
+	// did not open, the disc itself is started (it then keeps a memory card of
+	// its own).
+	if (game.discs.size() > 1 && disc >= 0 && disc < (int)game.discs.size() && host::start(game.discs[(size_t)disc], slot))
+	{
+		stack.clear();
+		host::addMessage("The discs could not be started together: this disc runs on its own.", 6.0);
+		return;
+	}
 	if (why.empty())
 		why = "The emulator could not start this game.";
+	detailsRestore();
 	message("The game did not start", why);
 }
 
-// For launch(): from the beginning, whatever "continue where I left off" says.
-constexpr int FromBeginning = -3;
+void startBios()
+{
+	library::Game bios;
+	begin(bios, -1, 0);
+}
 
-void launch(const library::Game& game, int slot)
+// `disc`: the one in the tray at the start; -1 for the one last played.
+void launch(const library::Game& game, int slot, int disc = -1)
 {
 	if (slot == -1 && options::frontend().autoLoadOnStart && host::stateExistsFor(game.path, host::ResumeSlot))
 		slot = host::ResumeSlot;
 	if (slot == FromBeginning)
 		slot = -1;
-	const bool network = smb::isNetworkPath(game.path)
-			|| (!game.discs.empty() && smb::isNetworkPath(game.discs.front()));
-	if (network)
+	const int discs = (int)game.discs.size();
+	if (disc < 0)
+		disc = discs > 1 ? history::get(game.path).disc : 0;
+	disc = std::clamp(disc, 0, std::max(discs - 1, 0));
+	const std::string& first = discs > 0 ? game.discs[(size_t)disc] : game.path;
+	if (smb::isNetworkPath(first) || smb::isNetworkPath(game.path))
 	{
 		chosen = game;
-		push(Page::Loading, slot, 0, game.path, game.name);
-		smb::startPrecache(game.path);
+		push(Page::Loading, slot, disc, game.path, game.name);
+		smb::startPrecache(first);
 	}
 	else
-		begin(game.path, slot);
+		begin(game, slot, disc);
 }
 
 // ------------------------------------------------------------------- lists
@@ -629,36 +664,79 @@ void drawGameOverlay()
 
 // --------------------------------------------------------------- the library
 
+// What the database says about a game of the library, looked up when the game
+// is first under the cursor.
+struct Meta
+{
+	bool tried = false;
+	std::string serial;
+	bool known = false;
+	gamedb::Info info;
+};
+
 struct LibraryView
 {
 	std::vector<library::Game> games;
 	unsigned generation = ~0u;
 	std::vector<std::string> cover;
 	std::vector<unsigned> coverSeen;
+	std::vector<Meta> meta;
+	// The games played lately that this source has, the latest first.
+	std::vector<int> recent;
+	unsigned historySeen = ~0u;
+	bool inShelf = false;
+	int shelfCursor = 0;
 	int cursor = 0;
-	float scroll = 0;
+	float scroll = 0, scrollTarget = 0;
 	bool fresh = true;
 };
 LibraryView views[library::SourceCount];
 int source;
 float tabGlow[library::SourceCount];
+// The header's logo is the splash's while that flies to its place, and its
+// name comes in as the splash's goes: 0 hidden, 1 shown.
+float headerLogoAlpha = 1, headerNameAlpha = 1;
+// The library is only a background (a game's details are over it).
+bool libraryBehind;
 
 void refreshView(int index)
 {
 	LibraryView& view = views[index];
 	const unsigned generation = library::generation(index);
-	if (generation == view.generation)
-		return;
-	// The cursor stays on its game when the list is replaced.
-	const std::string keep = view.cursor < (int)view.games.size() ? view.games[view.cursor].path : "";
-	view.games = library::games(index);
-	view.generation = generation;
-	view.cover.assign(view.games.size(), "");
-	view.coverSeen.assign(view.games.size(), ~0u);
-	view.cursor = std::clamp(view.cursor, 0, std::max((int)view.games.size() - 1, 0));
-	for (size_t i = 0; i < view.games.size(); i++)
-		if (view.games[i].path == keep)
-			view.cursor = (int)i;
+	if (generation != view.generation)
+	{
+		// The cursor stays on its game when the list is replaced.
+		const std::string keep = view.cursor < (int)view.games.size() ? view.games[view.cursor].path : "";
+		view.games = library::games(index);
+		view.generation = generation;
+		view.cover.assign(view.games.size(), "");
+		view.coverSeen.assign(view.games.size(), ~0u);
+		view.meta.assign(view.games.size(), Meta());
+		view.cursor = std::clamp(view.cursor, 0, std::max((int)view.games.size() - 1, 0));
+		for (size_t i = 0; i < view.games.size(); i++)
+			if (view.games[i].path == keep)
+				view.cursor = (int)i;
+		view.historySeen = ~0u;
+	}
+	if (view.historySeen != history::generation())
+	{
+		const bool first = view.historySeen == ~0u && view.recent.empty();
+		view.historySeen = history::generation();
+		view.recent.clear();
+		for (const std::string& path : history::recent(64))
+			for (size_t i = 0; i < view.games.size(); i++)
+				if (view.games[i].path == path)
+				{
+					view.recent.push_back((int)i);
+					break;
+				}
+		view.shelfCursor = 0;
+		// The library opens on what was played last.
+		if (first && !view.recent.empty())
+			view.inShelf = true;
+		if (view.recent.empty())
+			view.inShelf = false;
+	}
 }
 
 // The cover of a game on the screen, looked for on disk when it is first
@@ -675,6 +753,33 @@ Image coverOf(LibraryView& view, int index)
 	return view.cover[index].empty() ? Image() : image(view.cover[index]);
 }
 
+// A game's serial without touching its disc: the one it ran under, else the
+// one Redump lists for a disc image of that name.
+std::string quickSerial(const library::Game& game, int disc)
+{
+	if (game.discs.size() < 2)
+	{
+		const std::string known = host::knownSerial(game.path);
+		if (!known.empty())
+			return known;
+	}
+	const std::string& file = game.discs.empty() ? game.path
+			: game.discs[(size_t)std::clamp(disc, 0, (int)game.discs.size() - 1)];
+	return gamedb::serialByName(fileTitle(file));
+}
+
+const Meta& metaOf(LibraryView& view, int index)
+{
+	Meta& meta = view.meta[index];
+	if (!meta.tried)
+	{
+		meta.tried = true;
+		meta.serial = quickSerial(view.games[index], 0);
+		meta.known = !meta.serial.empty() && gamedb::find(meta.serial, meta.info);
+	}
+	return meta;
+}
+
 std::string sizeText(uint64_t bytes)
 {
 	if (bytes == 0)
@@ -687,6 +792,47 @@ std::string sizeText(uint64_t bytes)
 	return format("%.0f MB", (double)bytes / (double)(1 << 20));
 }
 
+std::string playedText(uint64_t seconds)
+{
+	if (seconds < 60)
+		return seconds == 0 ? "" : "under a minute";
+	if (seconds < 3600)
+		return format("%d min", (int)(seconds / 60));
+	return format("%d h %02d min", (int)(seconds / 3600), (int)(seconds % 3600 / 60));
+}
+
+std::string agoText(int64_t when)
+{
+	if (when == 0)
+		return "";
+	const int64_t passed = (int64_t)time(nullptr) - when;
+	if (passed < 0 || when < 1500000000)
+		return "";		// the console's clock was not set
+	if (passed < 90)
+		return "just now";
+	if (passed < 3600)
+		return format("%d min ago", (int)(passed / 60));
+	if (passed < 86400 * 2)
+		return format("%d h ago", (int)(passed / 3600));
+	return format("%d days ago", (int)(passed / 86400));
+}
+
+// "1998  ·  Action  ·  KCE Japan"
+std::string factsLine(const gamedb::Info& info, bool makers)
+{
+	std::string line;
+	const auto add = [&line](const std::string& part) {
+		if (!part.empty())
+			line += (line.empty() ? "" : "  \xc2\xb7  ") + part;
+	};
+	if (info.year > 0)
+		add(format("%d", info.year));
+	add(info.genre);
+	if (makers)
+		add(info.developer);
+	return line;
+}
+
 std::string usbHint()
 {
 	if (!options::frontend().usb)
@@ -694,12 +840,22 @@ std::string usbHint()
 	return library::sourceHint(library::Usb);
 }
 
-void drawHeader()
+// Which build this is, in the top right corner.
+void buildTag(float alpha = 1.f)
 {
 	const Theme& t = theme();
 	const float W = unitsWide();
-	logo(at(56, 30), 64);
-	text(at(136, 36), t.text, AppName, Title, 44);
+	textRight(at(W - 56, 38), withAlpha(t.accent, alpha), format("WIP  \xc2\xb7  BUILD %d", BuildNumber), Bold, 20);
+	textRight(at(W - 56, 66), withAlpha(t.faint, alpha), format("%s  \xc2\xb7  %s", BuildDate, Developer), Body, 18);
+}
+
+void drawHeader()
+{
+	const Theme& t = theme();
+	if (headerLogoAlpha > 0.01f)
+		logoAt(at(56, 30), at(120, 94), headerLogoAlpha);
+	if (headerNameAlpha > 0.01f)
+		text(at(136, 36), withAlpha(t.text, headerNameAlpha), AppName, Title, 44);
 
 	static const char *icons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network };
 	float x = 470;
@@ -720,25 +876,18 @@ void drawHeader()
 	}
 	buttonGlyph(at(430, 65), 30, L1);
 	buttonGlyph(at(x + 32, 65), 30, R1);
+	buildTag();
+}
 
-	// What is going on, at the right: a scan, cover downloads.
-	std::string status;
+// What is going on besides: a scan, cover downloads.
+std::string libraryStatus()
+{
 	if (library::scanning(source))
 	{
-		status = library::scanStatus(source);
-		if (status.empty())
-			status = "Scanning\xe2\x80\xa6";
+		const std::string status = library::scanStatus(source);
+		return status.empty() ? "Scanning\xe2\x80\xa6" : status;
 	}
-	else
-		status = covers::status();
-	if (!status.empty())
-	{
-		const float spin = (float)clock() * 5.f;
-		const ImVec2 c = at(W - 72, 65);
-		draw()->PathArcTo(c, px(11), spin, spin + 4.4f, 20);
-		draw()->PathStroke(t.accent, 0, px(3));
-		textRight(at(W - 100, 52), t.dim, status, Body, 22);
-	}
+	return covers::status();
 }
 
 void emptyLibrary(const std::string& hint, bool busy)
@@ -754,6 +903,74 @@ void emptyLibrary(const std::string& hint, bool busy)
 	const float blockW = std::min(toUnits(extent.x), wrap);
 	textWrapped(at(cx - blockW * 0.5f, cy + 64), px(wrap), t.dim, hint, Body, 24);
 }
+
+// The focused game's cover as the screen's light, one fading into the next.
+void libraryWash(const std::string& coverPath)
+{
+	static std::string current, previous;
+	static float fade = 1;
+	if (coverPath != current)
+	{
+		previous = current;
+		current = coverPath;
+		fade = 0;
+	}
+	fade = approach(fade, 1.f, 5.f);
+	const float strength = 0.34f;
+	if (fade < 0.99f && !previous.empty())
+		wash(image(previous), strength * (1.f - fade));
+	if (!current.empty())
+		wash(image(current), strength * fade);
+	// Darker towards the bottom, where the names are read.
+	ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()),
+			IM_COL32(8, 10, 18, 40), IM_COL32(8, 10, 18, 40), IM_COL32(8, 10, 18, 170), IM_COL32(8, 10, 18, 170));
+}
+
+// One game of the grid: its cover (or a card with its name), the name under
+// it and, on the shelf, when it was played.
+void drawCell(LibraryView& view, int index, float x, float y, float cell, bool focused, const std::string& under)
+{
+	const Theme& t = theme();
+	const library::Game& game = view.games[index];
+	float size = cell;
+	if (focused)
+	{
+		const float grow = 14 + 2 * (float)std::sin(clock() * 3.0);
+		x -= grow * 0.5f;
+		y -= grow * 0.5f;
+		size += grow;
+	}
+	const ImVec2 a = at(x, y), b = at(x + size, y + size);
+	const Image cover = coverOf(view, index);
+	if (focused)
+		draw()->AddRectFilled(ImVec2(a.x - px(10), a.y - px(10)), ImVec2(b.x + px(10), b.y + px(10)),
+				withAlpha(t.accent, 0.20f), px(18));
+	if (cover.id != nullptr)
+		imageFit(cover, a, b, 10);
+	else
+		coverPlaceholder(a, b, game.name, game.region);
+	if (focused)
+		outline(ImVec2(a.x - px(4), a.y - px(4)), ImVec2(b.x + px(4), b.y + px(4)), t.accent, 13, 4);
+	if (game.discs.size() > 1)
+	{
+		const std::string discs = format("%d discs", (int)game.discs.size());
+		const float w = toUnits(measure(discs, Bold, 18).x) + 20;
+		panel(at(x + size - w - 8, y + 8), at(x + size - 8, y + 38), IM_COL32(0, 0, 0, 170), 8);
+		text(at(x + size - w + 2, y + 13), t.text, discs, Bold, 18);
+	}
+	const float ty = y + size + (focused ? 6 : 10);
+	const float maxW = px(size);
+	const float tw = measure(game.name, focused ? Bold : Body, 22).x;
+	textFit(ImVec2(tw < maxW ? a.x + (maxW - tw) * 0.5f : a.x, px(ty)), maxW, focused ? t.text : t.dim, game.name,
+			focused ? Bold : Body, 22);
+	if (!under.empty())
+	{
+		const float uw = measure(under, Body, 18).x;
+		textFit(ImVec2(uw < maxW ? a.x + (maxW - uw) * 0.5f : a.x, px(ty + 30)), maxW, t.faint, under, Body, 18);
+	}
+}
+
+void openDetails(const library::Game& game);
 
 void libraryPage(bool active)
 {
@@ -784,12 +1001,13 @@ void libraryPage(bool active)
 	LibraryView& view = views[source];
 	const int count = (int)view.games.size();
 	const bool grid = options::frontend().view == 0;
-	drawHeader();
-
 	const float top = 128, bottom = H - 64;
 	coverLookups = 0;
+	int focus = -1;		// the game under the cursor
+
 	if (count == 0)
 	{
+		libraryWash("");
 		const bool busy = library::scanning(source);
 		std::string hint = source == library::Usb ? usbHint() : library::sourceHint(source);
 		if (busy)
@@ -803,42 +1021,108 @@ void libraryPage(bool active)
 		const float margin = 64, gap = 26;
 		const int columns = std::max((int)((W - margin * 2 + gap) / (232 + gap)), 3);
 		const float cell = (W - margin * 2 - gap * (columns - 1)) / columns;
-		const float rowH = cell + 74;
+		const float rowH = cell + 74, shelfRowH = cell + 104, labelH = 46;
+		const int shelf = std::min((int)view.recent.size(), columns);
+		if (shelf == 0)
+			view.inShelf = false;
+		view.shelfCursor = std::clamp(view.shelfCursor, 0, std::max(shelf - 1, 0));
 		if (active)
 		{
 			int& c = view.cursor;
-			if (nav(Right) && c + 1 < count)
-				c++;
-			if (nav(Left) && c > 0)
-				c--;
-			if (nav(Down))
-				c = c + columns < count ? c + columns : (c / columns < (count - 1) / columns ? count - 1 : c);
-			if (nav(Up) && c - columns >= 0)
-				c -= columns;
-			if (nav(R2))
-				c = std::min(c + columns * 3, count - 1);
-			if (nav(L2))
-				c = std::max(c - columns * 3, 0);
+			if (view.inShelf)
+			{
+				if (nav(Right) && view.shelfCursor + 1 < shelf)
+					view.shelfCursor++;
+				if (nav(Left) && view.shelfCursor > 0)
+					view.shelfCursor--;
+				if (nav(Down) || nav(R2))
+				{
+					view.inShelf = false;
+					c = std::min(view.shelfCursor, count - 1);
+				}
+			}
+			else
+			{
+				if (nav(Right) && c + 1 < count)
+					c++;
+				if (nav(Left) && c > 0)
+					c--;
+				if (nav(Down))
+					c = c + columns < count ? c + columns : (c / columns < (count - 1) / columns ? count - 1 : c);
+				if (nav(Up))
+				{
+					if (c - columns >= 0)
+						c -= columns;
+					else if (shelf > 0)
+					{
+						view.inShelf = true;
+						view.shelfCursor = std::min(c, shelf - 1);
+					}
+				}
+				if (nav(R2))
+					c = std::min(c + columns * 3, count - 1);
+				if (nav(L2))
+				{
+					if (c < columns && shelf > 0)
+					{
+						view.inShelf = true;
+						view.shelfCursor = std::min(c, shelf - 1);
+					}
+					else
+						c = std::max(c - columns * 3, 0);
+				}
+			}
 		}
+		focus = view.inShelf ? view.recent[view.shelfCursor] : view.cursor;
+		libraryWash(view.cover[focus]);
+
+		// Where things are, from the top of what scrolls.
+		const float gridTop = shelf > 0 ? labelH + shelfRowH + labelH : 0;
 		const int row = view.cursor / columns;
 		const int rows = (count + columns - 1) / columns;
 		const float viewH = bottom - top;
-		float target = view.scroll;
-		// Kept as the screen was, moved only as far as the cursor needs.
-		static float targets[library::SourceCount];
-		target = targets[source];
-		if (row * rowH - target < 12)
-			target = row * rowH - 12;
-		if ((row + 1) * rowH - target > viewH - 12)
-			target = (row + 1) * rowH - viewH + 12;
-		target = std::clamp(target, -12.f, std::max(rows * rowH - viewH + 12, -12.f));
-		targets[source] = target;
+		float target = view.scrollTarget;
+		if (view.inShelf)
+			target = -12;
+		else
+		{
+			const float rowTop = gridTop + row * rowH, rowBottom = rowTop + rowH;
+			if (rowTop - target < 12)
+				target = rowTop - (row == 0 && shelf > 0 ? labelH + 6 : 12);
+			if (rowBottom - target > viewH - 12)
+				target = rowBottom - viewH + 12;
+		}
+		target = std::clamp(target, -12.f, std::max(gridTop + rows * rowH - viewH + 12, -12.f));
+		view.scrollTarget = target;
 		view.scroll = view.fresh ? target : approach(view.scroll, target, 14.f);
 		view.fresh = false;
 
 		draw()->PushClipRect(at(0, top - 8), at(W, bottom), true);
-		const int firstRow = std::max((int)(view.scroll / rowH) - 1, 0);
-		const int lastRow = std::min((int)((view.scroll + viewH) / rowH) + 1, rows - 1);
+		const float origin = top + 12 - view.scroll;
+		if (shelf > 0)
+		{
+			text(at(margin, origin + 6), t.accent, std::string(icon::Clock) + "   CONTINUE PLAYING", Bold, 20);
+			for (int pass = 0; pass < 2; pass++)
+				for (int i = 0; i < shelf; i++)
+				{
+					const bool focused = view.inShelf && i == view.shelfCursor;
+					if (focused != (pass == 1))
+						continue;
+					const int index = view.recent[i];
+					const history::Entry played = history::get(view.games[index].path);
+					std::string under = agoText(played.lastPlayed);
+					const std::string time = playedText(played.seconds);
+					if (!time.empty())
+						under += (under.empty() ? "" : "  \xc2\xb7  ") + time;
+					drawCell(view, index, margin + i * (cell + gap), origin + labelH, cell, focused, under);
+				}
+			text(at(margin, origin + labelH + shelfRowH + 6), t.accent,
+					std::string(icon::Grid) + format("   ALL GAMES   %d", count), Bold, 20);
+		}
+		const float first = view.scroll - gridTop;
+		const int firstRow = std::max((int)(first / rowH) - 1, 0);
+		const int lastRow = std::min((int)((first + viewH) / rowH) + 1, rows - 1);
+		// The one under the cursor is drawn last, over its neighbours.
 		for (int pass = 0; pass < 2; pass++)
 			for (int r = firstRow; r <= lastRow; r++)
 				for (int col = 0; col < columns; col++)
@@ -846,50 +1130,17 @@ void libraryPage(bool active)
 					const int index = r * columns + col;
 					if (index >= count)
 						break;
-					const bool focused = index == view.cursor;
-					// The one under the cursor is drawn last, over its neighbours.
+					const bool focused = !view.inShelf && index == view.cursor;
 					if (focused != (pass == 1))
 						continue;
-					const library::Game& game = view.games[index];
-					float x = margin + col * (cell + gap);
-					float y = top + 12 + r * rowH - view.scroll;
-					float size = cell;
-					if (focused)
-					{
-						const float grow = 14 + 2 * (float)std::sin(clock() * 3.0);
-						x -= grow * 0.5f;
-						y -= grow * 0.5f;
-						size += grow;
-					}
-					const ImVec2 a = at(x, y), b = at(x + size, y + size);
-					const Image cover = coverOf(view, index);
-					if (focused)
-						draw()->AddRectFilled(ImVec2(a.x - px(10), a.y - px(10)), ImVec2(b.x + px(10), b.y + px(10)),
-								withAlpha(t.accent, 0.20f), px(18));
-					if (cover.id != nullptr)
-						imageFit(cover, a, b, 10);
-					else
-						coverPlaceholder(a, b, game.name, game.region);
-					if (focused)
-						outline(ImVec2(a.x - px(4), a.y - px(4)), ImVec2(b.x + px(4), b.y + px(4)), t.accent, 13, 4);
-					if (game.discs.size() > 1)
-					{
-						const std::string discs = format("%d discs", (int)game.discs.size());
-						const float w = toUnits(measure(discs, Bold, 18).x) + 20;
-						panel(at(x + size - w - 8, y + 8), at(x + size - 8, y + 38), IM_COL32(0, 0, 0, 170), 8);
-						text(at(x + size - w + 2, y + 13), t.text, discs, Bold, 18);
-					}
-					const float ty = y + size + (focused ? 6 : 10);
-					const float tw = measure(game.name, focused ? Bold : Body, 22).x;
-					const float maxW = px(size);
-					const float tx = tw < maxW ? a.x + (maxW - tw) * 0.5f : a.x;
-					textFit(ImVec2(tx, px(ty)), maxW, focused ? t.text : t.dim, game.name, focused ? Bold : Body, 22);
+					drawCell(view, index, margin + col * (cell + gap), origin + gridTop + r * rowH, cell, focused, "");
 				}
 		draw()->PopClipRect();
 	}
 	else
 	{
-		// The list: names at the left, the cover and the facts at the right.
+		// The list: names at the left, the cover and what is known at the right.
+		view.inShelf = false;
 		const float rowH = 62, x0 = 64, x1 = W - 620;
 		const float viewH = bottom - top - 16;
 		const int visible = std::max((int)(viewH / rowH), 1);
@@ -905,6 +1156,8 @@ void libraryPage(bool active)
 			if (nav(L2) || nav(Left))
 				c = std::max(c - visible, 0);
 		}
+		focus = view.cursor;
+		libraryWash(view.cover[focus]);
 		static float targets[library::SourceCount];
 		float target = targets[source];
 		if (view.cursor * rowH - target < rowH)
@@ -939,32 +1192,46 @@ void libraryPage(bool active)
 		draw()->PopClipRect();
 
 		const library::Game& game = view.games[view.cursor];
+		const Meta& meta = metaOf(view, view.cursor);
 		const float px0 = x1 + 40, px1 = W - 64;
-		const float side = px1 - px0;
+		const float side = std::min(px1 - px0, 420.f);
 		const Image cover = coverOf(view, view.cursor);
 		if (cover.id != nullptr)
-			imageFit(cover, at(px0, top), at(px1, top + side), 12);
+			imageFit(cover, at(px0, top), at(px0 + side, top + side), 12);
 		else
-			coverPlaceholder(at(px0, top), at(px1, top + side), game.name, game.region);
-		float y = top + side + 24;
-		y += toUnits(textWrapped(at(px0, y), px(side), t.text, game.name, Bold, 28, px(76))) + 10;
-		const std::string facts = game.region + (game.region.empty() || game.size == 0 ? "" : "  \xc2\xb7  ")
-				+ sizeText(game.size);
-		text(at(px0, y), t.dim, facts, Body, 22);
+			coverPlaceholder(at(px0, top), at(px0 + side, top + side), game.name, game.region);
+		float y = top + side + 22;
+		y += toUnits(textWrapped(at(px0, y), px(px1 - px0), t.text, game.name, Bold, 28, px(76))) + 8;
+		std::string facts = game.region;
+		if (meta.known)
+			facts += (facts.empty() ? "" : "  \xc2\xb7  ") + factsLine(meta.info, true);
+		text(at(px0, y), t.accent, facts, Bold, 20);
+		y += 38;
+		if (meta.known)
+			textWrapped(at(px0, y), px(px1 - px0), t.dim, meta.info.description, Body, 21, px(bottom - 24 - y));
 	}
 
-	std::string left;
-	if (count > 0)
-		left = format("%d of %d", view.cursor + 1, count);
+	// The bottom line: where the cursor is and what the game is, or what the
+	// library is busy with.
+	std::string left = libraryStatus();
+	if (left.empty() && focus >= 0)
+	{
+		left = view.inShelf ? std::string("Continue playing") : format("%d of %d", view.cursor + 1, count);
+		const Meta& meta = metaOf(view, focus);
+		if (meta.known)
+			left += "     " + factsLine(meta.info, true);
+	}
 	std::vector<Hint> hints;
 	if (count > 0)
 	{
-		hints.push_back({ confirmButton, "Start" });
+		hints.push_back({ confirmButton, "Play" });
 		hints.push_back({ Triangle, "Details" });
 	}
 	hints.push_back({ Square, "Scan" });
 	hints.push_back({ Options, "Menu" });
-	hintBar(hints, left);
+	if (!libraryBehind)
+		hintBar(hints, left);
+	drawHeader();
 
 	if (!active)
 		return;
@@ -972,15 +1239,15 @@ void libraryPage(bool active)
 		push(Page::MainMenu);
 	else if (hit(Square))
 		library::scan(source, true);
-	else if (count > 0 && hit(confirmButton))
+	else if (focus >= 0 && hit(confirmButton))
 	{
-		const library::Game game = view.games[view.cursor];
+		const library::Game game = view.games[focus];
 		deferred = [game] { launch(game, -1); };
 	}
-	else if (count > 0 && hit(Triangle))
+	else if (focus >= 0 && hit(Triangle))
 	{
-		chosen = view.games[view.cursor];
-		push(Page::Details);
+		const library::Game game = view.games[focus];
+		deferred = [game] { openDetails(game); };
 	}
 }
 
@@ -1084,6 +1351,8 @@ void frontendItems(int kind, std::vector<Item>& items)
 				{ "80%", "90%", "100%", "110%", "120%", "130%" },
 				"Makes the text and everything else of the interface larger or smaller.",
 				[](int i) { options::frontend().uiScale = 80 + i * 10; }));
+		items.push_back(toggle("Start-up animation", &f.splash,
+				"The swan and the name that open SwanStation before the library comes in. Any button skips it."));
 		items.push_back(choice("Confirm button", f.swapConfirm ? 1 : 0, { "Cross", "Circle" },
 				"Which button confirms in the menus; the other one goes back. Games are not affected.",
 				[](int i) { options::frontend().swapConfirm = i != 0; }));
@@ -1236,7 +1505,10 @@ void aboutItems(std::vector<Item>& items)
 	retro_system_info info{};
 	retro_get_system_info(&info);
 	items.push_back(header("SwanStation for PS5"));
-	items.push_back(fact("Build", format("%d", BuildNumber)));
+	items.push_back(fact("Build", format("%d  \xc2\xb7  work in progress  \xc2\xb7  %s", BuildNumber, BuildDate),
+			format("Build %d of %s. A work in progress: not everything has been run on a console yet.", BuildNumber,
+			BuildDate)));
+	items.push_back(fact("Developer", Developer, std::string("The PS5 port and its interface: ") + Developer + "."));
 	items.push_back(fact("Emulator", format("%s %s", info.library_name != nullptr ? info.library_name : "SwanStation",
 			info.library_version != nullptr ? info.library_version : ""),
 			"SwanStation, the libretro fork of DuckStation, linked into this title with a frontend of its own."));
@@ -1246,6 +1518,9 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("BIOS", host::biosSummary(),
 			host::biosSummary() + ". SwanStation carries OpenBIOS and needs no BIOS file; games are more "
 			"compatible with an original one (scph5500.bin, scph5501.bin, scph5502.bin) in " + shownRoot() + "bios."));
+	items.push_back(fact("Game database", gamedb::summary(),
+			gamedb::summary() + ". Descriptions, developers, publishers, release years and genres, and the serial "
+			"numbers of disc images by their Redump names, from the libretro database."));
 	items.push_back(fact("Cheats and patches", cheats::summary(),
 			cheats::summary() + ". The database is the DuckStation project's chtdb; a game's entries are in its "
 			"menu while it runs."));
@@ -1266,6 +1541,8 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Mesa RADV", "MIT", "The Vulkan driver, from the PS5 Mesa port."));
 	items.push_back(fact("Dear ImGui", "MIT", "The interface is drawn with Dear ImGui by Omar Cornut."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
+	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
+			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));
 	items.push_back(fact("Fonts", "Roboto, Font Awesome",
 			"Roboto (Apache License 2.0) and the solid symbols of Font Awesome Free (SIL OFL 1.1)."));
 }
@@ -1403,7 +1680,7 @@ void mainMenuPage(Frame& f)
 	items.push_back(action(icon::Gear, "Settings", "The interface, the picture and the sound, controllers, where "
 			"games come from, and every setting of the emulator.", [] { push(Page::Settings); }));
 	items.push_back(action(icon::Chip, "Start the BIOS", "Starts the PlayStation without a disc: the memory card "
-			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { begin("", -1); }));
+			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { startBios(); }));
 	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
 			"network share again.", [] {
 				for (int i = 0; i < library::SourceCount; i++)
@@ -1528,11 +1805,12 @@ void discsPage(Frame& f)
 	standardHints(menuPage(f, "Change disc", host::game().title, items, 900), "Insert");
 }
 
-void cheatsPage(Frame& f)
+// The cheats and patches of the game they were loaded for, as rows. Before the
+// game runs (its details) the choices are only kept; a cheat that is applied
+// once on request needs the game running.
+void cheatItems(std::vector<Item>& items, bool running)
 {
-	const Theme& t = theme();
 	std::vector<cheats::Cheat>& list = cheats::list();
-	std::vector<Item> items;
 	bool anyPatch = false, anyCheat = false;
 	for (const cheats::Cheat& cheat : list)
 		(cheat.patch ? anyPatch : anyCheat) = true;
@@ -1549,7 +1827,7 @@ void cheatsPage(Frame& f)
 				continue;
 			Item item;
 			item.label = cheat.group.empty() ? cheat.name : cheat.group + ":  " + cheat.name;
-			item.enabled = cheat.supported;
+			item.enabled = cheat.supported && (running || !cheat.manual);
 			std::string chosenValue;
 			if (!cheat.choices.empty())
 			{
@@ -1564,7 +1842,7 @@ void cheatsPage(Frame& f)
 			if (!cheat.supported)
 				item.value = "Not supported";
 			else if (cheat.manual)
-				item.value = chosenValue.empty() ? "Run once" : chosenValue;
+				item.value = !running ? "While playing" : chosenValue.empty() ? "Run once" : chosenValue;
 			else if (!chosenValue.empty())
 				item.value = cheat.enabled ? chosenValue : "Off  (" + chosenValue + ")";
 			else
@@ -1579,6 +1857,9 @@ void cheatsPage(Frame& f)
 			if (!cheat.supported)
 				item.info += (item.info.empty() ? "" : "\n\n")
 						+ std::string("It uses a code type this emulator does not have.");
+			if (cheat.manual && !running)
+				item.info += (item.info.empty() ? "" : "\n\n")
+						+ std::string("Applied once, on request, from the menu while the game runs.");
 			item.confirmHint = cheat.manual ? "Apply once" : cheat.enabled ? "Switch off" : "Switch on";
 			if (cheat.manual)
 				item.activate = [i] {
@@ -1606,6 +1887,13 @@ void cheatsPage(Frame& f)
 			items.push_back(std::move(item));
 		}
 	}
+}
+
+void cheatsPage(Frame& f)
+{
+	const Theme& t = theme();
+	std::vector<Item> items;
+	cheatItems(items, true);
 	const std::string serial = host::game().serial;
 	if (items.empty())
 	{
@@ -1626,62 +1914,369 @@ void cheatsPage(Frame& f)
 	standardHints(menuPage(f, "Cheats and patches", host::game().title + "  \xc2\xb7  " + serial, items, 1100));
 }
 
+// ------------------------------------------------------------ a game's details
+
+// A game of the library, looked at before it is started: what it is, and its
+// own states, settings and cheats.
+enum DetailsTab { TabOverview, TabStates, TabOptions, TabCheats };
+
+struct Details
+{
+	library::Game game;
+	int disc = 0;				// the one a start puts in the tray
+	std::string serial;			// of that disc; empty when not known
+	bool serialRead = false;	// the disc itself was asked
+	bool known = false;
+	gamedb::Info info;
+	history::Entry played;
+	std::string cover;
+	int action = 0;				// Play, Load state, Options, Cheats
+	std::string cheatsFor;		// the serial the cheat list is loaded for
+} det;
+
+const std::string& detailsDiscPath()
+{
+	return det.game.discs.empty() ? det.game.path
+			: det.game.discs[(size_t)std::clamp(det.disc, 0, (int)det.game.discs.size() - 1)];
+}
+
+// The serial decides what the database, the settings and the cheats are
+// about. `ask` reads the disc when nothing quicker knows it.
+void detailsSerial(bool ask)
+{
+	if (det.serial.empty() && !det.serialRead)
+		det.serial = quickSerial(det.game, det.disc);
+	if (ask && !det.serialRead)
+	{
+		det.serialRead = true;
+		const std::string read = host::readSerial(detailsDiscPath());
+		if (!read.empty())
+			det.serial = read;
+	}
+	gamedb::Info info;
+	det.known = !det.serial.empty() && gamedb::find(det.serial, info);
+	if (det.known)
+		det.info = info;
+	// The game's own settings are shown, and kept, under this serial; its
+	// cheats and patches are listed by it.
+	options::loadGame(det.serial);
+	if (det.serial.empty())
+	{
+		cheats::unload();
+		det.cheatsFor.clear();
+	}
+	else if (det.cheatsFor != det.serial)
+	{
+		// A later disc without cheats of its own shows the first disc's.
+		cheats::loadFor(det.serial, det.disc > 0 ? quickSerial(det.game, 0) : std::string());
+		det.cheatsFor = det.serial;
+	}
+}
+
+// After a start that failed (it puts the settings back to "no game").
+void detailsRestore()
+{
+	if (stack.empty() || det.game.path.empty())
+		return;
+	for (const Frame& frame : stack)
+		if (frame.page == Page::Details)
+		{
+			det.cheatsFor.clear();
+			detailsSerial(false);
+			return;
+		}
+}
+
+void closeDetails()
+{
+	cheats::unload();
+	options::loadGame("");
+	det = Details();
+}
+
+void openDetails(const library::Game& game)
+{
+	det = Details();
+	det.game = game;
+	det.played = history::get(game.path);
+	det.disc = game.discs.size() > 1 ? std::clamp(det.played.disc, 0, (int)game.discs.size() - 1) : 0;
+	for (const char *ext : { ".png", ".jpg", ".jpeg" })
+		if (det.cover.empty() && fileExists(rootDir + "covers/" + game.fileTitle + ext))
+			det.cover = rootDir + "covers/" + game.fileTitle + ext;
+	// A game in the title's own folders is asked for its serial at once: a
+	// few sectors of a local file. A share is only asked when its settings
+	// or cheats are opened.
+	detailsSerial(!smb::isNetworkPath(detailsDiscPath()));
+	push(Page::Details);
+}
+
+void detailsTab(Frame& f, int tab)
+{
+	f.a = tab;
+	f.cursor = 0;
+	f.scroll = f.scrollTarget = 0;
+	f.fresh = true;
+	f.picker = -1;
+	if (tab == TabOptions || tab == TabCheats)
+		detailsSerial(true);
+}
+
 void detailsPage(Frame& f)
 {
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
-	const library::Game game = chosen;
-	std::vector<Item> items;
-	const bool resumable = host::stateExistsFor(game.path, host::ResumeSlot);
-	if (resumable)
-		items.push_back(action(icon::Clock, "Continue", "Starts from the state kept when the game was last closed.",
-				[game] { launch(game, host::ResumeSlot); }));
-	items.push_back(action(icon::Play, resumable ? "Start from the beginning" : "Start", "",
-			[game] { launch(game, FromBeginning); }));
-	for (int slot = 0; slot < host::StateSlots; slot++)
-		if (host::stateExistsFor(game.path, slot))
-			items.push_back(action(icon::Upload, format("Start from state %d", slot + 1), "",
-					[game, slot] { launch(game, slot); }));
+	const library::Game& game = det.game;
+	const int discs = (int)game.discs.size();
+	const float open = std::clamp((float)((clock() - f.opened) / 0.18), 0.f, 1.f);
+	const float ease = 1.f - (1.f - open) * (1.f - open);
 
-	text(at(64, 40), t.text, "Game", Title, 44);
-	const float top = 128, bottom = H - 88;
-	// The cover and the facts at the left, what can be done at the right.
-	const float side = 520;
-	const std::string coverFile = [&] {
-		for (const char *ext : { ".png", ".jpg", ".jpeg" })
-			if (fileExists(rootDir + "covers/" + game.fileTitle + ext))
-				return rootDir + "covers/" + game.fileTitle + ext;
-		return std::string();
-	}();
-	static std::string coverFor, coverPath;
-	if (coverFor != game.path || f.fresh)
-	{
-		coverFor = game.path;
-		coverPath = coverFile;
-	}
-	const Image cover = image(coverPath);
+	// The panel, over the dimmed library.
+	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(4, 6, 12, (int)(170 * ease)));
+	const float w = std::min(W - 160, 1560.f), h = std::min(H - 200, 800.f);
+	const float x = (W - w) * 0.5f, y = 96 + (H - 64 - 96 - h) * 0.5f + (1 - ease) * 36;
+	draw()->AddRectFilled(at(x - 6, y - 4), at(x + w + 6, y + h + 12), IM_COL32(0, 0, 0, (int)(70 * ease)), px(30));
+	panel(at(x, y), at(x + w, y + h), IM_COL32(22, 28, 46, 252), 24);
+	outline(at(x, y), at(x + w, y + h), IM_COL32(255, 255, 255, 22), 24, 1.5f);
+
+	// The left column: the cover, the file, the serial, when it was played.
+	const float cx = x + 48, cs = 420;
+	const Image cover = image(det.cover);
 	if (cover.id != nullptr)
-		imageFit(cover, at(64, top), at(64 + side, top + side), 14);
+		imageFit(cover, at(cx, y + 48), at(cx + cs, y + 48 + cs), 14);
 	else
-		coverPlaceholder(at(64, top), at(64 + side, top + side), game.name, game.region);
+		coverPlaceholder(at(cx, y + 48), at(cx + cs, y + 48 + cs), game.name, game.region);
+	float ly = y + 48 + cs + 22;
+	textFit(at(cx, ly), px(cs), t.faint, baseName(detailsDiscPath()), Body, 18);
+	ly += 32;
+	const auto fact = [&](const char *symbol, const std::string& label, const std::string& value) {
+		if (value.empty())
+			return;
+		text(at(cx, ly + 2), t.faint, symbol, Body, 18);
+		text(at(cx + 36, ly), t.faint, label, Body, 20);
+		textFit(at(cx + 150, ly), px(cs - 150), t.dim, value, Body, 20);
+		ly += 34;
+	};
+	fact(icon::Disc, "ID", det.serial.empty() ? (det.serialRead ? "None on the disc" : "") : det.serial);
+	fact(icon::Clock, "Played", playedText(det.played.seconds));
+	fact(icon::Play, "Last", agoText(det.played.lastPlayed));
+	fact(icon::Drive, "Size", sizeText(game.size));
+	fact(icon::Server, "From", library::sourceName(game.source));
 
-	const float x0 = 64 + side + 48, x1 = W - 64;
-	float y = top;
-	y += toUnits(textWrapped(at(x0, y), px(x1 - x0), t.text, game.name, Title, 40, px(100))) + 14;
-	std::string facts = game.region;
-	const std::string size = sizeText(game.size);
-	if (!size.empty())
-		facts += (facts.empty() ? "" : "  \xc2\xb7  ") + size;
-	if (game.discs.size() > 1)
-		facts += (facts.empty() ? "" : "  \xc2\xb7  ") + format("%d discs", (int)game.discs.size());
-	facts += (facts.empty() ? "" : "  \xc2\xb7  ") + library::sourceName(game.source);
-	text(at(x0, y), t.dim, facts, Body, 24);
-	y += 44;
-	textFit(at(x0, y), px(x1 - x0), t.faint, game.discs.size() > 1 ? game.discs.front() : game.path, Body, 20);
-	y += 52;
-	panel(at(x0, y), at(x1, bottom), t.panel, 16);
-	const Item *focused = runList(f, items, x0 + 8, y + 10, x1 - 16, bottom - 10);
-	standardHints(focused, "Start");
+	// The right column.
+	const float tx = x + 48 + cs + 52, tw = x + w - 56 - tx;
+	textFit(at(tx, y + 44), px(tw), t.text, game.name, Title, 44);
+	std::string meta = "PLAYSTATION";
+	const auto add = [&meta](const std::string& part) {
+		if (!part.empty())
+			meta += "   \xc2\xb7   " + part;
+	};
+	add(game.region);
+	if (det.known)
+	{
+		if (det.info.year > 0)
+			add(format("%d", det.info.year));
+		add(det.info.genre);
+		if (det.info.players > 0)
+			add(det.info.players == 1 ? std::string("1 player") : format("1-%d players", det.info.players));
+	}
+	if (discs > 1)
+		add(format("Disc %d of %d", det.disc + 1, discs));
+	textFit(at(tx, y + 108), px(tw), t.accent, meta, Bold, 22);
+	if (det.known && (!det.info.developer.empty() || !det.info.publisher.empty()))
+	{
+		std::string makers = det.info.developer;
+		if (!det.info.publisher.empty() && det.info.publisher != det.info.developer)
+			makers += (makers.empty() ? "" : "   \xc2\xb7   ") + det.info.publisher;
+		textFit(at(tx, y + 142), px(tw), t.dim, makers, Body, 22);
+	}
+	const float top = y + 196, bottom = y + h - 48;
+
+	// The states kept for it.
+	std::vector<std::pair<int, std::string>> states;
+	{
+		std::string when;
+		if (host::stateExistsFor(game.path, host::ResumeSlot, &when))
+			states.emplace_back(host::ResumeSlot, when);
+		for (int slot = 0; slot < host::StateSlots; slot++)
+			if (host::stateExistsFor(game.path, slot, &when))
+				states.emplace_back(slot, when);
+	}
+	const int disc = det.disc;
+
+	if (f.a == TabOverview)
+	{
+		std::string description = det.known ? det.info.description : std::string();
+		if (description.empty())
+			description = det.serial.empty() && !det.serialRead
+					? "The game's description is found by its serial number, which is read from the disc when "
+					"Options or Cheats is opened, and when the game starts."
+					: det.serial.empty() ? "This disc has no serial number, so nothing is known about it."
+					: "No description of " + det.serial + " in the database.";
+		const float pillsY = bottom - 64;
+		const float discsY = pillsY - 66;
+		const float textBottom = (discs > 1 ? discsY : pillsY) - 28;
+		textWrapped(at(tx, top), px(tw), det.known ? IM_COL32(200, 208, 226, 255) : t.faint, description, Body, 24,
+				px(textBottom - top));
+		if (discs > 1)
+		{
+			float dx = tx;
+			for (int i = 0; i < discs; i++)
+			{
+				const std::string label = format("Disc %d", i + 1);
+				const ImVec2 extent = measure(label, Bold, 20);
+				const float pw = toUnits(extent.x) + 36;
+				panel(at(dx, discsY), at(dx + pw, discsY + 40), i == det.disc ? t.text : t.panelHigh, 20);
+				text(at(dx + 18, discsY + 20 - toUnits(extent.y) * 0.5f), i == det.disc ? IM_COL32(16, 22, 38, 255) : t.dim,
+						label, Bold, 20);
+				dx += pw + 10;
+			}
+			buttonGlyph(at(dx + 28, discsY + 20), 28, Square);
+			text(at(dx + 52, discsY + 8), t.faint, "Next disc", Body, 20);
+		}
+		// What can be done, side by side.
+		int on = 0;
+		for (const cheats::Cheat& cheat : cheats::list())
+			on += cheat.enabled;
+		const std::string labels[4] = {
+			std::string(icon::Play) + "   Play",
+			std::string(icon::Upload) + "   Load state",
+			std::string(icon::Sliders) + "   Options",
+			std::string(icon::Bolt) + (on > 0 ? format("   Cheats   %d on", on) : std::string("   Cheats")),
+		};
+		const bool enabled[4] = { true, !states.empty(), true, true };
+		det.action = std::clamp(det.action, 0, 3);
+		if (f.picker < 0)
+		{
+			if (nav(Right))
+				det.action = std::min(det.action + 1, 3);
+			if (nav(Left))
+				det.action = std::max(det.action - 1, 0);
+		}
+		ImVec2 at0 = at(tx, pillsY);
+		for (int i = 0; i < 4; i++)
+			at0.x += pill(at0, labels[i], i == det.action, enabled[i], 64, 26) + px(18);
+		if (det.action == 1 && states.empty())
+			text(at(tx, pillsY - (discs > 1 ? 104 : 38)), t.faint,
+					"No state is saved for this game yet: save one from the menu while playing.", Body, 20);
+
+		std::vector<Hint> hints;
+		hints.push_back({ confirmButton, det.action == 0 ? "Play" : "Open" });
+		if (discs > 1)
+			hints.push_back({ Square, "Next disc" });
+		hints.push_back({ cancelButton, "Back" });
+		hintBar(hints);
+
+		if (discs > 1 && hit(Square))
+		{
+			det.disc = (det.disc + 1) % discs;
+			det.serial.clear();
+			det.serialRead = false;
+			deferred = [] { detailsSerial(!smb::isNetworkPath(detailsDiscPath())); };
+		}
+		else if (hit(confirmButton) && enabled[det.action])
+		{
+			const int action = det.action;
+			if (action == 0)
+				deferred = [game, disc] { launch(game, -1, disc); };
+			else
+				deferred = [action] {
+					if (!stack.empty())
+						detailsTab(stack.back(), action);
+				};
+		}
+		else if (hit(cancelButton))
+		{
+			deferred = [] {
+				pop();
+				closeDetails();
+			};
+			consumeInput();
+		}
+		return;
+	}
+
+	// A tab: its name, then its rows.
+	static const char *names[] = { "", "Start from a saved state", "Options for this game", "Cheats and patches" };
+	static const char *symbols[] = { "", icon::Upload, icon::Sliders, icon::Bolt };
+	text(at(tx, top + 2), t.accent, symbols[f.a], Body, 26);
+	text(at(tx + 44, top), t.text, names[f.a], Bold, 28);
+	if (f.a == TabOptions && !det.serial.empty())
+		textRight(at(tx + tw, top + 6), t.faint, "kept for " + det.serial, Body, 20);
+	else if (f.a == TabCheats && !cheats::serial().empty())
+		textRight(at(tx + tw, top + 6), t.faint, "kept for " + cheats::serial(), Body, 20);
+	const float listTop = top + 56;
+
+	std::vector<Item> items;
+	std::string nothing;
+	if (f.a == TabStates)
+	{
+		for (const auto& [slot, when] : states)
+		{
+			Item item;
+			item.icon = slot == host::ResumeSlot ? icon::Clock : icon::Upload;
+			item.label = slot == host::ResumeSlot ? std::string("Where the game was closed") : format("Slot %d", slot + 1);
+			item.value = when;
+			item.confirmHint = "Play from here";
+			item.activate = [game, slot, disc] { launch(game, slot, disc); };
+			items.push_back(std::move(item));
+		}
+		Item fresh = action(icon::Play, "From the beginning", "", [game, disc] { launch(game, FromBeginning, disc); });
+		fresh.confirmHint = "Play";
+		items.push_back(std::move(fresh));
+	}
+	else if (det.serial.empty())
+		nothing = "This disc has no serial number that could be read (a PlayStation program, or an image that did "
+				"not open). A game's own settings and its cheats are kept by that number.";
+	else if (f.a == TabOptions)
+	{
+		for (const options::Category& category : options::categories())
+		{
+			std::string name = category.name;
+			const size_t tail = name.rfind(" Settings");
+			if (tail != std::string::npos && tail + 9 == name.size())
+				name.erase(tail);
+			for (char& c : name)
+				if (c >= 'a' && c <= 'z')
+					c = (char)(c - 'a' + 'A');
+			items.push_back(header(name));
+			optionItems(category.key, false, true, items);
+		}
+	}
+	else
+	{
+		cheatItems(items, false);
+		if (items.empty())
+			nothing = "The database has no cheats or patches for " + det.serial + ". A file of your own, "
+					+ shownRoot() + "cheats/" + det.serial + ".cht, is read when the game starts.";
+	}
+
+	if (!nothing.empty())
+	{
+		textWrapped(at(tx, listTop + 8), px(tw), t.dim, nothing, Body, 24);
+		hintBar({ { cancelButton, "Back" } });
+	}
+	else
+	{
+		// The rows, and under them what the one under the cursor is about.
+		const float infoH = f.a == TabStates ? 0 : 84;
+		const Item *focused = runList(f, items, tx - 14, listTop, tx + tw - 4, bottom - infoH);
+		if (focused != nullptr && infoH > 0)
+		{
+			draw()->AddLine(at(tx, bottom - infoH + 10), at(tx + tw, bottom - infoH + 10), IM_COL32(255, 255, 255, 18), 1.f);
+			std::string info = focused->info;
+			std::replace(info.begin(), info.end(), '\n', ' ');
+			textWrapped(at(tx, bottom - infoH + 22), px(tw), t.faint, info, Body, 20, px(infoH - 22));
+		}
+		standardHints(focused);
+	}
+	if (f.picker < 0 && hit(cancelButton))
+	{
+		deferred = [] {
+			if (!stack.empty())
+				detailsTab(stack.back(), TabOverview);
+		};
+		consumeInput();
+	}
 }
 
 void loadingPage(Frame& f)
@@ -1708,15 +2303,14 @@ void loadingPage(Frame& f)
 		return;
 	}
 	consumeInput();
-	const std::string path = f.s;
-	const int slot = f.a;
+	const int slot = f.a, disc = f.b;
 	const bool ok = state == smb::PrecacheDone;
-	deferred = [path, slot, ok] {
+	deferred = [slot, disc, ok] {
 		const std::string error = smb::lastError();
 		smb::finishPrecache();
 		pop();
 		if (ok)
-			begin(path, slot);
+			begin(chosen, slot, disc);
 		else if (!error.empty())
 			message("The game could not be read", error);
 	};
@@ -1766,6 +2360,114 @@ void messagePage(Frame& f, bool confirm)
 	}
 }
 
+// --------------------------------------------------------------- the splash
+
+// The start-up animation. It begins as the picture the console shows while
+// the title loads (sce_sys/pic1.dds): the mark in the middle, the name under
+// it. The water moves, a light breathes behind the mark, the build's line
+// comes in; then the mark and the name fly to their places in the library's
+// header while the library comes up underneath.
+struct Splash
+{
+	enum { NotBegun, Showing, Leaving, Over } state = NotBegun;
+	double began = 0, leaving = 0;
+	int frames = 0;
+} splash;
+
+// `t`: seconds shown; `flight`: 0 at rest, 1 landed in the header.
+void drawSplash(float t, float flight)
+{
+	const Theme& th = theme();
+	const float W = unitsWide(), H = unitsHigh();
+	const float rest = 1.f - std::clamp(flight / 0.35f, 0.f, 1.f);		// what leaves first
+	const float cover = 1.f - flight;									// the splash's own backdrop
+	// Its backdrop, over whatever is behind.
+	draw()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()), withAlpha(IM_COL32(22, 34, 66, 255), cover),
+			withAlpha(IM_COL32(22, 34, 66, 255), cover), withAlpha(IM_COL32(8, 11, 24, 255), cover),
+			withAlpha(IM_COL32(8, 11, 24, 255), cover));
+	ImDrawList *list = draw();
+	// The water: three lines of small waves.
+	static const float rows[3] = { 0.800f, 0.850f, 0.900f };
+	static const float strength[3] = { 0.27f, 0.19f, 0.12f };
+	for (int row = 0; row < 3; row++)
+	{
+		const float y = height() * rows[row];
+		for (float x = 0; x <= width(); x += px(8))
+			list->PathLineTo(ImVec2(x, y + std::sin(x / width() * 3.14159f * 9.f + t * (1.3f + 0.3f * (float)row))
+					* height() * 0.006f));
+		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * rest)), 0, std::max(height() / 360.f, 2.f));
+	}
+
+	// The mark: from the middle to the header's corner.
+	const float ease = flight * flight * (3.f - 2.f * flight);
+	const float side0 = H * 0.36f, x0 = (W - side0) * 0.5f, y0 = H * 0.22f;
+	const float bob = std::sin(t * 1.7f) * 5.f * (1.f - ease);
+	const float side = side0 + (64 - side0) * ease;
+	const float x = x0 + (56 - x0) * ease, y = y0 + bob + (30 - y0 - bob) * ease;
+	// A light behind it, breathing.
+	const float breath = 0.5f + 0.5f * std::sin(t * 2.1f);
+	const ImVec2 centre = at(x + side * 0.5f, y + side * 0.5f);
+	for (int ring = 0; ring < 3; ring++)
+		list->AddCircleFilled(centre, px(side * (0.62f + 0.07f * (float)ring + 0.03f * breath)),
+				withAlpha(th.accent, (0.10f - 0.028f * (float)ring) * rest), 96);
+	logoAt(at(x, y), at(x + side, y + side));
+
+	// The name: under the mark, then beside it.
+	const float size0 = H * 0.085f;
+	const float size = size0 + (44 - size0) * ease;
+	const float nameW0 = toUnits(measure(AppName, Huge, size0).x);
+	const float nx = (W - nameW0) * 0.5f + (136 - (W - nameW0) * 0.5f) * ease;
+	const float ny = (y0 + side0 + H * 0.035f) + (36 - (y0 + side0 + H * 0.035f)) * ease;
+	// It goes out on the way, and the header's own comes in where it lands.
+	text(at(nx, ny), withAlpha(th.text, 1.f - std::clamp(flight / 0.55f, 0.f, 1.f)), AppName, Huge, size);
+	// What leaves when the flight begins.
+	if (rest > 0.01f)
+	{
+		const float lineY = y0 + side0 + H * 0.145f;
+		textCentred(at(W * 0.5f, lineY), withAlpha(th.dim, rest), "for PS5", Body, H * 0.030f);
+		// Which build this is, in its corner, as in the library.
+		buildTag(std::clamp((t - 0.4f) / 0.6f, 0.f, 1.f));
+	}
+}
+
+// True while the splash has the screen to itself.
+bool runSplash()
+{
+	if (splash.state == Splash::NotBegun)
+		splash.state = options::frontend().splash && !host::running() ? Splash::Showing : Splash::Over;
+	if (splash.state == Splash::Over)
+		return false;
+	const double time = clock();
+	if (splash.state == Splash::Showing)
+	{
+		// The first frames wait for the display: the animation's clock starts
+		// when they are on the screen.
+		if (splash.frames++ < 3)
+			splash.began = time;
+		const float t = (float)(time - splash.began);
+		backdrop();
+		drawSplash(t, 0);
+		if (t > 2.6f || (in.pressed != 0 && t > 0.3f))
+		{
+			splash.state = Splash::Leaving;
+			splash.leaving = time;
+			consumeInput();
+		}
+		return true;
+	}
+	const float u = std::clamp((float)((time - splash.leaving) / 0.75), 0.f, 1.f);
+	headerLogoAlpha = 0;
+	headerNameAlpha = std::clamp((u - 0.5f) / 0.5f, 0.f, 1.f);
+	libraryPage(false);
+	drawSplash((float)(time - splash.began), u);
+	if (u >= 1.f)
+	{
+		splash.state = Splash::Over;
+		headerLogoAlpha = headerNameAlpha = 1;
+	}
+	return true;
+}
+
 } // namespace
 
 void init()
@@ -1800,7 +2502,11 @@ void frame()
 	}
 
 	const bool game = host::running();
-	if (!game && stack.empty())
+	if (!game && stack.empty() && runSplash())
+	{
+		// The animation has the screen.
+	}
+	else if (!game && stack.empty())
 		libraryPage(true);
 	else if (game && stack.empty())
 	{
@@ -1815,12 +2521,18 @@ void frame()
 	else
 	{
 		// What is behind the page: the game, dimmed, or the library's backdrop.
-		if (game)
-			drawGame(0.72f);
-		else
-			backdrop();
 		Frame& f = stack.back();
 		const Page page = f.page;
+		if (game)
+			drawGame(0.72f);
+		else if (page == Page::Details)
+		{
+			libraryBehind = true;
+			libraryPage(false);
+			libraryBehind = false;
+		}
+		else
+			backdrop();
 		switch (page)
 		{
 		case Page::MainMenu: mainMenuPage(f); break;
@@ -1839,7 +2551,7 @@ void frame()
 		// Circle goes back; OPTIONS, over a game, returns to it at once.
 		if (!deferred && page != Page::Loading)
 		{
-			if (hit(cancelButton))
+			if (hit(cancelButton) && page != Page::Details)
 				pop();
 			else if (game && hit(Options))
 				stack.clear();

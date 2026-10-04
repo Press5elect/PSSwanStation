@@ -33,9 +33,11 @@ Where things go (all inside /data/homebrew/PPSA99248/)
   logs/         the emulator's log of the last two runs
 
 Game formats: .chd, .cue with its .bin files, .iso, .img, .pbp, .ecm, .mds,
-.m3u playlists, and PlayStation programs (.exe, .psexe). A game on several
-discs named "... (Disc 1)", "... (Disc 2)" is shown once; its discs share one
-memory card and are changed from the menu.
+and PlayStation programs (.exe, .psexe). A game on several discs named
+"... (Disc 1)", "... (Disc 2)" is shown once; its discs share one memory card,
+its details choose the disc it starts from, and the menu changes disc while
+playing. Playlist files (.m3u) are not shown: the discs they list are grouped
+by their names anyway.
 
 BIOS: none is needed. The built-in OpenBIOS starts most games. An original
 BIOS is more compatible: scph5500.bin (Japan), scph5501.bin (America),
@@ -50,8 +52,9 @@ In the menus
   Cross / Circle        confirm / back (they can be swapped in Settings)
   L1, R1                the library's tabs; a settings section
   L2, R2                a page up or down
-  Square                scan for games; in settings, back to the default
-  Triangle              a game's details: start from a state, or from the beginning
+  Square                scan for games; in settings, back to the default;
+                        in a game's details, the next disc
+  Triangle              a game's details
   OPTIONS               the menu
 
 In a game
@@ -65,7 +68,19 @@ In a game
 The library
 -----------
 
-Three tabs: Internal (the games folder), USB and Network.
+Three tabs: Internal (the games folder), USB and Network. The games played
+lately are on a shelf of their own at the top ("Continue playing"), with when
+and for how long; a game on several discs starts from the disc last in the
+tray.
+
+Triangle opens a game's details: its description, who made it and when (from
+the game database, by the disc's serial number), how long it was played, and
+four things to do:
+
+  Play          starts it (from the disc chosen with Square, when it has several)
+  Load state    starts it from a state saved earlier
+  Options       the emulator's settings for this game alone
+  Cheats        its cheats and patches, to switch on before it starts
 
 USB: off until "USB drives" is switched on in Settings, Games and network; it
 takes effect at the next start and needs the ELF loader listening on port
@@ -91,9 +106,10 @@ Every setting of the emulator is in Settings, in the emulator's own sections
 (Console, Enhancement, Display, Port, Advanced), next to the title's own
 (Interface, Picture, Sound, Controllers, Games and network).
 
-While a game runs, the menu has two entries: "Settings" changes them for
-every game, "Game settings" for this game only. A dot marks a value that is
-the game's own; Square gives it back to the general value.
+A game's own settings are in its details (Options) and, while it runs, in
+the menu: "Settings" changes them for every game, "Game settings" for this
+game only. A dot marks a value that is the game's own; Square gives it back
+to the general value.
 
 The picture: the internal resolution starts at 8x. Lower it (Enhancement,
 Internal Resolution Scale) if a game does not hold its speed; "Show frame
@@ -106,8 +122,8 @@ Cheats and patches
 The title carries the DuckStation cheat and patch database (assets/cheats.zip
 and assets/patches.zip): cheat codes for about 4500 games and patches
 (widescreen, 60 frames a second and others) for about 140. A game's entries
-are in its menu, under "Cheats and patches", found by the disc's serial
-number. Cross switches one on or off; where a cheat has a value to choose
+are in its details (Triangle in the library) and in its menu while it runs,
+under "Cheats and patches", found by the disc's serial number. Cross switches one on or off; where a cheat has a value to choose
 (a character, a car), Left and Right choose it. What is switched on is kept
 for that game. A widescreen patch also sets the aspect ratio it needs while
 it is on.
@@ -149,5 +165,5 @@ emulator's own log. Those two files say what happened.
   "CPU Recompiler Fast Memory Access" (Advanced) is off: its faster setting,
   LUT, is not proven on the console.
 
-This build has been run on a PC with the same code (interface, emulator,
-network share, cheats, states) but not yet on a console.
+This is a work in progress: the build's number and date are in the top right
+corner of the library and in Settings, About.

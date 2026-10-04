@@ -120,6 +120,8 @@ set(frontend_sources
 	src/vfs.cpp
 	src/smb.cpp
 	src/covers.cpp
+	src/gamedb.cpp
+	src/history.cpp
 	src/diag.cpp
 	src/texture.cpp)
 if(SWANSTATION_PS5)
@@ -137,6 +139,9 @@ else()
 	list(APPEND frontend_sources src/host/platform_host.cpp)
 endif()
 
+# With the core's C++17: its disc header does not compile as C++20.
+set(frontend_cxx17_sources src/discid.cpp)
+
 set(core_glue_sources
 	${ROOT}/src/libretro/libretro_audio_stream.cpp
 	${ROOT}/src/libretro/libretro_game_settings.cpp
@@ -151,7 +156,7 @@ set(imgui_sources
 	${IMGUI_DIR}/imgui_widgets.cpp
 	${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
 
-add_executable(swanstation ${frontend_sources} ${core_glue_sources} ${imgui_sources})
+add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources} ${imgui_sources})
 target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2)
 target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen)
@@ -164,6 +169,9 @@ target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKA
 set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS
 	"${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png")
 set_source_files_properties(${frontend_sources} PROPERTIES COMPILE_OPTIONS "-std=c++20")
+# The build's date, in main.cpp alone so a new day recompiles one file.
+string(TIMESTAMP FE_BUILD_DATE "%Y-%m-%d" UTC)
+set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS "FE_BUILD_DATE=\"${FE_BUILD_DATE}\"")
 if(SWANSTATION_PS5)
 	target_compile_definitions(swanstation PRIVATE SWANSTATION_PS5=1)
 	# CMake gives the objects and archives, in link order, to link.sh, which

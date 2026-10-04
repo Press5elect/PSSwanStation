@@ -32,6 +32,12 @@ Cheat and patch database     see its project  -                        github.co
                                                                        cheats.zip and patches.zip, unmodified
                                                                        release files; the project offers them to
                                                                        other emulators)
+Game database                CC BY-SA 4.0     CC-BY-SA-4.0.txt         github.com/libretro/libretro-database:
+                                                                       its PlayStation lists (descriptions,
+                                                                       developers, dates, Redump names and
+                                                                       serials), rearranged by
+                                                                       ps5/tools/make-gamedb.py into
+                                                                       assets/gamedb.zip
 The swan icon and pictures   GPL-3.0-or-later GPL-3.0.txt              drawn by ps5/tools/make-art.py
 
 This title contains no games, no BIOS file of an original console, no console

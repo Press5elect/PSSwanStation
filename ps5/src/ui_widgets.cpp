@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 // The files in ps5/assets, in the program's read-only data.
@@ -45,8 +46,8 @@ namespace fe::ui
 namespace
 {
 
-ImFont *fonts[3];
-float fontPixels[3];
+ImFont *fonts[4];
+float fontPixels[4];
 float unit = 1.f;
 Theme current;
 Image logoImage;
@@ -163,6 +164,17 @@ void widgetsInit()
 	fonts[Body] = addFont(fe_font_medium, fe_font_medium_end, fontPixels[Body]);
 	fonts[Bold] = addFont(fe_font_bold, fe_font_bold_end, fontPixels[Bold]);
 	fonts[Title] = addFont(fe_font_bold, fe_font_bold_end, fontPixels[Title]);
+	// The splash's name: the plain letters only, large.
+	fontPixels[Huge] = std::floor(92.f * scale);
+	{
+		static const ImWchar plain[] = { 0x0020, 0x007E, 0 };
+		ImFontConfig config;
+		config.FontDataOwnedByAtlas = false;
+		config.OversampleH = 1;
+		config.OversampleV = 1;
+		fonts[Huge] = io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(fe_font_bold),
+				(int)(fe_font_bold_end - fe_font_bold), fontPixels[Huge], &config, plain);
+	}
 	if (!io.Fonts->Build())
 		diag::mark("ui: the font atlas could not be built");
 	diag::mark("ui: fonts %d x %d", io.Fonts->TexWidth, io.Fonts->TexHeight);
@@ -210,6 +222,13 @@ float height()
 
 double clock()
 {
+#if defined(SWANSTATION_HOST)
+	// A test run can ask for the animations' clock to count frames, so a
+	// screenshot at a frame shows the same moment however slow the PC draws.
+	static const bool byFrame = getenv("SWANSTATION_FRAME_CLOCK") != nullptr;
+	if (byFrame)
+		return (double)display::frameCount() / 60.0;
+#endif
 	return now() - started;
 }
 
@@ -326,6 +345,67 @@ void backdrop()
 			cool);
 	glow(list, ImVec2(w * (0.62f + 0.10f * std::sin(t * 0.05f + 1.7f)), h * (0.35f + 0.10f * std::cos(t * 0.06f))),
 			h * 0.45f, withAlpha(current.accent, 0.07f));
+}
+
+void wash(const Image& image, float alpha)
+{
+	if (image.soft == nullptr || alpha <= 0.004f)
+		return;
+	// The blurred miniature, over the whole screen and a little beyond, so
+	// its edge pixels are not the screen's edges.
+	ImDrawList *list = ImGui::GetBackgroundDrawList();
+	const float w = width(), h = height();
+	list->AddImage((ImTextureID)image.soft, ImVec2(-w * 0.08f, -h * 0.08f), ImVec2(w * 1.08f, h * 1.08f), ImVec2(0, 0),
+			ImVec2(1, 1), IM_COL32(255, 255, 255, (int)(std::clamp(alpha, 0.f, 1.f) * 255)));
+}
+
+void waves(float alpha)
+{
+	ImDrawList *list = ImGui::GetBackgroundDrawList();
+	const float w = width(), h = height();
+	const float t = (float)clock();
+	static const float rows[3] = { 0.800f, 0.850f, 0.900f };
+	static const float strength[3] = { 0.27f, 0.19f, 0.12f };
+	for (int row = 0; row < 3; row++)
+	{
+		const float y = h * rows[row];
+		for (float x = 0; x <= w; x += px(8))
+			list->PathLineTo(ImVec2(x, y + std::sin(x / w * 3.14159f * 9.f + t * (0.9f + 0.25f * (float)row)) * h * 0.006f));
+		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * std::clamp(alpha, 0.f, 1.f))), 0,
+				std::max(h / 360.f, 2.f));
+	}
+}
+
+void glowAt(ImVec2 centre, float radius, ImU32 colour)
+{
+	glow(ImGui::GetBackgroundDrawList(), centre, radius, colour);
+}
+
+void logoAt(ImVec2 a, ImVec2 b, float alpha)
+{
+	if (logoImage.id == nullptr)
+		return;
+	draw()->AddImage((ImTextureID)logoImage.id, a, b, ImVec2(0, 0), ImVec2(1, 1),
+			IM_COL32(255, 255, 255, (int)(std::clamp(alpha, 0.f, 1.f) * 255)));
+}
+
+float pill(ImVec2 at, const std::string& label, bool on, bool enabled, float height, float size)
+{
+	const ImVec2 extent = measure(label, Bold, size);
+	const float h = px(height);
+	const float w = extent.x + h;
+	const ImVec2 b(at.x + w, at.y + h);
+	if (on)
+	{
+		draw()->AddRectFilled(ImVec2(at.x - px(5), at.y - px(5)), ImVec2(b.x + px(5), b.y + px(5)),
+				withAlpha(current.accent, 0.28f), h * 0.5f + px(5));
+		draw()->AddRectFilled(at, b, current.accent, h * 0.5f);
+	}
+	else
+		draw()->AddRectFilled(at, b, current.panelHigh, h * 0.5f);
+	const ImU32 ink = !enabled ? current.faint : on ? IM_COL32(8, 14, 28, 255) : current.dim;
+	text(ImVec2(at.x + h * 0.5f, at.y + (h - extent.y) * 0.5f), ink, label, Bold, size);
+	return w;
 }
 
 void logo(ImVec2 at, float size)
