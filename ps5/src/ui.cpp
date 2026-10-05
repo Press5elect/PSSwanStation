@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <mutex>
+#include <thread>
 #include <ctime>
 #include <map>
 
@@ -240,6 +242,11 @@ void startBios()
 	begin(bios, -1, 0);
 }
 
+struct LoadingState;
+void loadingBegin();
+float smooth(float x);
+float glide(float x);
+
 // Starts it: a game on a share is read first (the loading page).
 void launchNow(const library::Game& game, int slot, int disc)
 {
@@ -249,6 +256,7 @@ void launchNow(const library::Game& game, int slot, int disc)
 	{
 		const std::string path = first;
 		chosen = game;
+		loadingBegin();
 		push(Page::Loading, slot, disc, game.path, game.name);
 		smb::startPrecache(path);
 	}
@@ -267,8 +275,11 @@ void launch(const library::Game& game, int slot, int disc = -1)
 	if (disc < 0)
 		disc = discs > 1 ? history::get(game.path).disc : 0;
 	disc = std::clamp(disc, 0, std::max(discs - 1, 0));
-	// With the animations full, the swan sees the game off first.
-	if (motion() == MotionFull)
+	// With the animations full, the swan sees the game off first. A game on
+	// the network is read first, and the swan sees it off from there.
+	const std::string& first = game.discs.empty() ? game.path : game.discs[(size_t)disc];
+	const bool network = smb::isNetworkPath(first) || smb::isNetworkPath(game.path);
+	if (motion() == MotionFull && !network)
 	{
 		chosen = game;
 		push(Page::Launch, slot, disc);
@@ -2118,6 +2129,7 @@ struct Details
 	int disc = 0;				// the one a start puts in the tray
 	std::string serial;			// of that disc; empty when not known
 	bool serialRead = false;	// the disc itself was asked
+	bool serialPending = false;	// and, being on a share, has not answered yet
 	bool known = false;
 	gamedb::Info info;
 	history::Entry played;
@@ -2132,18 +2144,94 @@ const std::string& detailsDiscPath()
 			: det.game.discs[(size_t)std::clamp(det.disc, 0, (int)det.game.discs.size() - 1)];
 }
 
+// A disc on a network share is asked for its serial on a thread of its own.
+// The share may have to be connected first, or a NAS woken, which takes
+// seconds, and the screen does not wait for that: it says the disc is being
+// read and goes on. One disc at a time; an answer for a disc nobody asks
+// about any more is dropped and the disc asked about now is read instead.
+struct SerialReader
+{
+	std::mutex mutex;
+	std::thread thread;
+	bool running = false;
+	std::string wanted;
+	bool done = false;
+	std::string donePath, doneSerial;
+} serialReader;
+
+void serialAsk(const std::string& path)
+{
+	SerialReader& r = serialReader;
+	std::lock_guard<std::mutex> lock(r.mutex);
+	if (r.done && r.donePath == path)
+		return;		// the answer is there already
+	r.wanted = path;
+	r.done = false;
+	if (r.running)
+		return;
+	if (r.thread.joinable())
+		r.thread.join();
+	r.running = true;
+	r.thread = std::thread([] {
+		SerialReader& r = serialReader;
+		// A game being loaded into memory meanwhile is not this thread's to load.
+		smb::streamOnThisThread(true);
+		for (;;)
+		{
+			std::string path;
+			{
+				std::lock_guard<std::mutex> lock(r.mutex);
+				path = r.wanted;
+			}
+			const double began = now();
+			const std::string serial = host::readSerial(path);
+			diag::mark("details: a network disc's serial (%s) was read in %.1f s", serial.empty() ? "none" : serial.c_str(),
+					now() - began);
+			std::lock_guard<std::mutex> lock(r.mutex);
+			if (r.wanted != path)
+				continue;
+			r.donePath = path;
+			r.doneSerial = serial;
+			r.done = true;
+			r.running = false;
+			return;
+		}
+	});
+}
+
+bool serialAnswer(const std::string& path, std::string& serial)
+{
+	SerialReader& r = serialReader;
+	std::lock_guard<std::mutex> lock(r.mutex);
+	if (!r.done || r.donePath != path)
+		return false;
+	serial = r.doneSerial;
+	return true;
+}
+
 // The serial decides what the database, the settings and the cheats are
-// about. `ask` reads the disc when nothing quicker knows it.
+// about. `ask` reads the disc when nothing quicker knows it: at once from the
+// title's own folders, and from a share in the background (detailsPage takes
+// the answer when it comes).
 void detailsSerial(bool ask)
 {
 	if (det.serial.empty() && !det.serialRead)
 		det.serial = quickSerial(det.game, det.disc);
 	if (ask && !det.serialRead)
 	{
-		det.serialRead = true;
-		const std::string read = host::readSerial(detailsDiscPath());
-		if (!read.empty())
-			det.serial = read;
+		const std::string path = detailsDiscPath();
+		if (smb::isNetworkPath(path))
+		{
+			serialAsk(path);
+			det.serialPending = true;
+		}
+		else
+		{
+			det.serialRead = true;
+			const std::string read = host::readSerial(path);
+			if (!read.empty())
+				det.serial = read;
+		}
 	}
 	gamedb::Info info;
 	det.known = !det.serial.empty() && gamedb::find(det.serial, info);
@@ -2219,6 +2307,19 @@ void detailsPage(Frame& f)
 	const float W = unitsWide(), H = unitsHigh();
 	const library::Game& game = det.game;
 	const int discs = (int)game.discs.size();
+	// A disc on a share that was asked for its serial has answered.
+	if (det.serialPending)
+	{
+		std::string read;
+		if (serialAnswer(detailsDiscPath(), read))
+		{
+			det.serialPending = false;
+			det.serialRead = true;
+			if (!read.empty())
+				det.serial = read;
+			detailsSerial(false);
+		}
+	}
 	const float open = motion() == MotionOff ? 1.f : std::clamp((float)((clock() - f.opened) / 0.18), 0.f, 1.f);
 	const float ease = 1.f - (1.f - open) * (1.f - open);
 
@@ -2248,7 +2349,8 @@ void detailsPage(Frame& f)
 		textFit(at(cx + 150, ly), px(cs - 150), t.dim, value, Body, 20);
 		ly += 34;
 	};
-	fact(icon::Disc, "ID", det.serial.empty() ? (det.serialRead ? "None on the disc" : "") : det.serial);
+	fact(icon::Disc, "ID", !det.serial.empty() ? det.serial : det.serialPending ? "Reading the disc\xe2\x80\xa6"
+			: det.serialRead ? "None on the disc" : "");
 	fact(icon::Clock, "Played", playedText(det.played.seconds));
 	fact(icon::Play, "Last", agoText(det.played.lastPlayed));
 	fact(icon::Drive, "Size", sizeText(game.size));
@@ -2363,6 +2465,7 @@ void detailsPage(Frame& f)
 			det.disc = (det.disc + 1) % discs;
 			det.serial.clear();
 			det.serialRead = false;
+			det.serialPending = false;
 			deferred = [] { detailsSerial(!smb::isNetworkPath(detailsDiscPath())); };
 		}
 		else if (hit(confirmButton) && enabled[det.action])
@@ -2400,6 +2503,7 @@ void detailsPage(Frame& f)
 
 	std::vector<Item> items;
 	std::string nothing;
+	bool reading = false;
 	if (f.a == TabStates)
 	{
 		for (const auto& [slot, when] : states)
@@ -2415,6 +2519,15 @@ void detailsPage(Frame& f)
 		Item fresh = action(icon::Play, "From the beginning", "", [game, disc] { launch(game, FromBeginning, disc); });
 		fresh.confirmHint = "Play";
 		items.push_back(std::move(fresh));
+	}
+	else if (det.serial.empty() && det.serialPending)
+	{
+		// Not known yet: the share is being asked, and may take its time.
+		const smb::Status status = smb::status();
+		nothing = status.waiting ? status.text + "." : "Reading the disc's serial number from the network share\xe2\x80\xa6";
+		nothing += "\n\nThis game's own settings and its cheats are kept by that number. It is read once: after the "
+				"game has been played, it is known.";
+		reading = true;
 	}
 	else if (det.serial.empty())
 		nothing = "This disc has no serial number that could be read (a PlayStation program, or an image that did "
@@ -2444,7 +2557,9 @@ void detailsPage(Frame& f)
 
 	if (!nothing.empty())
 	{
-		textWrapped(at(tx, listTop + 8), px(tw), t.dim, nothing, Body, 24);
+		const float used = toUnits(textWrapped(at(tx, listTop + 8), px(tw), t.dim, nothing, Body, 24));
+		if (reading)
+			progressBar(at(tx, listTop + 8 + used + 24), at(tx + std::min(tw, 520.f), listTop + 8 + used + 36), -1.f);
 		hintBar({ { cancelButton, "Back" } });
 	}
 	else
@@ -2471,36 +2586,142 @@ void detailsPage(Frame& f)
 	}
 }
 
+// A game on the network is being made ready: read into memory, or its files
+// checked. The swan leaves its box in the header for the bar, flies along
+// over where the reading has got to, and when the game is ready flies at the
+// screen as it does for any game; then the emulator starts it. What is being
+// done, how fast and how long it will take are under the bar, where the swan
+// never is.
+struct LoadingState
+{
+	double readyAt = -1;			// when the reading ended, by the animations' clock
+	bool ready = false, failed = false;
+	float shown = 0;				// where the swan is along the bar
+	// How fast the reading goes: bytes and the real time they were seen at.
+	double sampleAt = 0;
+	uint64_t sampleDone = 0;
+	double speed = 0;				// bytes a second, smoothed
+} loadingState;
+
+void loadingBegin()
+{
+	loadingState = LoadingState();
+}
+
 void loadingPage(Frame& f)
 {
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
+	const bool flies = motion() == MotionFull;
 	const smb::Status status = smb::status();
-	const float w = 900, h = 250;
-	const float x0 = (W - w) * 0.5f, y0 = (H - h) * 0.5f;
-	panel(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(24, 30, 48, 250), 20);
-	textFit(at(x0 + 44, y0 + 36), px(w - 88), t.text, f.s2, Bold, 32);
-	const std::string line = !status.text.empty() ? status.text
-			: options::frontend().ramCache ? "Opening the game on the network share" : "Checking the game's files";
-	text(at(x0 + 44, y0 + 100), t.dim, line, Body, 24);
-	progressBar(at(x0 + 44, y0 + 160), at(x0 + w - 44, y0 + 176), status.progress);
-	if (motion() == MotionFull)
-	{
-		// The swan flies along the bar, over where the reading has got to.
-		const float fraction = std::clamp(status.progress, 0.f, 1.f);
-		const float size = px(96);
-		const float cx = px(x0 + 44) + (px(w - 88)) * fraction;
-		const float cy = px(y0 + 122) + std::sin((float)clock() * 2.3f) * px(4);
-		SwanPose pose;
-		pose.fly = 1;
-		pose.face = -1;
-		pose.beat = (float)clock() * 6.2832f * 2.6f;
-		pose.tilt = -0.06f;
-		swan(ImVec2(cx - size * 0.5f, cy - size * 0.62f), size, pose);
-	}
-	hintBar({ { cancelButton, "Cancel" } });
-
 	const int state = smb::precacheState();
+	LoadingState& l = loadingState;
+	if (state != smb::PrecacheRunning && l.readyAt < 0)
+	{
+		l.readyAt = clock();
+		l.ready = state == smb::PrecacheDone;
+		l.failed = !l.ready;
+	}
+	// Once it is ready the bar stays full: the reading's own figures are gone.
+	const float fraction = l.ready ? 1.f : status.progress;
+	const float leaving = l.ready ? std::clamp((float)((clock() - l.readyAt) / (flies ? 0.95 : 0.10)), 0.f, 1.f) : 0.f;
+
+	// The speed, from what arrived over the last half second and more.
+	const double time = now();
+	if (status.total != 0 && !l.ready)
+	{
+		if (l.sampleAt == 0 || status.done < l.sampleDone)
+		{
+			l.sampleAt = time;
+			l.sampleDone = status.done;
+		}
+		else if (time - l.sampleAt >= 0.5)
+		{
+			const double rate = (double)(status.done - l.sampleDone) / (time - l.sampleAt);
+			l.speed = l.speed <= 0 ? rate : l.speed * 0.6 + rate * 0.4;
+			l.sampleAt = time;
+			l.sampleDone = status.done;
+		}
+	}
+
+	headerSwanAway = flies;
+	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(4, 6, 12, 150));
+	const float w = 960, h = flies ? 340 : 240;
+	const float x0 = (W - w) * 0.5f, y0 = (H - h) * 0.5f;
+	const float left = x0 + 48, right = x0 + w - 48;
+	const float barY = y0 + h - 118;
+	draw()->AddRectFilled(at(x0 - 6, y0 - 4), at(x0 + w + 6, y0 + h + 12), IM_COL32(0, 0, 0, 70), px(26));
+	panel(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(24, 30, 48, 252), 20);
+	outline(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(255, 255, 255, 22), 20, 1.5f);
+	// The game's name, and how far it is.
+	textFit(at(left, y0 + 36), px(right - left - 130), t.text, f.s2, Bold, 32);
+	if (fraction >= 0)
+		textRight(at(right, y0 + 36), t.accent, format("%d%%", (int)(fraction * 100.f)), Bold, 32);
+	progressBar(at(left, barY), at(right, barY + 16), fraction);
+	// Under the bar: what is being done; how fast, and how long still.
+	std::string doing;
+	if (l.ready)
+		doing = "Starting the game";
+	else if (status.waiting)
+		doing = status.text;
+	else if (status.total != 0)
+		doing = format("Loading into memory   %u of %u MB", (unsigned)(status.done >> 20), (unsigned)(status.total >> 20));
+	else
+		doing = options::frontend().ramCache ? "Opening the game on the network share" : "Checking the game's files";
+	text(at(left, barY + 38), l.ready ? t.text : t.dim, doing, Body, 24);
+	if (!l.ready && !status.waiting && status.total != 0 && l.speed > 64 * 1024)
+	{
+		const double seconds = (double)(status.total - status.done) / l.speed;
+		const std::string remaining = seconds < 1.5 ? std::string("a moment")
+				: seconds < 90 ? format("%d s", (int)std::lround(seconds)) : format("%d min", (int)std::lround(seconds / 60.0));
+		textRight(at(right, barY + 40), t.faint, format("%.0f MB/s  \xc2\xb7  %s left", l.speed / (1 << 20),
+				remaining.c_str()), Body, 22);
+	}
+
+	if (flies)
+	{
+		// Along the bar it keeps a lane of its own, over the bar and under the name.
+		const float target = fraction >= 0 ? fraction : 0.f;
+		l.shown = l.ready ? 1.f : approach(l.shown, target, 7.f);
+		const float lane = px(88);
+		const ImVec2 onBar(px(left) + px(right - left) * l.shown,
+				px(barY - 56) + std::sin((float)clock() * 2.3f) * px(4));
+		// From its box in the header to the bar, as the page opens.
+		ImVec2 headerA, headerB, from;
+		float fromSize = 0;
+		headerBox(headerA, headerB);
+		swanPlace(headerA, headerB, from, fromSize);
+		const float arrive = glide((float)((clock() - f.opened) / 0.60));
+		const ImVec2 box(from.x + fromSize * 0.5f, from.y + fromSize * 0.5f);
+		ImVec2 c(box.x + (onBar.x - box.x) * arrive, box.y + (onBar.y - box.y) * arrive - std::sin(arrive * 3.14159f) * px(60));
+		float size = fromSize + (lane - fromSize) * arrive;
+		SwanPose pose;
+		pose.fly = smooth(arrive / 0.25f);
+		pose.face = 1.f - 2.f * smooth(arrive / 0.30f);		// it turns to fly to the right
+		pose.beat = (float)clock() * 6.2832f * 2.6f;
+		pose.tilt = -0.06f * pose.fly;
+		if (leaving > 0)
+		{
+			// Ready: larger and larger, towards the middle of the screen.
+			const float go = smooth(leaving);
+			const float grow = go * go * go;
+			size = lane * std::pow(height() * 4.2f / lane, grow);
+			const ImVec2 middle(width() * 0.50f, height() * 0.47f);
+			const float along = smooth(go * 1.15f);
+			c = ImVec2(onBar.x + (middle.x - onBar.x) * along,
+					onBar.y + (middle.y - onBar.y) * along - std::sin(along * 3.14159f) * height() * 0.05f);
+			pose.beat = (float)clock() * 6.2832f * 3.4f;
+			pose.tilt = -0.20f * (1.f - go);
+		}
+		swan(ImVec2(c.x - size * 0.5f, c.y - size * 0.5f), size, pose);
+		// The dark comes over it at the end, as when any game starts.
+		const float dark = smooth((leaving - 0.62f) / 0.38f);
+		if (dark > 0)
+			draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, (int)(255 * dark)));
+	}
+	if (!l.ready && !l.failed)
+		hintBar({ { cancelButton, "Cancel" } });
+
 	if (state == smb::PrecacheRunning)
 	{
 		if (hit(cancelButton))
@@ -2509,12 +2730,17 @@ void loadingPage(Frame& f)
 		return;
 	}
 	consumeInput();
+	// Ready: the frame that says so is on the screen before the emulator
+	// starts the game, which takes a moment in which nothing is drawn.
+	if (l.ready && leaving < 1.f)
+		return;
 	const int slot = f.a, disc = f.b;
-	const bool ok = state == smb::PrecacheDone;
+	const bool ok = l.ready;
 	deferred = [slot, disc, ok] {
 		const std::string error = smb::lastError();
 		smb::finishPrecache();
 		pop();
+		headerSwanAway = false;
 		if (ok)
 			begin(chosen, slot, disc);
 		else if (!error.empty())
@@ -2989,7 +3215,7 @@ void frame()
 		const Page page = f.page;
 		if (game)
 			drawGame(0.72f);
-		else if (page == Page::Details || page == Page::Launch)
+		else if (page == Page::Details || page == Page::Launch || page == Page::Loading)
 		{
 			libraryBehind = true;
 			libraryPage(false);

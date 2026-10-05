@@ -112,6 +112,9 @@ std::atomic<bool> loading{false};		// a network game is being loaded
 std::atomic<bool> cancelled{false};		// and the user gave up
 std::atomic<u64> ramTotal{0};			// the file being read into memory; 0 when none
 std::atomic<u64> ramDone{0};
+std::atomic<u64> gameTotal{0};			// all the files of the game being read into memory
+std::atomic<u64> gameDone{0};
+thread_local bool streamOnly;			// this thread's files are not read into memory
 std::atomic<u64> ramInUse{0};			// all files in memory
 std::atomic<int> busyDepth{0};			// requests in flight
 std::atomic<long long> busySince{0};	// when the oldest started, in ms; 0 when none
@@ -345,6 +348,11 @@ struct Share
 		if (stopping() || (failedAt != 0 && nowMs() - failedAt < RetrySeconds * 1000))
 			return false;
 		Busy busy;
+#if defined(SWANSTATION_HOST)
+		// A test can have the share take its time, as a NAS waking its disks does.
+		if (const char *wait = getenv("SWANSTATION_NET_WAKE_MS"))
+			std::this_thread::sleep_for(std::chrono::milliseconds(atoi(wait)));
+#endif
 		const Probe answer = probe(server, 445, "smb");
 		if (answer == Probe::Cancelled)
 			return false;
@@ -599,6 +607,7 @@ std::shared_ptr<RamImage> loadImage(const std::string& path, File& from, bool& s
 	const u64 bytes = (u64)from.size();
 	if (ramInUse.load() + bytes > RamBudget)
 	{
+		gameDone += bytes;		// it is streamed: nothing more of it is waited for
 		diag::mark("share: %s (%llu MB) is streamed: more than %llu MB would be in memory", name.c_str(),
 				(unsigned long long)(bytes >> 20), (unsigned long long)(RamBudget >> 20));
 		return nullptr;
@@ -613,6 +622,7 @@ std::shared_ptr<RamImage> loadImage(const std::string& path, File& from, bool& s
 		{
 			diag::mark("share: %s (%llu MB) is streamed: not enough memory", name.c_str(),
 					(unsigned long long)(bytes >> 20));
+			gameDone += bytes;
 			return nullptr;
 		}
 		image->blocks.push_back(block);
@@ -641,8 +651,14 @@ std::shared_ptr<RamImage> loadImage(const std::string& path, File& from, bool& s
 			break;
 		}
 		done += n;
+		gameDone += n;
 		if (shown)
 			ramDone = done;
+#if defined(SWANSTATION_HOST)
+		// And be as slow as a real network: a wait for each piece read.
+		if (const char *wait = getenv("SWANSTATION_NET_PIECE_MS"))
+			std::this_thread::sleep_for(std::chrono::milliseconds(atoi(wait)));
+#endif
 	}
 	if (shown)
 		ramTotal = 0;
@@ -857,7 +873,7 @@ File *open(const std::string& path)
 	if (stopping())
 		return nullptr;
 	File *file = onFtp ? ftp::openStream(path) : openStream(share, relative);
-	if (file == nullptr || !loading || !options::frontend().ramCache || file->size() == 0)
+	if (file == nullptr || !loading || streamOnly || !options::frontend().ramCache || file->size() == 0)
 		return file;
 	// A game is being loaded into memory: this file, whole, now. The share's
 	// lock is taken for each piece, not for the whole file.
@@ -1007,12 +1023,30 @@ void retryNow()
 	}
 }
 
+void streamOnThisThread(bool only)
+{
+	streamOnly = only;
+}
+
+void setLoadTotal(uint64_t bytes)
+{
+	gameDone = 0;
+	gameTotal = bytes;
+}
+
+void clearLoad()
+{
+	gameTotal = 0;
+	gameDone = 0;
+}
+
 void beginLoad()
 {
 	retryNow();
 	cancelled = false;
 	ramTotal = 0;
 	ramDone = 0;
+	clearLoad();
 	loading = true;
 	diag::mark("share: a network game is starting (%s)", options::frontend().ramCache ? "read into memory" : "streamed");
 }
@@ -1043,9 +1077,17 @@ void releaseImages()
 Status status()
 {
 	Status current;
-	const u64 total = ramTotal.load(), done = ramDone.load();
+	// The whole game when its size is known; else the file being read.
+	const bool whole = gameTotal.load() != 0;
+	const u64 total = whole ? gameTotal.load() : ramTotal.load();
+	const u64 done = std::min(whole ? gameDone.load() : ramDone.load(), total);
 	if (total != 0)
 		current.progress = std::clamp((float)((double)done / (double)total), 0.f, 1.f);
+	if (whole)
+	{
+		current.done = done;
+		current.total = total;
+	}
 	const long long since = busySince.load();
 	const long long waited = since != 0 ? nowMs() - since : 0;
 	char text[128];
@@ -1054,6 +1096,7 @@ Status status()
 		// No answer for a while: a NAS waking its disks, or a server that is gone.
 		snprintf(text, sizeof(text), "Waiting for the network share (%d s)", (int)(waited / 1000));
 		current.text = text;
+		current.waiting = true;
 	}
 	else if (total != 0)
 	{

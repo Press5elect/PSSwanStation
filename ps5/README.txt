@@ -91,6 +91,12 @@ four things to do:
   Options       the emulator's settings for this game alone
   Cheats        its cheats and patches, to switch on before it starts
 
+A game's settings and cheats are kept by its disc's serial number. For a game
+on the network that has not been played yet, that number is read from the
+share the first time Options or Cheats is opened; the screen says so while
+the share answers (a NAS whose disks sleep takes a few seconds) and can be
+left with Circle meanwhile.
+
 USB: off until "USB drives" is switched on in Settings, Games and network; it
 takes effect at the next start and needs the ELF loader listening on port
 9021. Games are read from a folder named psx, ps1 or playstation at the top
@@ -195,7 +201,9 @@ When something goes wrong
 /data/homebrew/PPSA99248/psswanstation-boot.log is written from the first
 moment of every start (the two starts before it are kept as .1.log and
 .2.log); a crash writes its report there. logs/psswanstation.log is the
-emulator's own log. Those two files say what happened.
+emulator's own log. Those two files say what happened. If the picture ever
+stands still, the first one has a line saying when and for how long ("the
+screen stood still for ..."), after the lines that say what was being done.
 
   The screen stays black after the icon is chosen: look at
   psswanstation-boot.log; if there is none, the title did not start at all

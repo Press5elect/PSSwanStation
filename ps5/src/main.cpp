@@ -25,7 +25,7 @@ namespace fe
 
 std::string rootDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 7;
+const int BuildNumber = 8;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 
@@ -215,8 +215,15 @@ int main(int, char **)
 		diag::mark("main: the test game did not start: %s", host::lastError().c_str());
 #endif
 
+	// A frame that takes long is a screen that stood still: the log says when
+	// and for how long, and the marks before it say what was being done.
+	double frameBegan = now();
 	while (!ui::quitRequested())
 	{
+		const double time = now();
+		if (time - frameBegan > 0.75)
+			diag::mark("main: the screen stood still for %.1f s", time - frameBegan);
+		frameBegan = time;
 		platform::padPoll();
 		if (!display::beginFrame())
 		{

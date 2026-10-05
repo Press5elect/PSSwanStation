@@ -682,6 +682,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	stop();
 	errorText.clear();
 	diag::mark("game: starting %s", path.empty() ? "(the BIOS)" : path.c_str());
+	const double startBegan = now();
 
 	current = GameInfo();
 	current.path = path;
@@ -738,8 +739,9 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	retro_get_system_av_info(&av);
 	firstDiscSerial = System::GetRunningCode();
 	current.serial = traySerial();
-	diag::mark("game: running, serial %s, disc %d of %d, %.2f fps, %u x %u", current.serial.c_str(), discIndex() + 1,
-			std::max(discCount(), 1), av.timing.fps, av.geometry.base_width, av.geometry.base_height);
+	diag::mark("game: running, serial %s, disc %d of %d, %.2f fps, %u x %u; the start took %.1f s", current.serial.c_str(),
+			discIndex() + 1, std::max(discCount(), 1), av.timing.fps, av.geometry.base_width, av.geometry.base_height,
+			now() - startBegan);
 	rememberSerial(path, current.serial);
 	if (!path.empty())
 	{

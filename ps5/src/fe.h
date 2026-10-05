@@ -375,6 +375,10 @@ int stat(const std::string& path, Entry& entry);
 // A network game is about to be loaded: until endLoad(), with "load into
 // memory" on, each file opened is read whole into memory.
 void beginLoad();
+// How much the game being loaded into memory is, all its files together:
+// status() then counts through the whole of it. Kept until clearLoad().
+void setLoadTotal(uint64_t bytes);
+void clearLoad();
 void endLoad();
 void cancelLoad();
 void retryNow();
@@ -394,7 +398,13 @@ struct Status
 {
 	std::string text;
 	float progress = -1.f;
+	// The game being read into memory, all its files together: 0 when none is.
+	uint64_t done = 0, total = 0;
+	bool waiting = false;		// the server has not answered for a while
 };
+// The calling thread's files are never read into memory (it only looks at a
+// disc while something else may be loading one).
+void streamOnThisThread(bool only);
 Status status();
 unsigned failures();
 std::string lastError();

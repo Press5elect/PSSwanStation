@@ -283,6 +283,20 @@ void startPrecache(const std::string& gamePath)
 		beginLoad();
 		std::vector<std::string> files;
 		collect(gamePath, files, 0);
+		// How much there is to read, so the screen counts through the game
+		// and not through each of its files in turn.
+		if (options::frontend().ramCache)
+		{
+			uint64_t total = 0;
+			for (const std::string& path : files)
+			{
+				Entry entry;
+				if (stat(path, entry) == 1 && !entry.directory)
+					total += entry.size;
+			}
+			if (total >= (1u << 20))
+				setLoadTotal(total);
+		}
 		bool ok = true;
 		for (const std::string& path : files)
 		{
@@ -314,6 +328,7 @@ void finishPrecache()
 	if (precacheThread.joinable())
 		precacheThread.join();
 	precache = PrecacheIdle;
+	clearLoad();
 }
 
 }
