@@ -32,6 +32,7 @@ struct Step
 	uint64_t hold;
 	std::string shot;
 	float lx = 0, ly = 0;
+	int pad = 0;		// "2:cross" is the second player's
 };
 std::vector<Step> script;
 Pad pads[MaxPads];
@@ -85,6 +86,11 @@ void earlyInit()
 				}
 				else
 				{
+					if (what.size() > 2 && what[1] == ':' && what[0] >= '1' && what[0] <= '0' + MaxPads)
+					{
+						step.pad = what[0] - '1';
+						what = what.substr(2);
+					}
 					std::istringstream parts(what);
 					std::string part;
 					while (std::getline(parts, part, '+'))
@@ -113,9 +119,13 @@ void lateInit()
 void padPoll()
 {
 	const uint64_t frame = display::frameCount();
-	uint32_t buttons = 0;
+	uint32_t held[MaxPads] = {};
+	bool present[MaxPads] = { true };
 	for (const Step& step : script)
 	{
+		// A pad the script names is connected from its first step on.
+		if (step.shot.empty() && frame + 60 >= step.frame)
+			present[step.pad] = true;
 		if (!step.shot.empty())
 		{
 			if (step.frame == frame)
@@ -126,14 +136,17 @@ void padPoll()
 			continue;
 		}
 		if (frame >= step.frame && frame < step.frame + step.hold)
-			buttons |= step.buttons;
+			held[step.pad] |= step.buttons;
 	}
-	Pad& pad = pads[0];
-	const uint32_t before = pad.buttons;
-	pad.connected = true;
-	pad.buttons = buttons;
-	pad.pressed = buttons & ~before;
-	pad.released = before & ~buttons;
+	for (int i = 0; i < MaxPads; i++)
+	{
+		Pad& pad = pads[i];
+		const uint32_t before = pad.buttons;
+		pad.connected = present[i];
+		pad.buttons = held[i];
+		pad.pressed = held[i] & ~before;
+		pad.released = before & ~held[i];
+	}
 }
 
 const Pad& pad(int index)
@@ -144,7 +157,10 @@ const Pad& pad(int index)
 
 int padCount()
 {
-	return 1;
+	int n = 0;
+	for (const Pad& pad : pads)
+		n += pad.connected;
+	return n;
 }
 
 void padRumble(int, float, float)

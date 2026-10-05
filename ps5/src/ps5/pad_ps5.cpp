@@ -9,6 +9,10 @@
 	flag at 0x4c, and scePadSetVibrationMode(2) before rumble (a PS5 title's pad
 	starts in haptics mode).
 
+	Who is logged in is looked at again every two seconds, for a user who logs
+	in or out while the title runs (as the earlier DuckStation build for this
+	console did): players 2 to 4 are the other users, each with their pad.
+
 	The touch pad is two buttons here: a click with the finger on its left half
 	is the PlayStation's Select, on its right half Start. The state carries the
 	touch points (their count at 0x34, the first one's x at 0x3c, 0 to 1919
@@ -101,6 +105,7 @@ struct Device
 std::array<Device, MaxPads> devices;
 std::array<Pad, MaxPads> pads;
 bool opened;
+int32_t firstUser = -1;		// who started the title: player 1
 
 int32_t openPad(int32_t user)
 {
@@ -138,17 +143,78 @@ void openAll()
 			std::swap(users[0], users[i]);
 	if (users[0] == -1)
 		users[0] = initialUser;
-	for (int i = 0; i < MaxPads; i++)
+	firstUser = users[0];
+	// The others follow, one place each with no gaps: a user whose pad does
+	// not open now is looked for again later (lookForUsers).
+	int place = 0;
+	for (int i = 0; i < 4 && place < MaxPads; i++)
 	{
 		if (users[i] == -1)
 			continue;
 		const int32_t handle = openPad(users[i]);
-		diag::mark("pad: %d: user %d handle %d", i + 1, users[i], handle);
+		diag::mark("pad: %d: user %d handle %d", place + 1, users[i], handle);
+		if (handle < 0)
+		{
+			// Player 1's place is kept for whoever started the title.
+			if (i == 0)
+				place++;
+			continue;
+		}
+		scePadSetVibrationMode(handle, 2);	// rumble, not haptics
+		devices[place].user = users[i];
+		devices[place].handle = handle;
+		place++;
+	}
+}
+
+// Who is logged in now: a user who left gives the place up, a user who came
+// takes the first free one. Nobody moves: a player keeps the number they have.
+void lookForUsers()
+{
+	int32_t users[4] = { -1, -1, -1, -1 };
+	if (sceUserServiceGetLoginUserIdList(users) < 0)
+		return;
+	for (int i = 0; i < MaxPads; i++)
+	{
+		Device& device = devices[i];
+		// Whoever started the title stays player 1 whatever the list says.
+		if (device.user == -1 || device.user == firstUser)
+			continue;
+		bool here = false;
+		for (const int32_t user : users)
+			here = here || user == device.user;
+		if (here)
+			continue;
+		diag::mark("pad: %d: user %d logged out", i + 1, device.user);
+		if (device.handle >= 0)
+			scePadClose(device.handle);
+		device = Device();
+	}
+	for (const int32_t user : users)
+	{
+		if (user == -1)
+			continue;
+		int place = -1;
+		bool has = false;
+		for (int i = MaxPads - 1; i >= 0; i--)
+		{
+			has = has || devices[i].user == user;
+			// Place 1 is only ever the first user's.
+			if (devices[i].user == -1 && (i > 0 || user == firstUser))
+				place = i;
+		}
+		if (has || place < 0)
+			continue;
+		// Once: the pad service is running by now, and this is the frame's thread.
+		int32_t handle = scePadOpen(user, 0, 0, nullptr);
+		if (handle < 0)
+			handle = scePadGetHandle(user, 0, 0);
 		if (handle < 0)
 			continue;
-		scePadSetVibrationMode(handle, 2);	// rumble, not haptics
-		devices[i].user = users[i];
-		devices[i].handle = handle;
+		scePadSetVibrationMode(handle, 2);
+		devices[place].user = user;
+		devices[place].handle = handle;
+		diag::mark("pad: %d: user %d logged in, handle %d", place + 1, user, handle);
 	}
 }
 
@@ -181,6 +247,9 @@ void padOpen()
 void padPoll()
 {
 	openAll();
+	static unsigned polls;
+	if (++polls % 120 == 0)
+		lookForUsers();
 	for (int i = 0; i < MaxPads; i++)
 	{
 		Device& device = devices[i];

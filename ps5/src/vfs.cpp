@@ -298,7 +298,7 @@ void startPrecache(const std::string& gamePath)
 		endLoad();
 		if (!ok)
 			releaseImages();
-		diag::mark("smb: %d file(s) for %s: %s", (int)files.size(), baseName(gamePath).c_str(),
+		diag::mark("share: %d file(s) for %s: %s", (int)files.size(), baseName(gamePath).c_str(),
 				ok ? "ready" : wasCancelled ? "cancelled" : "failed");
 		precache = ok ? PrecacheDone : PrecacheFailed;
 	});

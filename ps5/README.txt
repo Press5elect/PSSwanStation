@@ -27,7 +27,7 @@ Where things go (all inside /data/homebrew/PPSA99248/)
   bios/         optional BIOS files of an original console
   covers/       cover pictures, named as the game's file: <name>.png or .jpg
   cheats/       your own cheat files, <serial>.cht (SLUS-00594.cht)
-  network.cfg   the network share to read games from
+  network.cfg   the network share or FTP server to read games from
   data/         memory cards (data/saves), save states, settings: written by
                 the title
   logs/         the emulator's log of the last two runs
@@ -59,6 +59,8 @@ In the menus
 
 In a game
   The DualSense is the PlayStation controller, button for button.
+  Players 2 to 4 are the other users logged in on the console, each with
+  their own controller (see "More players" below).
   Touch pad, left half   SELECT   (press the pad down)
   Touch pad, right half  START
   OPTIONS                SwanStation's menu: save and load states, change
@@ -93,12 +95,22 @@ takes effect at the next start and needs the ELF loader listening on port
 9021. Games are read from a folder named psx, ps1 or playstation at the top
 of the drive.
 
-Network (SMB, Windows sharing): name the share in network.cfg, for example
+Network: an SMB share (Windows sharing) or an FTP server, or several of
+either. Name each folder in network.cfg with a "path" line, for example
   path = 192.168.1.10/Games/PSX
-with the server by its IP address, and restart SwanStation. The share is
-scanned at that start and again with Square; the list is kept, so later
-starts show it without asking the share. If the share does not answer, the
-library's bottom line says so and there is no Network tab. A network game is read into memory before it starts ("Load network games into
+  path = ftp://192.168.1.10/games/psx
+with the server by its IP address, and restart SwanStation. An FTP server on
+another port is ftp://192.168.1.10:2121/games; one with an account of its
+own is ftp://user:password@192.168.1.10/games (otherwise the "user" and
+"password" lines are used, and guest with no password logs in to an FTP
+server as anonymous). FTP is plain FTP, in passive mode: the password
+crosses your network unhidden, as FTP sends it.
+
+The folders are scanned at that start and again with Square; the list is
+kept, so later starts show it without asking the server (it is made again
+when network.cfg names other folders). If a server does not answer, the
+library's bottom line says so; with no games found there is no Network tab.
+A network game is read into memory before it starts ("Load network games into
 memory"; switch it off to start at once and read while playing).
 
 Covers: a cover is looked for in covers/ by the game's file name. With
@@ -117,6 +129,15 @@ A game's own settings are in its details (Options) and, while it runs, in
 the menu: "Settings" changes them for every game, "Game settings" for this
 game only. A dot marks a value that is the game's own; Square gives it back
 to the general value.
+
+More players: player 1 is whoever started SwanStation. A second person
+presses the PS button on their controller and chooses a user; they are
+player 2, in port 2, within a couple of seconds, with no restart. For three
+or four, switch the Multitap on (Settings, Controllers): "In port 1" puts all
+four on it, which is what most four-player games expect; "In port 2" leaves
+player 1 in port 1. Leave it off otherwise: some games for one or two do not
+see a controller behind a multitap. Each player's controller type is set on
+the same page, where the first line shows who is connected.
 
 The swan: with Animations (Interface) on Full, SwanStation opens with its
 head coming up in the bottom right corner and paddling along the bottom of

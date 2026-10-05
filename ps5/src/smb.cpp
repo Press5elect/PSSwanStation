@@ -1,5 +1,6 @@
 /*
-	SwanStation for PS5 - games on a network share (SMB).
+	SwanStation for PS5 - games on a network share (SMB), and what every
+	network source goes through (an FTP server is ftp.cpp's).
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5/ps5_smb.cpp)
 	SPDX-License-Identifier: GPL-2.0-or-later
@@ -49,6 +50,7 @@
 	              new connection.
 */
 #include "fe.h"
+#include "net.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -89,10 +91,8 @@ using s64 = int64_t;
 namespace
 {
 
-constexpr int ProbeSeconds = 5;			// for the server's port to accept a connection
-constexpr int RequestSeconds = 60;		// for each request: a NAS waking its disks
-constexpr int RetrySeconds = 30;		// before a share that failed is tried again
-constexpr size_t StreamBuffer = 256 * 1024;
+using namespace net;
+
 constexpr size_t RamBlock = 16u << 20;	// a file in memory is made of these
 constexpr size_t RamPiece = 4u << 20;	// read at a time; the cancel flag is looked at between two
 constexpr u64 RamBudget = (u64)3 << 30;	// for all files in memory together
@@ -104,7 +104,7 @@ struct Account
 	std::string domain;
 };
 Account account;
-std::vector<std::string> folders;	// smb://server/share/folder, from network.cfg
+std::vector<std::string> folders;	// smb://server/share/folder and ftp://server/folder, from network.cfg
 
 // ---------------------------------------------------- what the share is doing
 
@@ -119,31 +119,33 @@ std::atomic<unsigned> failureCount{0};
 std::mutex errorMutex;
 std::string errorText;
 
+} // namespace
+
+namespace net
+{
+
 long long nowMs()
 {
 	using namespace std::chrono;
 	return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-// Around every request to a server.
-struct Busy
+Busy::Busy()
 {
-	Busy()
-	{
-		if (busyDepth.fetch_add(1) == 0)
-			busySince = nowMs();
-	}
-	~Busy()
-	{
-		if (busyDepth.fetch_sub(1) == 1)
-			busySince = 0;
-	}
-	// The server answered and the next request follows at once.
-	void answered()
-	{
+	if (busyDepth.fetch_add(1) == 0)
 		busySince = nowMs();
-	}
-};
+}
+
+Busy::~Busy()
+{
+	if (busyDepth.fetch_sub(1) == 1)
+		busySince = 0;
+}
+
+void Busy::answered()
+{
+	busySince = nowMs();
+}
 
 // The share answers, but not with what was asked for (a folder that cannot be
 // listed): said on the screen and in the log.
@@ -153,7 +155,7 @@ void note(const std::string& text)
 		std::lock_guard<std::mutex> lock(errorMutex);
 		errorText = text;
 	}
-	diag::mark("smb: %s", text.c_str());
+	diag::mark("share: %s", text.c_str());
 }
 
 // The share could not be reached, or stopped answering: counted, so that a
@@ -177,16 +179,8 @@ std::string stripped(std::string text)
 	return text;
 }
 
-// Whether the server accepts a connection on the SMB port.
-enum class Probe
+namespace
 {
-	Open,
-	Closed,		// refused, unreachable, or no answer in the time given
-	Unknown,	// could not tell (no socket, an error that says nothing): libsmb2 finds out
-	Cancelled,
-	NoName,		// the server is given by name, which the console cannot look up
-};
-
 // A connection tried on a thread of its own. Non-blocking sockets did not
 // work on the console (see the top of this file), so the connect blocks, for
 // as long as the system lets it when nothing answers, and the caller waits
@@ -257,6 +251,14 @@ std::shared_ptr<ConnectAttempt> startConnect(const sockaddr_in& address)
 	return attempt;
 }
 
+} // namespace
+
+std::string lastComponent(const std::string& path)
+{
+	const size_t slash = path.find_last_of('/');
+	return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
 bool numericAddress(const std::string& server, int port, sockaddr_in& address)
 {
 	address = sockaddr_in{};
@@ -270,10 +272,10 @@ bool numericAddress(const std::string& server, int port, sockaddr_in& address)
 	return true;
 }
 
-Probe probe(const std::string& server)
+Probe probe(const std::string& server, int port, const char *what)
 {
 	sockaddr_in address;
-	if (!numericAddress(server, 445, address))
+	if (!numericAddress(server, port, address))
 		return Probe::NoName;
 	const std::shared_ptr<ConnectAttempt> attempt = startConnect(address);
 	const long long deadline = nowMs() + ProbeSeconds * 1000;
@@ -286,7 +288,7 @@ Probe probe(const std::string& server)
 	}
 	if (!attempt->finished)
 	{
-		diag::mark("smb: %s port 445: no answer in %d s", server.c_str(), ProbeSeconds);
+		diag::mark("%s: %s port %d: no answer in %d s", what, server.c_str(), port, ProbeSeconds);
 		return Probe::Closed;
 	}
 	// Once, for the log: how this console's sockets take fcntl.
@@ -294,17 +296,17 @@ Probe probe(const std::string& server)
 	if (!said && !attempt->noSocket)
 	{
 		said = true;
-		diag::mark("smb: sockets here: fcntl(F_GETFL) gives %#x (errno %d); F_SETFL O_NONBLOCK (%#x) gives %d (errno %d), flags then %#x",
+		diag::mark("share: sockets here: fcntl(F_GETFL) gives %#x (errno %d); F_SETFL O_NONBLOCK (%#x) gives %d (errno %d), flags then %#x",
 				attempt->fcntlResult, attempt->fcntlErrno, (int)O_NONBLOCK, attempt->setResult, attempt->setErrno,
 				attempt->flagsAfter);
 	}
 	if (attempt->error == 0)
 	{
-		diag::mark("smb: %s port 445 answers (%lld ms)", server.c_str(), attempt->tookMs);
+		diag::mark("%s: %s port %d answers (%lld ms)", what, server.c_str(), port, attempt->tookMs);
 		return Probe::Open;
 	}
-	diag::mark("smb: %s port 445: %s failed: %s (errno %d)", server.c_str(), attempt->noSocket ? "socket" : "connect",
-			strerror(attempt->error), attempt->error);
+	diag::mark("%s: %s port %d: %s failed: %s (errno %d)", what, server.c_str(), port,
+			attempt->noSocket ? "socket" : "connect", strerror(attempt->error), attempt->error);
 	if (attempt->noSocket)
 		return Probe::Unknown;
 	switch (attempt->error)
@@ -320,6 +322,11 @@ Probe probe(const std::string& server)
 		return Probe::Unknown;
 	}
 }
+
+} // namespace net
+
+namespace
+{
 
 // One share's connection. Every libsmb2 call on it holds the mutex.
 struct Share
@@ -338,7 +345,7 @@ struct Share
 		if (stopping() || (failedAt != 0 && nowMs() - failedAt < RetrySeconds * 1000))
 			return false;
 		Busy busy;
-		const Probe answer = probe(server);
+		const Probe answer = probe(server, 445, "smb");
 		if (answer == Probe::Cancelled)
 			return false;
 		if (answer == Probe::Closed)
@@ -478,21 +485,14 @@ Share *locate(const std::string& path, std::string& relative)
 	return entry.get();
 }
 
-std::string lastComponent(const std::string& path)
-{
-	const size_t slash = path.find_last_of('/');
-	return slash == std::string::npos ? path : path.substr(slash + 1);
-}
-
 // ------------------------------------------------- a file read from the share
 
-class SmbFile : public File
+class SmbFile : public StreamFile
 {
 public:
 	SmbFile(Share *share, const std::string& relative, smb2fh *handle, u64 bytes)
-		: share(share), relative(relative), handle(handle), generation(share->generation), bytes(bytes)
+		: StreamFile(bytes), share(share), relative(relative), handle(handle), generation(share->generation)
 	{
-		buffer.resize(StreamBuffer);
 	}
 
 	~SmbFile() override
@@ -502,74 +502,10 @@ public:
 			smb2_close(share->context, handle);
 	}
 
-	size_t read(void *out, size_t want) override
-	{
-		u8 *to = static_cast<u8 *>(out);
-		size_t done = 0;
-		while (want > 0)
-		{
-			if (position >= bufferStart && position < bufferStart + bufferFill)
-			{
-				const size_t offset = (size_t)(position - bufferStart);
-				const size_t n = std::min(want, bufferFill - offset);
-				memcpy(to + done, buffer.data() + offset, n);
-				done += n;
-				want -= n;
-				position += n;
-				continue;
-			}
-			if (position >= bytes)
-				break;
-			// A large read goes straight to the caller; a small one fills the buffer.
-			if (want >= buffer.size())
-			{
-				const int n = fetch(to + done, position, want);
-				if (n <= 0)
-					break;
-				done += n;
-				want -= n;
-				position += n;
-			}
-			else
-			{
-				const int n = fetch(buffer.data(), position, buffer.size());
-				if (n <= 0)
-					break;
-				bufferStart = position;
-				bufferFill = (size_t)n;
-			}
-		}
-		return done;
-	}
-
-	int64_t tell() override
-	{
-		return (s64)position;
-	}
-
-	int seek(int64_t offset, int whence) override
-	{
-		s64 target = whence == SEEK_SET ? offset : whence == SEEK_CUR ? (s64)position + offset : (s64)bytes + offset;
-		if (target < 0)
-			return -1;
-		position = (u64)target;
-		return 0;
-	}
-
-	int64_t size() override
-	{
-		return (s64)bytes;
-	}
-
-	bool failed() override
-	{
-		return hasFailed;
-	}
-
 private:
 	// Reads up to `want` bytes at `offset`, making the connection and opening
 	// the file again once if the request fails.
-	int fetch(u8 *to, u64 offset, size_t want)
+	int fetch(u8 *to, u64 offset, size_t want) override
 	{
 		std::lock_guard<std::recursive_mutex> lock(share->mutex);
 		Busy busy;
@@ -618,12 +554,6 @@ private:
 	std::string relative;
 	smb2fh *handle;
 	unsigned generation;
-	u64 bytes;
-	u64 position = 0;
-	std::vector<u8> buffer;
-	u64 bufferStart = 0;
-	size_t bufferFill = 0;
-	bool hasFailed = false;
 };
 
 // -------------------------------------------------- a file read into memory
@@ -659,7 +589,7 @@ std::shared_ptr<RamImage> findImage(const std::string& path)
 // The whole of `from` in memory, or nullptr: `stopped` says whether the read
 // failed or was cancelled (then the game cannot start); otherwise the file
 // does not fit and is to be streamed.
-std::shared_ptr<RamImage> loadImage(const std::string& path, SmbFile& from, bool& stopped)
+std::shared_ptr<RamImage> loadImage(const std::string& path, File& from, bool& stopped)
 {
 	stopped = false;
 	std::lock_guard<std::mutex> oneAtATime(imageLoadMutex);
@@ -669,7 +599,7 @@ std::shared_ptr<RamImage> loadImage(const std::string& path, SmbFile& from, bool
 	const u64 bytes = (u64)from.size();
 	if (ramInUse.load() + bytes > RamBudget)
 	{
-		diag::mark("smb: %s (%llu MB) is streamed: more than %llu MB would be in memory", name.c_str(),
+		diag::mark("share: %s (%llu MB) is streamed: more than %llu MB would be in memory", name.c_str(),
 				(unsigned long long)(bytes >> 20), (unsigned long long)(RamBudget >> 20));
 		return nullptr;
 	}
@@ -681,7 +611,7 @@ std::shared_ptr<RamImage> loadImage(const std::string& path, SmbFile& from, bool
 		u8 *block = static_cast<u8 *>(malloc((size_t)std::min<u64>(RamBlock, bytes - at)));
 		if (block == nullptr)
 		{
-			diag::mark("smb: %s (%llu MB) is streamed: not enough memory", name.c_str(),
+			diag::mark("share: %s (%llu MB) is streamed: not enough memory", name.c_str(),
 					(unsigned long long)(bytes >> 20));
 			return nullptr;
 		}
@@ -718,14 +648,14 @@ std::shared_ptr<RamImage> loadImage(const std::string& path, SmbFile& from, bool
 		ramTotal = 0;
 	if (stopped)
 	{
-		diag::mark("smb: %s: %s after %llu of %llu MB", name.c_str(), cancelled ? "cancelled" : "the read failed",
+		diag::mark("share: %s: %s after %llu of %llu MB", name.c_str(), cancelled ? "cancelled" : "the read failed",
 				(unsigned long long)(done >> 20), (unsigned long long)(bytes >> 20));
 		return nullptr;
 	}
 	if (shown)
 	{
 		const double seconds = std::max(0.001, (double)(nowMs() - started) / 1000.0);
-		diag::mark("smb: %s in memory: %llu MB in %.1f s (%.0f MB/s)", name.c_str(),
+		diag::mark("share: %s in memory: %llu MB in %.1f s (%.0f MB/s)", name.c_str(),
 				(unsigned long long)(bytes >> 20), seconds, (double)bytes / (1 << 20) / seconds);
 	}
 	std::lock_guard<std::mutex> lock(imagesMutex);
@@ -847,6 +777,8 @@ int statShare(Share *share, const std::string& relative, smb2_stat_64& st)
 std::string normalize(std::string path)
 {
 	std::replace(path.begin(), path.end(), '\\', '/');
+	if (path.find("://") != std::string::npos && path.rfind("smb://", 0) != 0)
+		return "";		// some other kind of place
 	if (path.rfind("smb://", 0) == 0)
 		path = path.substr(6);
 	while (!path.empty() && path.front() == '/')
@@ -862,6 +794,8 @@ std::string normalize(std::string path)
 
 std::vector<Entry> list(const std::string& path)
 {
+	if (ftp::isPath(path))
+		return ftp::list(path);
 	std::vector<Entry> entries;
 	std::string relative;
 	Share *share = locate(path, relative);
@@ -912,16 +846,17 @@ std::vector<Entry> list(const std::string& path)
 
 File *open(const std::string& path)
 {
+	const bool onFtp = ftp::isPath(path);
 	std::string relative;
-	Share *share = locate(path, relative);
-	if (share == nullptr)
+	Share *share = onFtp ? nullptr : locate(path, relative);
+	if (share == nullptr && !onFtp)
 		return nullptr;
 	// A file that is in memory already is read from there, whoever asks.
 	if (std::shared_ptr<RamImage> image = findImage(path))
 		return new RamFile(std::move(image));
 	if (stopping())
 		return nullptr;
-	SmbFile *file = openStream(share, relative);
+	File *file = onFtp ? ftp::openStream(path) : openStream(share, relative);
 	if (file == nullptr || !loading || !options::frontend().ramCache || file->size() == 0)
 		return file;
 	// A game is being loaded into memory: this file, whole, now. The share's
@@ -939,9 +874,10 @@ File *open(const std::string& path)
 
 int stat(const std::string& path, Entry& entry)
 {
+	const bool onFtp = ftp::isPath(path);
 	std::string relative;
-	Share *share = locate(path, relative);
-	if (share == nullptr)
+	Share *share = onFtp ? nullptr : locate(path, relative);
+	if (share == nullptr && !onFtp)
 		return 0;
 	if (std::shared_ptr<RamImage> image = findImage(path))
 	{
@@ -951,6 +887,8 @@ int stat(const std::string& path, Entry& entry)
 		entry.size = image->bytes;
 		return 1;
 	}
+	if (onFtp)
+		return ftp::stat(path, entry);
 	smb2_stat_64 st{};
 	const int found = statShare(share, relative, st);
 	if (found == 1)
@@ -973,18 +911,23 @@ void loadConfig()
 		// A template to fill in.
 		if ((f = fopen(file.c_str(), "w")) != nullptr)
 		{
-			fputs("# SwanStation - games on a network share (SMB / Windows sharing).\n"
+			fputs("# SwanStation - games on the network: an SMB share (Windows sharing) or an\n"
+					"# FTP server.\n"
 					"#\n"
-					"# One \"path\" line for each folder to scan: server/share/folder, the server by\n"
-					"# its IP address. For example:\n"
+					"# One \"path\" line for each folder to scan, the server by its IP address.\n"
+					"# An SMB share is server/share/folder; an FTP server is ftp://server/folder\n"
+					"# (ftp://server:2121/folder for a port other than 21). For example:\n"
 					"#   path = 192.168.1.10/Games/PSX\n"
+					"#   path = ftp://192.168.1.10/games/psx\n"
 					"# Remove the # in front of a path line to use it. The folder and the\n"
 					"# folders inside it are scanned for games when SwanStation first starts\n"
 					"# with it, and again with Square in the library; the list is kept, so\n"
 					"# the share is not asked again until a game is started. The library has\n"
 					"# a Network tab once games were found.\n"
 					"#\n"
-					"# The account: leave it as guest with no password for an open share.\n"
+					"# The account: leave it as guest with no password for an open share (an\n"
+					"# FTP server is then asked as \"anonymous\"). An FTP server with an account\n"
+					"# of its own: ftp://user:password@server/folder.\n"
 					"\n"
 					"# path = server/share/folder\n"
 					"user = guest\n"
@@ -995,6 +938,8 @@ void loadConfig()
 		}
 		return;
 	}
+	// FTP folders wait for the whole file: the account may come after them.
+	std::vector<std::pair<size_t, std::string>> ftpLines;
 	char line[1024];
 	while (fgets(line, sizeof(line), f) != nullptr)
 	{
@@ -1006,7 +951,12 @@ void loadConfig()
 			continue;
 		const std::string key = trim(text.substr(0, equals));
 		const std::string value = trim(text.substr(equals + 1));
-		if (key == "path")
+		if (key == "path" && lowercase(value).rfind("ftp://", 0) == 0)
+		{
+			ftpLines.emplace_back(folders.size(), value);
+			folders.emplace_back();
+		}
+		else if (key == "path")
 		{
 			const std::string folder = normalize(value);
 			if (!folder.empty())
@@ -1022,8 +972,16 @@ void loadConfig()
 			account.domain = value;
 	}
 	fclose(f);
+	for (const auto& [index, value] : ftpLines)
+	{
+		folders[index] = ftp::addFolder(value, account.user, account.password);
+		if (folders[index].empty())
+			diag::mark("share: network.cfg: a path line is not ftp://server/folder");
+	}
+	folders.erase(std::remove(folders.begin(), folders.end(), std::string()), folders.end());
 	for (const std::string& folder : folders)
-		diag::mark("smb: games folder %s (user %s)", folder.c_str(), account.user.c_str());
+		diag::mark("share: games folder %s%s", folder.c_str(),
+				ftp::isPath(folder) ? "" : (" (user " + account.user + ")").c_str());
 }
 
 const std::vector<std::string>& gameFolders()
@@ -1033,11 +991,12 @@ const std::vector<std::string>& gameFolders()
 
 bool isNetworkPath(const std::string& path)
 {
-	return path.rfind("smb://", 0) == 0;
+	return path.rfind("smb://", 0) == 0 || ftp::isPath(path);
 }
 
 void retryNow()
 {
+	ftp::retryNow();
 	std::lock_guard<std::mutex> lock(sharesMutex);
 	for (auto& [name, share] : shares)
 	{
@@ -1055,7 +1014,7 @@ void beginLoad()
 	ramTotal = 0;
 	ramDone = 0;
 	loading = true;
-	diag::mark("smb: a network game is starting (%s)", options::frontend().ramCache ? "read into memory" : "streamed");
+	diag::mark("share: a network game is starting (%s)", options::frontend().ramCache ? "read into memory" : "streamed");
 }
 
 void endLoad()
@@ -1078,7 +1037,7 @@ void releaseImages()
 		done.swap(images);
 	}
 	if (!done.empty())
-		diag::mark("smb: %d file(s) released from memory", (int)done.size());
+		diag::mark("share: %d file(s) released from memory", (int)done.size());
 }
 
 Status status()
@@ -1120,5 +1079,93 @@ std::string lastError()
 	std::lock_guard<std::mutex> lock(errorMutex);
 	return errorText;
 }
+
+#if defined(SWANSTATION_HOST)
+// A test run can ask for a network file to be read every way the emulator
+// would and compared with the same file on the PC:
+// SWANSTATION_NET_TEST="<network path>|<local path>".
+int selfTest(const char *spec)
+{
+	const std::string text = spec;
+	const size_t bar = text.find('|');
+	if (bar == std::string::npos)
+		return 2;
+	const std::string remote = text.substr(0, bar), local = text.substr(bar + 1);
+	std::vector<uint8_t> want;
+	if (!readFile(local, want) || want.empty())
+	{
+		printf("net-test: cannot read %s\n", local.c_str());
+		return 2;
+	}
+	Entry entry;
+	const int found = stat(remote, entry);
+	printf("net-test: stat %d, size %llu (local %zu)\n", found, (unsigned long long)entry.size, want.size());
+	if (found != 1 || entry.size != want.size())
+		return 1;
+	if (stat(remote + ".missing", entry) != 0)
+	{
+		printf("net-test: a file that is not there was found\n");
+		return 1;
+	}
+	uint32_t seed = 12345;
+	const auto random = [&seed](uint32_t below) {
+		seed = seed * 1664525u + 1013904223u;
+		return (uint32_t)(((uint64_t)(seed >> 8) * below) >> 24);
+	};
+	std::vector<uint8_t> got(2u << 20);
+	for (int pass = 0; pass < 2; pass++)
+	{
+		// The second pass is from memory, as a game being loaded is.
+		if (pass == 1)
+			beginLoad();
+		File *file = open(remote);
+		if (pass == 1)
+			endLoad();
+		if (file == nullptr || (uint64_t)file->size() != want.size())
+		{
+			printf("net-test: pass %d: open failed\n", pass);
+			return 1;
+		}
+		// From the first byte to the last, in pieces of every size.
+		size_t at = 0;
+		while (at < want.size())
+		{
+			const size_t n = std::min<size_t>(1 + random(700000), want.size() - at);
+			if (file->read(got.data(), n) != n || memcmp(got.data(), want.data() + at, n) != 0)
+			{
+				printf("net-test: pass %d: reading on failed at %zu\n", pass, at);
+				return 1;
+			}
+			at += n;
+		}
+		if (file->read(got.data(), 16) != 0)
+		{
+			printf("net-test: pass %d: read past the end\n", pass);
+			return 1;
+		}
+		// Here and there: back, a little ahead, far ahead, across the end.
+		for (int i = 0; i < 400; i++)
+		{
+			const int kind = (int)random(4);
+			size_t where = kind == 0 ? random((uint32_t)want.size())
+					: kind == 1 ? std::min<size_t>(at + random(300000), want.size() - 1)
+					: kind == 2 ? (at > 200000 ? at - random(200000) : 0) : want.size() - 1 - random(100000);
+			const size_t n = std::min<size_t>(1 + random(i % 7 == 0 ? 1500000 : 9000), got.size());
+			const size_t expect = std::min(n, want.size() - where);
+			if (file->seek((int64_t)where, SEEK_SET) != 0 || file->read(got.data(), n) != expect
+					|| memcmp(got.data(), want.data() + where, expect) != 0)
+			{
+				printf("net-test: pass %d: read %d of %zu at %zu failed\n", pass, i, n, where);
+				return 1;
+			}
+			at = where + expect;
+		}
+		delete file;
+		printf("net-test: pass %d (%s) agrees\n", pass, pass == 0 ? "streamed" : "from memory");
+	}
+	releaseImages();
+	return 0;
+}
+#endif
 
 } // namespace fe::smb

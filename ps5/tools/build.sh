@@ -101,10 +101,13 @@ else
 fi
 if [[ -n ${NETWORK_PATH:-} ]]; then
     {
-        echo "# SwanStation - games on a network share (SMB / Windows sharing)."
+        echo "# SwanStation - games on the network: an SMB share (Windows sharing) or an"
+        echo "# FTP server."
         echo "#"
-        echo "# One \"path\" line for each folder to scan: server/share/folder, the server by"
-        echo "# its IP address. The account: guest with no password for an open share."
+        echo "# One \"path\" line for each folder to scan, the server by its IP address:"
+        echo "# server/share/folder for an SMB share, ftp://server/folder for an FTP server"
+        echo "# (ftp://user:password@server:port/folder with an account or another port)."
+        echo "# The account below: guest with no password for an open share."
         echo
         echo "path = $NETWORK_PATH"
         echo "user = guest"

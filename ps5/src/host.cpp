@@ -517,11 +517,15 @@ void applyControllerTypes()
 		RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1),	// analog joystick
 		RETRO_DEVICE_NONE,
 	};
-	for (unsigned port = 0; port < 2; port++)
+	// The emulator's controllers 1 to 4 are the four pads, one for each
+	// person logged in. Without a multitap it plugs in the first two; with
+	// one in port 1 all four are on it (1A to 1D); with one in port 2 the
+	// first is in port 1 and the others on the multitap. The emulator has
+	// four more, for a second multitap: nobody holds those.
+	for (unsigned port = 0; port < 4; port++)
 		retro_set_controller_port_device(port, devices[std::clamp(options::frontend().controller[port], 0, 3)]);
-	// With a multitap the other ports take pads 3 and 4 as DualShocks.
-	for (unsigned port = 2; port < 4; port++)
-		retro_set_controller_port_device(port, devices[1]);
+	for (unsigned port = 4; port < 8; port++)
+		retro_set_controller_port_device(port, RETRO_DEVICE_NONE);
 }
 
 // The serial of each game that ran, by its path: a game's own options are

@@ -12,8 +12,10 @@
 
 	The network list is kept (<root>data/network-games.txt): a start shows the
 	kept list without touching the share, so a NAS whose disks sleep is not
-	woken by browsing. The share is asked when there is no kept list, when the
-	user asks for a scan, and when a game is started.
+	woken by browsing. The share is asked when there is no kept list (or the
+	list was made from other folders than network.cfg names now), when the
+	user asks for a scan, and when a game is started. A network folder is an
+	SMB share's or an FTP server's (smb.cpp, ftp.cpp); both are in the one list.
 
 	Files that are parts of a game are folded into it: the tracks a cue sheet
 	names, and the discs of one game named as dumps are ("Game (USA) (Disc
@@ -287,12 +289,27 @@ std::string networkListFile()
 	return rootDir + "data/network-games.txt";
 }
 
+// The folders the kept list was made from: its first line. A list made from
+// other folders (network.cfg was changed since) is not used.
+std::string networkListHeader()
+{
+	std::string header = "# folders";
+	for (const std::string& folder : smb::gameFolders())
+		header += "\t" + folder;
+	return header;
+}
+
 bool loadNetworkList(std::vector<Found>& found)
 {
 	FILE *f = fopen(networkListFile().c_str(), "r");
 	if (f == nullptr)
 		return false;
 	char line[4096];
+	if (fgets(line, sizeof(line), f) == nullptr || trim(line) != trim(networkListHeader()))
+	{
+		fclose(f);
+		return false;
+	}
 	while (fgets(line, sizeof(line), f) != nullptr)
 	{
 		char *tab = strchr(line, '\t');
@@ -312,6 +329,7 @@ void saveNetworkList(const std::vector<Found>& found)
 	FILE *f = fopen(networkListFile().c_str(), "w");
 	if (f == nullptr)
 		return;
+	fprintf(f, "%s\n", networkListHeader().c_str());
 	for (const Found& file : found)
 		fprintf(f, "%llu\t%s\n", (unsigned long long)file.size, file.path.c_str());
 	fclose(f);
@@ -457,8 +475,8 @@ std::string sourceHint(int source)
 				"then press Square to scan.";
 	}
 	if (smb::gameFolders().empty())
-		return "Name your share in " + shownRoot() + "network.cfg (path = 192.168.1.10/Games/PSX), "
-				"then restart SwanStation.";
+		return "Name your share or FTP server in " + shownRoot() + "network.cfg (path = 192.168.1.10/Games/PSX, "
+				"or path = ftp://192.168.1.10/games/psx), then restart SwanStation.";
 	return "Press Square to scan the share again.";
 }
 

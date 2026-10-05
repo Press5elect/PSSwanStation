@@ -121,6 +121,7 @@ set(frontend_sources
 	src/sound.cpp
 	src/vfs.cpp
 	src/smb.cpp
+	src/ftp.cpp
 	src/covers.cpp
 	src/gamedb.cpp
 	src/history.cpp

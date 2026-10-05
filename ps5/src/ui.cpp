@@ -1536,15 +1536,52 @@ void frontendItems(int kind, std::vector<Item>& items)
 				}));
 		break;
 	case 3:
-		for (int port = 0; port < 2; port++)
-			items.push_back(choice(format("Controller in port %d", port + 1), f.controller[port],
+	{
+		// Who is holding a controller.
+		std::string who;
+		int connected = 0;
+		for (int i = 0; i < platform::MaxPads; i++)
+			if (platform::pad(i).connected)
+			{
+				connected++;
+				who += (who.empty() ? "" : ", ") + std::to_string(i + 1);
+			}
+		items.push_back(fact("Controllers", connected == 0 ? std::string("None") : connected == 1 ? std::string("Player 1")
+				: "Players " + who,
+				"Player 1 is whoever started SwanStation. Every other player is another user logged in on the console "
+				"with a controller of their own (press the PS button on it and choose a user), in the order they "
+				"joined; a controller that joins while SwanStation runs is taken up within a few seconds. Any of "
+				"them moves through these menus."));
+		static const char *const modes[4] = { "Disabled", "Port1Only", "Port2Only", "BothPorts" };
+		static const char *const tapKey = "swanstation_ControllerPorts_MultitapMode";
+		int mode = 0;
+		if (const char *now = options::get(tapKey))
+			for (int i = 0; i < 4; i++)
+				if (!strcmp(now, modes[i]))
+					mode = i;
+		items.push_back(choice("Multitap", mode, { "Off", "In port 1", "In port 2", "In both ports" },
+				"For games made for three or four players. In port 1: the four players are on the multitap, which "
+				"is what most of those games expect. In port 2: player 1 is in port 1 and the others on the multitap. "
+				"Leave it off for games for one or two: some do not see a controller behind a multitap.",
+				[](int i) { options::set(tapKey, modes[i], false); }));
+		for (int player = 0; player < 4; player++)
+		{
+			Item item = choice(format("Player %d's controller", player + 1), f.controller[player],
 					{ "Digital controller", "DualShock", "Analog joystick", "None" },
-					"What the game finds plugged into this port. DualShock suits most games; a few early ones only "
-					"know the digital controller. Port 2 is the second DualSense.",
-					[port](int i) {
-						options::frontend().controller[port] = i;
+					"What the game finds plugged in for this player. DualShock suits most games; a few early ones only "
+					"know the digital controller.",
+					[player](int i) {
+						options::frontend().controller[player] = i;
 						host::applyControllers();
-					}));
+					});
+			if (player >= 2 && mode == 0)
+			{
+				item.enabled = false;
+				item.value = "Needs the multitap";
+			}
+			items.push_back(std::move(item));
+		}
+	}
 		items.push_back(choice("Stick dead zone", (int)std::lround(f.deadZone * 20.f),
 				{ "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%" },
 				"How far a stick must move before the game sees it.",

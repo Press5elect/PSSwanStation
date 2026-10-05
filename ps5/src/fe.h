@@ -202,7 +202,7 @@ struct Frontend
 	bool syncToDisplay = true;	// the sound follows the display's pace
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
 	bool autoLoadOnStart = false;	// and start from it
-	int controller[2] = {1, 1};	// port 1 and 2: 0 digital, 1 DualShock, 2 analog joystick, 3 none
+	int controller[4] = {1, 1, 1, 1};	// players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none
 	float deadZone = 0.10f;
 	bool rumble = true;
 	bool swapConfirm = false;	// Circle confirms in the menus
@@ -379,6 +379,10 @@ void cancelLoad();
 void retryNow();
 // Gives back the memory of the game that ended.
 void releaseImages();
+#if defined(SWANSTATION_HOST)
+// The PC test build only: reads a network file every way and compares it.
+int selfTest(const char *spec);
+#endif
 // Reads a network game's files into memory on a thread of its own (what
 // "load into memory" does), or just checks they open when that is off.
 enum { PrecacheIdle, PrecacheRunning, PrecacheDone, PrecacheFailed };

@@ -226,6 +226,8 @@ void loadFrontend()
 		BOOL("auto_load", autoLoadOnStart);
 		INT("controller1", controller[0], 0, 3);
 		INT("controller2", controller[1], 0, 3);
+		INT("controller3", controller[2], 0, 3);
+		INT("controller4", controller[3], 0, 3);
 		BOOL("rumble", rumble);
 		BOOL("swap_confirm", swapConfirm);
 		BOOL("splash", splash);
@@ -248,12 +250,13 @@ void saveFrontend()
 		return;
 	fprintf(f, "view = %d\nsource = %d\ncovers = %d\nusb = %d\nram_cache = %d\nnotifications = %d\nscaling = %d\n"
 			"linear_filter = %d\nvolume = %d\nshow_fps = %d\nsync_to_display = %d\nauto_save = %d\nauto_load = %d\n"
-			"controller1 = %d\ncontroller2 = %d\ndead_zone = %.2f\nrumble = %d\nswap_confirm = %d\nui_scale = %d\n"
+			"controller1 = %d\ncontroller2 = %d\ncontroller3 = %d\ncontroller4 = %d\ndead_zone = %.2f\nrumble = %d\nswap_confirm = %d\nui_scale = %d\n"
 			"accent = %d\nsplash = %d\nsplash_sound = %d\nanimations = %d\n",
 			current.view, current.source, (int)current.covers, (int)current.usb, (int)current.ramCache,
 			(int)current.notifications, current.scaling, (int)current.linearFilter, current.volume,
 			(int)current.showFps, (int)current.syncToDisplay, (int)current.autoSaveOnExit,
-			(int)current.autoLoadOnStart, current.controller[0], current.controller[1], current.deadZone,
+			(int)current.autoLoadOnStart, current.controller[0], current.controller[1], current.controller[2],
+			current.controller[3], current.deadZone,
 			(int)current.rumble, (int)current.swapConfirm, current.uiScale, current.accent, (int)current.splash,
 			(int)current.splashSound, current.animations);
 	fclose(f);
