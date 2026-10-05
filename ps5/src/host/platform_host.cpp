@@ -157,12 +157,19 @@ bool audioOpen()
 	audioThread = std::thread([] {
 		int16_t grain[256 * 2];
 		auto next = std::chrono::steady_clock::now();
+		// A test can ask for what would have been heard: raw 48 kHz stereo.
+		const char *dump = getenv("SWANSTATION_AUDIO_DUMP");
+		FILE *heard = dump != nullptr ? fopen(dump, "wb") : nullptr;
 		while (!audioStop)
 		{
 			audio::render(grain, 256);
+			if (heard != nullptr)
+				fwrite(grain, 4, 256, heard);
 			next += std::chrono::microseconds(256 * 1000000ll / 48000);
 			std::this_thread::sleep_until(next);
 		}
+		if (heard != nullptr)
+			fclose(heard);
 	});
 	return true;
 }

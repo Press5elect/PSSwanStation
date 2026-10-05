@@ -118,11 +118,20 @@ the menu: "Settings" changes them for every game, "Game settings" for this
 game only. A dot marks a value that is the game's own; Square gives it back
 to the general value.
 
-The swan: with Animations (Interface) on Full it flies from the start-up
-screen to its box in the library's corner, looks about while it sits there,
-and flies at the screen when a game starts. Reduced keeps it still and starts
-games at once; Off stops every movement of the interface and skips the
-start-up screen.
+The swan: with Animations (Interface) on Full, SwanStation opens with its
+head coming up in the bottom right corner and paddling along the bottom of
+the screen to the middle, where it goes under and takes the lift: the box
+comes up between its rails to the middle of the screen, its bell rings, its
+doors open, and there is the swan in its box with the name under it. Then it
+flies to its box in the library's corner, looks about while it sits there,
+and flies at the screen when a game starts. Any button skips the start-up
+animation. Reduced keeps the swan still (the start-up screen is the finished
+picture, with the bell) and starts games at once; Off stops every movement
+of the interface and skips the start-up screen.
+
+"Start-up sound" (Interface) is what that animation sounds like - water, the
+lift, the bell, wings - at the Volume set under Sound. The sounds are made by
+the title when it starts; none is a recording.
 
 The picture: the internal resolution starts at 8x. Lower it (Enhancement,
 Internal Resolution Scale) if a game does not hold its speed; "Show frame

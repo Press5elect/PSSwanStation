@@ -46,44 +46,47 @@ database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
 rm -f "$root/data/history.txt"
 
 # Frames, with the animations' clock counting them (SWANSTATION_FRAME_CLOCK):
-# the splash is on the screen until frame 150, the swan lands in the header by 240,
-# and a game's start takes the 63 frames of its flight at the screen.
+# the start-up animation has the screen until frame 330 (the swan's head along
+# the bottom, the lift, its doors), the swan lands in the header by 420, and a
+# game's start takes the 63 frames of its flight at the screen.
 cat > "$root/script.txt" <<'SCRIPT'
-90 shot 01-splash
-200 shot 02-splash-flight
-270 shot 03-library
-275 right
-285 triangle
-300 shot 04-details
-305 right
-313 right
-321 cross
-335 shot 05-details-options
-340 circle
-348 right
-356 cross
-370 shot 06-details-cheats
-375 cross
-390 shot 07-cheat-on
-395 circle
-403 left
-411 left
-419 left
-497 cross
-810 shot 08-game
-815 options
-830 shot 09-menu
-835 down
-845 cross
-855 cross
-910 shot 10-state-saved
-915 options
-922 up
-930 cross
-938 cross
-970 shot 11-library-shelf
+75 shot 00-splash-swim
+215 shot 00-splash-lift
+300 shot 01-splash
+380 shot 02-splash-flight
+450 shot 03-library
+455 right
+465 triangle
+480 shot 04-details
+485 right
+493 right
+501 cross
+515 shot 05-details-options
+520 circle
+528 right
+536 cross
+550 shot 06-details-cheats
+555 cross
+570 shot 07-cheat-on
+575 circle
+583 left
+591 left
+599 left
+677 cross
+990 shot 08-game
+995 options
+1010 shot 09-menu
+1015 down
+1025 cross
+1035 cross
+1090 shot 10-state-saved
+1095 options
+1102 up
+1110 cross
+1118 cross
+1150 shot 11-library-shelf
 SCRIPT
-SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=990 \
+SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=1170 \
     SWANSTATION_SIZE=${SWANSTATION_SIZE:-1920x1080} "$build/swanstation" > "$root/run.log" 2>&1
 grep -E "game:|cheats:|state:|shot|CRASH" "$root/swanstation-boot.log"
 if grep -q CRASH "$root/swanstation-boot.log"; then

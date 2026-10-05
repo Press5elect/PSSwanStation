@@ -118,6 +118,7 @@ set(frontend_sources
 	src/library.cpp
 	src/cheats.cpp
 	src/audio.cpp
+	src/sound.cpp
 	src/vfs.cpp
 	src/smb.cpp
 	src/covers.cpp

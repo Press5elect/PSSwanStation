@@ -10,12 +10,16 @@
 	RetroArch and PSFlyCast do). With "Sync to display" off the ratio is the
 	exact one. A full ring drops what does not fit instead of holding the
 	emulator; a dry one plays silence.
+
+	The interface's own sounds (sound.cpp) are 48 kHz already: they are mixed
+	into what goes out, game or no game.
 */
 #include "fe.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -38,6 +42,46 @@ std::atomic<int> volume{100};
 std::atomic<unsigned> dry{0};
 bool primed;
 bool open;
+
+// The interface's sounds being played.
+struct Voice
+{
+	std::shared_ptr<const std::vector<int16_t>> frames;	// stereo
+	size_t at = 0;
+	int fading = -1;		// frames of a fade-out left, or -1
+};
+constexpr int FadeFrames = 1920;		// 40 ms
+std::vector<Voice> voices;
+
+// With the lock held.
+void mixVoices(int16_t *out, size_t frames)
+{
+	if (voices.empty())
+		return;
+	const int gain = volume;
+	for (Voice& voice : voices)
+	{
+		const std::vector<int16_t>& data = *voice.frames;
+		const size_t total = data.size() / 2;
+		for (size_t i = 0; i < frames && voice.at < total; i++, voice.at++)
+		{
+			int l = data[voice.at * 2] * gain / 100, r = data[voice.at * 2 + 1] * gain / 100;
+			if (voice.fading >= 0)
+			{
+				l = l * voice.fading / FadeFrames;
+				r = r * voice.fading / FadeFrames;
+				if (voice.fading > 0)
+					voice.fading--;
+			}
+			out[i * 2] = (int16_t)std::clamp(out[i * 2] + l, -32768, 32767);
+			out[i * 2 + 1] = (int16_t)std::clamp(out[i * 2 + 1] + r, -32768, 32767);
+		}
+		if (voice.fading == 0)
+			voice.at = total;
+	}
+	voices.erase(std::remove_if(voices.begin(), voices.end(),
+			[](const Voice& voice) { return voice.at >= voice.frames->size() / 2; }), voices.end());
+}
 }
 
 void init()
@@ -115,12 +159,33 @@ void push(const int16_t *samples, size_t frames)
 	}
 }
 
-void render(int16_t *out, size_t frames)
+void playSound(std::shared_ptr<const std::vector<int16_t>> frames)
 {
-	std::unique_lock<std::mutex> lock(mutex);
+	if (!frames || frames->size() < 2)
+		return;
+	std::lock_guard<std::mutex> lock(mutex);
+	if (voices.size() >= 8)
+		return;
+	Voice voice;
+	voice.frames = std::move(frames);
+	voices.push_back(std::move(voice));
+}
+
+void stopSounds()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	for (Voice& voice : voices)
+		if (voice.fading < 0)
+			voice.fading = FadeFrames;
+}
+
+namespace
+{
+// The game's part of a grain, with the lock held.
+void renderGame(int16_t *out, size_t frames)
+{
 	if (isPaused)
 	{
-		lock.unlock();
 		memset(out, 0, frames * 4);
 		return;
 	}
@@ -130,7 +195,6 @@ void render(int16_t *out, size_t frames)
 	{
 		if (filled < Target)
 		{
-			lock.unlock();
 			memset(out, 0, frames * 4);
 			return;
 		}
@@ -157,6 +221,14 @@ void render(int16_t *out, size_t frames)
 		dry++;
 		primed = false;
 	}
+}
+}
+
+void render(int16_t *out, size_t frames)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	renderGame(out, frames);
+	mixVoices(out, frames);
 }
 
 }

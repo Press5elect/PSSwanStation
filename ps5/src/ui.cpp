@@ -1474,12 +1474,26 @@ void frontendItems(int kind, std::vector<Item>& items)
 				[](int i) { options::frontend().animations = i; }));
 		{
 			Item item = toggle("Start-up animation", &f.splash,
-					"The swan and the name that open SwanStation before the library comes in. Any button skips it.");
+					"How SwanStation opens: the swan paddles along the bottom of the screen, takes the lift up to "
+					"the middle, and flies to its corner as the library comes in. Any button skips it.");
 			if (f.animations == 2)
 			{
 				item.enabled = false;
 				item.value = "Off";
 				item.info += " Not shown while Animations is Off.";
+			}
+			items.push_back(std::move(item));
+		}
+		{
+			Item item = toggle("Start-up sound", &f.splashSound,
+					"What the start-up animation sounds like: the water, the lift and its bell, the swan's wings. "
+					"It follows the Volume setting (Sound).");
+			if (f.animations == 2 || !f.splash)
+			{
+				item.enabled = false;
+				item.value = "Off";
+				item.info += f.animations == 2 ? " Not heard while Animations is Off."
+						: " Not heard while the start-up animation is off.";
 			}
 			items.push_back(std::move(item));
 		}
@@ -2504,12 +2518,21 @@ void messagePage(Frame& f, bool confirm)
 
 // --------------------------------------------------------------- the splash
 
-// The start-up animation. It begins as the picture the console shows while
-// the title loads (sce_sys/pic1.dds): the mark in the middle, the name under
-// it. The water moves, a light breathes behind the mark, the swan looks
-// round; then it opens its wings, leaves its box and flies to the box in the
-// library's header, while the library comes up underneath. With the
-// animations limited, the splash only fades into the library.
+// The start-up animation, with its sound (sound.cpp; the times of both are
+// splashtime's, fe.h).
+//
+// The swan's head comes up out of the water in the bottom right corner, the
+// rest of it under the screen's edge, and paddles along the bottom to the
+// middle. There it looks at whoever is watching and goes under: below the
+// screen it has got into a lift. The lift is the mark's box. Its doors shut,
+// it comes up between its rails to the middle of the screen, its bell rings,
+// the doors open, and there is the mark as the console's loading picture
+// shows it (sce_sys/pic1.dds): the swan on its water in the box, the name
+// under it. Then the swan opens its wings, leaves the box and flies to the box
+// in the library's header, while the library comes up underneath.
+//
+// With the animations limited the splash is the finished picture, which only
+// fades into the library.
 struct Splash
 {
 	enum { NotBegun, Showing, Leaving, Over } state = NotBegun;
@@ -2523,12 +2546,79 @@ float smooth(float x)
 	return x * x * (3.f - 2.f * x);
 }
 
+// Sets off gently and arrives gently: how the swan crosses, how the lift travels.
+float glide(float x)
+{
+	x = std::clamp(x, 0.f, 1.f);
+	return x * x * x * (x * (x * 6.f - 15.f) + 10.f);
+}
+
+// Water thrown up from the bottom edge, `since` seconds ago, at `x` units.
+void spray(float since, float x)
+{
+	if (since < 0 || since > 0.62f)
+		return;
+	const float H = unitsHigh();
+	for (int i = 0; i < 9; i++)
+	{
+		const float side = ((float)i - 4.f) * 0.25f;						// -1 .. 1
+		const float speed = 430.f + 70.f * (float)((i * 37) % 5);			// units a second, upwards
+		const float ux = x + side * 210.f * since + side * 26.f;
+		const float uy = H + 6.f - (speed * since - 1150.f * since * since);
+		if (uy > H + 4.f)
+			continue;
+		draw()->AddCircleFilled(at(ux, uy), px(3.f + (float)(i % 3) * 1.6f),
+				IM_COL32(196, 224, 255, (int)(190 * (1.f - since / 0.62f))), 12);
+	}
+}
+
+// One of the lift's two doors over the box `a`..`b`: `left` or the right
+// one, `open` 0 shut to 1 away in the wall.
+void liftDoor(ImVec2 a, ImVec2 b, bool left, float open)
+{
+	const float side = b.x - a.x, half = side * 0.5f;
+	const float w = half * (1.f - open);
+	if (w < 1.f)
+		return;
+	// Its last sliver goes out instead of being drawn square in a round corner.
+	const float alpha = 1.f - smooth((open - 0.58f) / 0.36f);
+	const float radius = side * 0.19f;
+	const float x0 = left ? a.x : b.x - w, x1 = left ? a.x + w : b.x;
+	ImDrawList *list = draw();
+	list->AddRectFilled(ImVec2(x0, a.y), ImVec2(x1, b.y), withAlpha(IM_COL32(30, 44, 84, 255), alpha), radius,
+			left ? ImDrawFlags_RoundCornersLeft : ImDrawFlags_RoundCornersRight);
+	// What is on the door slides with it, into the wall.
+	const float shift = (left ? -1.f : 1.f) * half * open;
+	const float mid = (a.x + b.x) * 0.5f;
+	// (Not as far as the box's round corners: a frame's width short of them.)
+	const float frame = side * 0.045f;
+	list->PushClipRect(ImVec2(left ? a.x + frame : x0, a.y), ImVec2(left ? x1 : b.x - frame, b.y), true);
+	const float inset = side * 0.085f;
+	const ImVec2 pa(left ? a.x + inset + shift : mid + inset * 0.6f + shift, a.y + inset);
+	const ImVec2 pb(left ? mid - inset * 0.6f + shift : b.x - inset + shift, b.y - inset);
+	list->AddRectFilled(pa, pb, withAlpha(IM_COL32(40, 58, 108, 255), alpha), side * 0.035f);
+	list->AddRect(pa, pb, withAlpha(IM_COL32(120, 160, 230, 70), alpha), side * 0.035f, 0, std::max(side * 0.006f, 1.f));
+	// Light along the edge that meets the other door.
+	const float edge = left ? x1 : x0;
+	const float glint = side * 0.05f;
+	const ImU32 lit = withAlpha(IM_COL32(150, 190, 255, 60), alpha), none = IM_COL32(150, 190, 255, 0);
+	if (left)
+		list->AddRectFilledMultiColor(ImVec2(edge - glint, a.y), ImVec2(edge, b.y), none, lit, lit, none);
+	else
+		list->AddRectFilledMultiColor(ImVec2(edge, a.y), ImVec2(edge + glint, b.y), lit, none, none, lit);
+	list->AddLine(ImVec2(edge, a.y), ImVec2(edge, b.y), withAlpha(IM_COL32(6, 9, 20, 230), alpha), std::max(side * 0.008f, 1.f));
+	list->PopClipRect();
+}
+
 // `t`: seconds shown; `flight`: 0 at rest, 1 landed in the header.
 void drawSplash(float t, float flight)
 {
+	namespace st = splashtime;
 	const Theme& th = theme();
 	const float W = unitsWide(), H = unitsHigh();
 	const bool flies = motion() == MotionFull;
+	// Where the story is: at its end at once when little is to move.
+	const float story = flies ? t : st::End;
 	const float rest = 1.f - std::clamp(flight / 0.35f, 0.f, 1.f);		// what leaves first
 	const float cover = 1.f - flight;									// the splash's own backdrop
 	// Its backdrop, over whatever is behind.
@@ -2548,17 +2638,57 @@ void drawSplash(float t, float flight)
 		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * rest)), 0, std::max(height() / 360.f, 2.f));
 	}
 
-	// The box in the middle, with a light behind it, breathing. It stays
-	// where it is and goes out once the swan has left it.
+	// Where the box ends up: the middle of the screen.
 	const float side0 = H * 0.36f, x0 = (W - side0) * 0.5f, y0 = H * 0.22f;
-	const ImVec2 boxA = at(x0, y0), boxB = at(x0 + side0, y0 + side0);
+
+	// The lift's rails, from the bottom of the screen to where it stops, and
+	// the lamp over its door. They come when the swan has gone under and go
+	// when the doors are open.
+	const float railAlpha = smooth((story - st::Gone) / 0.25f) * (1.f - smooth((story - st::DoorsOpen - 0.1f) / 0.7f)) * rest;
+	if (railAlpha > 0.01f)
+	{
+		const float thick = std::max(px(3), 1.f);
+		for (int side = 0; side < 2; side++)
+		{
+			const float x = side == 0 ? x0 - 22 : x0 + side0 + 22;
+			list->AddRectFilledMultiColor(ImVec2(px(x) - thick * 0.5f, px(y0 - 70)), ImVec2(px(x) + thick * 0.5f, height()),
+					IM_COL32(150, 200, 255, 0), IM_COL32(150, 200, 255, 0), IM_COL32(150, 200, 255, (int)(110 * railAlpha)),
+					IM_COL32(150, 200, 255, (int)(110 * railAlpha)));
+			// The brackets that hold them, a floor apart.
+			for (float y = H - 40; y > y0 - 40; y -= 96)
+			{
+				const float fade = std::clamp((y - (y0 - 70)) / 220.f, 0.f, 1.f);
+				list->AddLine(at(x - 9, y), at(x + 9, y), IM_COL32(150, 200, 255, (int)(120 * railAlpha * fade)), thick);
+			}
+		}
+		const bool arrived = story >= st::Ding;
+		const ImVec2 lamp = at(W * 0.5f, y0 - 40);
+		if (arrived)
+			list->AddCircleFilled(lamp, px(22), withAlpha(th.accent, 0.22f * railAlpha), 32);
+		list->AddCircleFilled(lamp, px(8), arrived ? withAlpha(th.accent, railAlpha) : IM_COL32(120, 140, 180, (int)(120 * railAlpha)), 24);
+	}
+
+	// The box: it comes up from under the screen, and stays where it stops
+	// until the swan has left it.
+	const float below = (1.f - glide((story - st::LiftStart) / (st::LiftStop - st::LiftStart))) * (H - y0 + 30);
+	const ImVec2 boxA = at(x0, y0 + below), boxB = at(x0 + side0, y0 + side0 + below);
 	const float boxAlpha = flies ? 1.f - smooth((flight - 0.10f) / 0.45f) : cover;
-	const float breath = 0.5f + 0.5f * std::sin(t * 2.1f);
 	const ImVec2 centre((boxA.x + boxB.x) * 0.5f, (boxA.y + boxB.y) * 0.5f);
+	// A light behind it, breathing, once it has arrived.
+	const float lit = smooth((story - st::Ding) / 0.6f);
+	const float breath = 0.5f + 0.5f * std::sin(t * 2.1f);
 	for (int ring = 0; ring < 3; ring++)
 		list->AddCircleFilled(centre, px(side0 * (0.62f + 0.07f * (float)ring + 0.03f * breath)),
-				withAlpha(th.accent, (0.10f - 0.028f * (float)ring) * rest), 96);
-	logoBox(boxA, boxB, boxAlpha);
+				withAlpha(th.accent, (0.10f - 0.028f * (float)ring) * rest * lit), 96);
+	// The bell: a ring of light that widens and goes.
+	if (story >= st::Ding && story < st::Ding + 0.8f)
+	{
+		const float u = (story - st::Ding) / 0.8f;
+		list->AddCircle(centre, px(side0 * (0.56f + 0.50f * u)), withAlpha(th.accent, 0.55f * (1.f - u) * (1.f - u)), 96,
+				px(5.f * (1.f - u) + 1.f));
+	}
+	if (below < H)
+		logoBox(boxA, boxB, boxAlpha);
 
 	// The swan.
 	ImVec2 from, to, headerA, headerB;
@@ -2570,11 +2700,36 @@ void drawSplash(float t, float flight)
 		swan(from, fromSize, SwanPose(), boxAlpha);
 	else if (flight <= 0)
 	{
-		// It looks behind it once, then ahead again, before it leaves.
-		SwanPose pose;
-		pose.look = smooth((t - 0.7f) / 0.45f) * (1.f - smooth((t - 1.6f) / 0.45f));
-		pose.tilt = 0.018f * std::sin(t * 1.3f);
-		swan(from, fromSize, pose);
+		if (story < st::Gone)
+		{
+			// Its head and neck over the bottom edge, the rest of it below
+			// (the tail too, which stands higher than the back).
+			const float size = px(H * 0.62f);
+			const float up = smooth((story - st::Rise) / (st::Swim - st::Rise));
+			const float down = smooth((story - st::Dive) / (st::Gone - st::Dive));
+			const float go = glide((story - st::Swim) / (st::Arrive - st::Swim));
+			const float headX = W * (0.90f - 0.40f * go);						// units
+			const float paddling = std::sin(3.14159f * std::clamp((story - st::Swim) / (st::Arrive - st::Swim), 0.f, 1.f));
+			SwanPose pose;
+			// It looks at whoever is watching, then puts its head down.
+			const float glance = smooth((story - st::Arrive + 0.10f) / 0.20f) * (1.f - smooth((story - st::Dive + 0.04f) / 0.14f));
+			pose.look = 0.58f * glance - down;
+			pose.tilt = 0.030f * std::sin(story * 8.5f + 1.f) * paddling;
+			const float bob = std::sin(story * 8.5f) * 0.012f * size * paddling;
+			swan(ImVec2(px(headX) - 0.335f * size, height() - size * (0.165f + 0.240f * up * (1.f - down)) + bob), size, pose);
+			spray(story - st::Rise - 0.03f, W * 0.90f);
+			spray(story - st::Dive - 0.14f, W * 0.50f);
+		}
+		else
+		{
+			// In its box. When the doors have opened it looks behind it once,
+			// then ahead again, before it leaves.
+			SwanPose pose;
+			pose.look = smooth((story - st::DoorsDone - 0.05f) / 0.30f) * (1.f - smooth((story - st::End + 0.40f) / 0.30f));
+			pose.tilt = 0.018f * std::sin(t * 1.3f);
+			if (below < H)
+				swan(from, fromSize, pose);
+		}
 	}
 	else
 	{
@@ -2594,30 +2749,42 @@ void drawSplash(float t, float flight)
 		swan(ImVec2(c.x - size * 0.5f, c.y - size * 0.5f), size, pose);
 	}
 
-	// The name: under the mark; it goes out on the way, and the header's own
-	// comes in where the swan lands.
+	// The lift's doors, shut on the way up.
+	const float doorsOpen = smooth((story - st::DoorsOpen) / (st::DoorsDone - st::DoorsOpen));
+	if (flies && doorsOpen < 1.f && below < H)
+	{
+		liftDoor(boxA, boxB, true, doorsOpen);
+		liftDoor(boxA, boxB, false, doorsOpen);
+	}
+
+	// The name: under the mark, once the doors are open; it goes out on the
+	// swan's way, and the header's own comes in where the swan lands.
+	const float named = smooth((story - st::DoorsOpen - 0.15f) / 0.50f);
 	const float ease = smooth(flight);
 	const float size0 = H * 0.085f;
 	const float size = size0 + (44 - size0) * ease;
 	const float nameW0 = toUnits(measure(AppName, Huge, size0).x);
+	const float nameY0 = y0 + side0 + H * 0.035f + 18.f * (1.f - named);
 	const float nx = (W - nameW0) * 0.5f + (136 - (W - nameW0) * 0.5f) * ease;
-	const float ny = (y0 + side0 + H * 0.035f) + (36 - (y0 + side0 + H * 0.035f)) * ease;
-	text(at(flies ? nx : (W - nameW0) * 0.5f, flies ? ny : y0 + side0 + H * 0.035f),
-			withAlpha(th.text, flies ? 1.f - std::clamp(flight / 0.55f, 0.f, 1.f) : cover), AppName, Huge,
+	const float ny = nameY0 + (36 - nameY0) * ease;
+	text(at(flies ? nx : (W - nameW0) * 0.5f, flies ? ny : nameY0),
+			withAlpha(th.text, (flies ? 1.f - std::clamp(flight / 0.55f, 0.f, 1.f) : cover) * named), AppName, Huge,
 			flies ? size : size0);
 	// What leaves when the flight begins.
 	if (rest > 0.01f)
 	{
 		const float lineY = y0 + side0 + H * 0.145f;
-		textCentred(at(W * 0.5f, lineY), withAlpha(th.dim, rest), "for PS5", Body, H * 0.030f);
+		textCentred(at(W * 0.5f, lineY), withAlpha(th.dim, rest * smooth((story - st::DoorsOpen - 0.40f) / 0.50f)), "for PS5",
+				Body, H * 0.030f);
 		// Which build this is, in its corner, as in the library.
-		buildTag(std::clamp((t - 0.4f) / 0.6f, 0.f, 1.f));
+		buildTag(std::clamp((t - 0.4f) / 0.6f, 0.f, 1.f) * rest);
 	}
 }
 
 // True while the splash has the screen to itself.
 bool runSplash()
 {
+	namespace st = splashtime;
 	if (splash.state == Splash::NotBegun)
 		splash.state = options::frontend().splash && motion() != MotionOff && !host::running()
 				? Splash::Showing : Splash::Over;
@@ -2627,22 +2794,34 @@ bool runSplash()
 	const double time = clock();
 	if (splash.state == Splash::Showing)
 	{
-		// The first frames wait for the display: the animation's clock starts
-		// when they are on the screen.
-		if (splash.frames++ < 3)
+		// The first frames wait for the display: the animation's clock, and
+		// its sound, start when they are on the screen.
+		if (splash.frames < 3)
 			splash.began = time;
+		else if (splash.frames == 3)
+			sound::play(flies ? sound::Splash : sound::Chime);
+		splash.frames++;
 		const float t = (float)(time - splash.began);
 		backdrop();
 		drawSplash(t, 0);
-		if (t > (flies ? 2.4f : 1.2f) || (in.pressed != 0 && t > 0.3f))
+		const bool skipped = in.pressed != 0 && t > 0.3f;
+		if (t > (flies ? st::End : 1.2f) || skipped)
 		{
+			if (skipped && flies && t < st::End)
+			{
+				// Skipped: straight to the end of the story, and its sound stops.
+				splash.began = time - st::End;
+				sound::stop();
+			}
+			if (flies)
+				sound::play(sound::Flight);
 			splash.state = Splash::Leaving;
 			splash.leaving = time;
 			consumeInput();
 		}
 		return true;
 	}
-	const float u = std::clamp((float)((time - splash.leaving) / (flies ? 1.5 : 0.4)), 0.f, 1.f);
+	const float u = std::clamp((float)((time - splash.leaving) / (flies ? st::Flight : 0.4f)), 0.f, 1.f);
 	// The library comes up underneath; its header's box waits for the swan.
 	headerSwanAway = flies;
 	headerBoxAlpha = flies ? smooth((u - 0.30f) / 0.35f) : u;

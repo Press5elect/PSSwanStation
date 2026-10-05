@@ -14,6 +14,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -138,6 +139,48 @@ void setVolume(int percent);
 // How full the ring is, 0..1, for the statistics line.
 float fill();
 unsigned underruns();
+// One of the interface's sounds: 48 kHz stereo frames, mixed into the output
+// from now on, whether a game runs or not.
+void playSound(std::shared_ptr<const std::vector<int16_t>> frames);
+// Fades out what is playing of them.
+void stopSounds();
+}
+
+// ----------------------------------------------------------------- sound.cpp
+// The interface's sounds. None is a recording: each is computed when the
+// title starts.
+namespace sound
+{
+enum Id
+{
+	Splash,		// the start-up animation, from its first moment to the open doors
+	Flight,		// the swan's flight to its corner
+	Chime,		// the lift's bell alone
+	Count
+};
+void init();
+// Not heard when "Start-up sound" is off.
+void play(Id id);
+void stop();
+}
+
+// When what happens in the start-up animation, in seconds from its start: the
+// picture (ui.cpp) and the sound (sound.cpp) keep to the same times.
+namespace splashtime
+{
+constexpr float Rise = 0.05f;		// the swan's head comes up in the bottom right corner
+constexpr float Swim = 0.45f;		// and sets off along the bottom edge
+constexpr float Arrive = 1.85f;		// at the middle: it looks at the viewer
+constexpr float Dive = 2.10f;		// the head goes down
+constexpr float Gone = 2.45f;		// it is in the lift, below the screen
+constexpr float Clunk = 2.55f;		// the lift's doors shut
+constexpr float LiftStart = 2.70f;	// it sets off upwards
+constexpr float LiftStop = 3.90f;	// and stops in the middle of the screen
+constexpr float Ding = 3.95f;
+constexpr float DoorsOpen = 4.05f;
+constexpr float DoorsDone = 4.55f;
+constexpr float End = 5.40f;		// the swan leaves for the library's corner
+constexpr float Flight = 1.50f;		// how long that takes
 }
 
 // --------------------------------------------------------------- options.cpp
@@ -164,6 +207,7 @@ struct Frontend
 	bool rumble = true;
 	bool swapConfirm = false;	// Circle confirms in the menus
 	bool splash = true;			// the start-up animation
+	bool splashSound = true;	// and its sound
 	int animations = 0;			// 0 everything moves, 1 little does, 2 nothing does
 	int uiScale = 100;			// percent
 	int accent = 0;
