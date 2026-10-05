@@ -75,7 +75,7 @@ const ImWchar textRanges[] = {
 	0,
 };
 const ImWchar symbolRanges[] = {
-	0xf00a, 0xf00a, 0xf00c, 0xf00d, 0xf011, 0xf011, 0xf013, 0xf013, 0xf017, 0xf017, 0xf019, 0xf019, 0xf021, 0xf021,
+	0xf002, 0xf002, 0xf55a, 0xf55a, 0xf00a, 0xf00a, 0xf00c, 0xf00d, 0xf011, 0xf011, 0xf013, 0xf013, 0xf017, 0xf017, 0xf019, 0xf019, 0xf021, 0xf021,
 	0xf028, 0xf028, 0xf03a, 0xf03a, 0xf03e, 0xf03e, 0xf04b, 0xf04b, 0xf054, 0xf054, 0xf05a, 0xf05a, 0xf071, 0xf071,
 	0xf07c, 0xf07c, 0xf093, 0xf093, 0xf0a0, 0xf0a0, 0xf0ad, 0xf0ad, 0xf0c7, 0xf0c7, 0xf0d0, 0xf0d0, 0xf0e2, 0xf0e2,
 	0xf0e7, 0xf0e7, 0xf11b, 0xf11b, 0xf1de, 0xf1de, 0xf1e6, 0xf1e6, 0xf233, 0xf233, 0xf26c, 0xf26c, 0xf2db, 0xf2db,
@@ -469,7 +469,7 @@ void buttonGlyph(ImVec2 centre, float size, uint32_t button)
 	const char *label = button == L1 ? "L1" : button == R1 ? "R1" : button == L2 ? "L2" : button == R2 ? "R2"
 			: button == Options ? "OPTIONS" : button == (L1 | R1) ? "L1  R1" : button == (L2 | R2) ? "L2  R2"
 			: button == (Left | Right) ? "\xe2\x97\x80  \xe2\x96\xb6" : button == TouchLeft ? "TOUCH L"
-			: button == TouchRight ? "TOUCH R" : "?";
+			: button == TouchRight ? "TOUCH R" : button == (TouchLeft | TouchRight) ? "TOUCH PAD" : "?";
 	// The arrows are not in the font: drawn.
 	if (button == (Left | Right))
 	{
@@ -502,7 +502,8 @@ static float glyphWidth(float size, uint32_t button)
 		return px(size);
 	const char *label = button == L1 ? "L1" : button == R1 ? "R1" : button == L2 ? "L2" : button == R2 ? "R2"
 			: button == Options ? "OPTIONS" : button == (L1 | R1) ? "L1  R1" : button == (L2 | R2) ? "L2  R2"
-			: button == TouchLeft ? "TOUCH L" : button == TouchRight ? "TOUCH R" : "?";
+			: button == TouchLeft ? "TOUCH L" : button == TouchRight ? "TOUCH R"
+			: button == (TouchLeft | TouchRight) ? "TOUCH PAD" : "?";
 	return measure(label, Bold, size * 0.50f).x + px(size) * 0.45f;
 }
 

@@ -164,7 +164,7 @@ void playSound(std::shared_ptr<const std::vector<int16_t>> frames)
 	if (!frames || frames->size() < 2)
 		return;
 	std::lock_guard<std::mutex> lock(mutex);
-	if (voices.size() >= 8)
+	if (voices.size() >= 12)
 		return;
 	Voice voice;
 	voice.frames = std::move(frames);

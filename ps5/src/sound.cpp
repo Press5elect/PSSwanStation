@@ -282,6 +282,46 @@ void makeChime()
 	sounds[Chime] = finished(track);
 }
 
+// The menus' sounds are the water's: small drops, kept short and quiet so a
+// held D-pad is a patter and not a noise.
+void makeMenu()
+{
+	{
+		// The cursor moved: the smallest drop.
+		Track track(0.07);
+		drop(track, 0.002, 880, 1180, 0.040, 0.090f, 0);
+		sounds[Move] = finished(track);
+	}
+	{
+		// Chosen: a fuller drop that climbs, with a little of its splash.
+		Track track(0.20);
+		drop(track, 0.002, 620, 1320, 0.085, 0.18f, 0);
+		drop(track, 0.060, 930, 1650, 0.060, 0.07f, 0);
+		splash(track, 0.010, 0.10, 0.04f, 0, 61);
+		sounds[Select] = finished(track);
+	}
+	{
+		// A step back: the drop the other way, falling.
+		Track track(0.18);
+		drop(track, 0.002, 900, 470, 0.095, 0.16f, 0);
+		sounds[Back] = finished(track);
+	}
+	{
+		// Another tab: two drops, the second to the side the first was not.
+		Track track(0.18);
+		drop(track, 0.002, 700, 980, 0.050, 0.12f, -0.35f);
+		drop(track, 0.055, 880, 1240, 0.050, 0.12f, 0.35f);
+		sounds[Tab] = finished(track);
+	}
+	{
+		// A letter typed: a dry tick with a drop under it.
+		Track track(0.09);
+		click(track, 0.002, 0.07f, 71);
+		drop(track, 0.004, 760, 1010, 0.035, 0.10f, 0);
+		sounds[Key] = finished(track);
+	}
+}
+
 #if defined(SWANSTATION_HOST)
 // A test run can ask for the sounds as files, to look at and listen to.
 void writeWav(const std::string& path, const std::vector<int16_t>& frames)
@@ -315,10 +355,11 @@ void init()
 	makeSplash();
 	makeFlight();
 	makeChime();
+	makeMenu();
 #if defined(SWANSTATION_HOST)
 	if (const char *dir = getenv("SWANSTATION_SOUND_DUMP"))
 	{
-		static const char *names[Count] = { "splash", "flight", "chime" };
+		static const char *names[Count] = { "splash", "flight", "chime", "move", "select", "back", "tab", "key" };
 		for (int i = 0; i < Count; i++)
 			writeWav(std::string(dir) + "/" + names[i] + ".wav", *sounds[i]);
 	}
@@ -327,7 +368,7 @@ void init()
 
 void play(Id id)
 {
-	if (id < 0 || id >= Count || !options::frontend().splashSound)
+	if (id < 0 || id >= Count || !(id <= Chime ? options::frontend().splashSound : options::frontend().uiSounds))
 		return;
 	audio::playSound(sounds[id]);
 }

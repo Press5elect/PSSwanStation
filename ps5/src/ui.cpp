@@ -114,6 +114,7 @@ enum class Page
 	Details,	// the game in `chosen`
 	Launch,		// the swan sees the game in `chosen` off; a: state slot, b: disc
 	Loading,	// a network game being read; a: state slot
+	Search,		// a game looked for by its name
 	Message,	// s: title, s2: text
 	Confirm,	// s: title, s2: text, action
 };
@@ -1089,6 +1090,89 @@ void drawCell(LibraryView& view, int index, float x, float y, float cell, bool f
 }
 
 void openDetails(const library::Game& game);
+void openSearch();
+struct Frame;
+void searchPage(Frame& f);
+
+// The letter a game is filed under: A to Z, and '#' for a name that begins
+// with anything else.
+char letterOf(const std::string& name)
+{
+	for (const unsigned char c : name)
+	{
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+			return (char)(c & ~0x20);
+		if (c > ' ')
+			return '#';
+	}
+	return '#';
+}
+
+// From the game at `from`: the first game of the next letter (forwards), or
+// the first of this letter and, from there, the first of the letter before.
+int letterJump(const std::vector<library::Game>& games, int from, bool forwards)
+{
+	const int count = (int)games.size();
+	if (count == 0)
+		return 0;
+	from = std::clamp(from, 0, count - 1);
+	const char here = letterOf(games[(size_t)from].name);
+	if (forwards)
+	{
+		for (int i = from + 1; i < count; i++)
+			if (letterOf(games[(size_t)i].name) != here)
+				return i;
+		return from;
+	}
+	int first = from;
+	while (first > 0 && letterOf(games[(size_t)first - 1].name) == here)
+		first--;
+	if (first < from || first == 0)
+		return first;
+	const char before = letterOf(games[(size_t)first - 1].name);
+	first--;
+	while (first > 0 && letterOf(games[(size_t)first - 1].name) == before)
+		first--;
+	return first;
+}
+
+// After a jump the letters stand down the right edge for a moment, the one
+// arrived at large beside them.
+double letterShownAt = -10;
+
+void letterRail(const std::vector<library::Game>& games, int focus)
+{
+	const float age = (float)(clock() - letterShownAt);
+	if (age < 0 || age > 1.5f || games.empty())
+		return;
+	const Theme& t = theme();
+	const float W = unitsWide(), H = unitsHigh();
+	const float alpha = motion() == MotionOff ? 1.f : 1.f - std::clamp((age - 1.1f) / 0.4f, 0.f, 1.f);
+	bool has[27] = {};
+	for (const library::Game& game : games)
+	{
+		const char letter = letterOf(game.name);
+		has[letter == '#' ? 0 : letter - 'A' + 1] = true;
+	}
+	const char now = letterOf(games[(size_t)std::clamp(focus, 0, (int)games.size() - 1)].name);
+	const float top = 150, step = (H - 64 - top - 30) / 27.f, x = W - 34;
+	panel(at(x - 20, top - 14), at(x + 20, top + step * 27 + 4), withAlpha(IM_COL32(10, 12, 20, 200), alpha), 20);
+	for (int i = 0; i < 27; i++)
+	{
+		const char letter = i == 0 ? '#' : (char)('A' + i - 1);
+		const bool current = letter == now;
+		const float y = top + step * (float)i;
+		if (current)
+			panel(at(x - 16, y - 2), at(x + 16, y + step - 4), withAlpha(t.accent, alpha), 10);
+		textCentred(at(x, y + (step - 26) * 0.5f), withAlpha(current ? IM_COL32(8, 12, 22, 255) : has[i] ? t.text : t.faint,
+				alpha * (current || has[i] ? 1.f : 0.45f)), std::string(1, letter), Bold, 19);
+	}
+	// The letter itself, large.
+	const float size = 150;
+	panel(at(W - 250, H * 0.5f - size * 0.5f), at(W - 250 + size, H * 0.5f + size * 0.5f),
+			withAlpha(IM_COL32(10, 12, 20, 225), alpha), 28);
+	textCentred(at(W - 250 + size * 0.5f, H * 0.5f - 58), withAlpha(t.accent, alpha), std::string(1, now), Huge, 92);
+}
 
 void libraryPage(bool active)
 {
@@ -1174,10 +1258,17 @@ void libraryPage(bool active)
 					view.shelfCursor++;
 				if (nav(Left) && view.shelfCursor > 0)
 					view.shelfCursor--;
-				if (nav(Down) || nav(R2))
+				if (nav(Down))
 				{
 					view.inShelf = false;
 					c = std::min(view.shelfCursor, count - 1);
+				}
+				// A letter from the shelf: from the game the shelf's cursor is on.
+				if (nav(R2) || nav(L2))
+				{
+					view.inShelf = false;
+					c = letterJump(view.games, view.recent[view.shelfCursor], nav(R2));
+					letterShownAt = clock();
 				}
 			}
 			else
@@ -1198,17 +1289,11 @@ void libraryPage(bool active)
 						view.shelfCursor = std::min(c, shelf - 1);
 					}
 				}
-				if (nav(R2))
-					c = std::min(c + columns * 3, count - 1);
-				if (nav(L2))
+				// L2 and R2: the letter before, the letter after.
+				if (nav(R2) || nav(L2))
 				{
-					if (c < columns && shelf > 0)
-					{
-						view.inShelf = true;
-						view.shelfCursor = std::min(c, shelf - 1);
-					}
-					else
-						c = std::max(c - columns * 3, 0);
+					c = letterJump(view.games, c, nav(R2));
+					letterShownAt = clock();
 				}
 			}
 		}
@@ -1290,10 +1375,15 @@ void libraryPage(bool active)
 				c = c + 1 < count ? c + 1 : (hit(Down) ? 0 : c);
 			if (nav(Up))
 				c = c > 0 ? c - 1 : (hit(Up) ? count - 1 : c);
-			if (nav(R2) || nav(Right))
+			if (nav(Right))
 				c = std::min(c + visible, count - 1);
-			if (nav(L2) || nav(Left))
+			if (nav(Left))
 				c = std::max(c - visible, 0);
+			if (nav(R2) || nav(L2))
+			{
+				c = letterJump(view.games, c, nav(R2));
+				letterShownAt = clock();
+			}
 		}
 		focus = view.cursor;
 		libraryWash(view.cover[focus]);
@@ -1366,16 +1456,27 @@ void libraryPage(bool active)
 		hints.push_back({ confirmButton, "Play" });
 		hints.push_back({ Triangle, "Details" });
 	}
+	if (count > 0)
+	{
+		hints.push_back({ L2 | R2, "Letter" });
+		hints.push_back({ TouchLeft | TouchRight, "Search" });
+	}
 	hints.push_back({ Square, "Scan" });
 	hints.push_back({ Options, "Menu" });
 	if (!libraryBehind)
+	{
 		hintBar(hints, left);
+		if (focus >= 0)
+			letterRail(view.games, focus);
+	}
 	drawHeader();
 
 	if (!active)
 		return;
 	if (hit(Options))
 		push(Page::MainMenu);
+	else if (hit(TouchLeft | TouchRight) && count > 0)
+		deferred = [] { openSearch(); };
 	else if (hit(Square))
 		scanEverything();
 	else if (focus >= 0 && hit(confirmButton))
@@ -1521,6 +1622,9 @@ void frontendItems(int kind, std::vector<Item>& items)
 			}
 			items.push_back(std::move(item));
 		}
+		items.push_back(toggle("Interface sounds", &f.uiSounds,
+				"Small sounds in the menus: the cursor moving, a choice, a step back, a letter typed. They follow "
+				"the Volume setting (Sound)."));
 		items.push_back(choice("Confirm button", f.swapConfirm ? 1 : 0, { "Cross", "Circle" },
 				"Which button confirms in the menus; the other one goes back. Games are not affected.",
 				[](int i) { options::frontend().swapConfirm = i != 0; }));
@@ -1884,6 +1988,11 @@ void mainMenuPage(Frame& f)
 	std::vector<Item> items;
 	items.push_back(action(icon::Gear, "Settings", "The interface, the picture and the sound, controllers, where "
 			"games come from, and every setting of the emulator.", [] { push(Page::Settings); }));
+	items.push_back(action(icon::Search, "Search", "Finds a game by a part of its name, in the games folder, on the USB "
+			"drives and on the network together. From the library: press the touch pad.", [] {
+				pop();
+				openSearch();
+			}));
 	items.push_back(action(icon::Chip, "Start the BIOS", "Starts the PlayStation without a disc: the memory card "
 			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { startBios(); }));
 	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
@@ -2792,6 +2901,265 @@ void messagePage(Frame& f, bool confirm)
 	}
 }
 
+// ----------------------------------------------------------------- search
+
+// A game looked for by its name. On the left a keyboard for the pad, on the
+// right every game, from all three places, that has what was typed in its
+// name: each word typed must be somewhere in it, and names that begin with
+// it come first. Right from the keyboard goes to the games, Left comes back.
+struct SearchState
+{
+	std::string query;
+	int column = 0, row = 0;			// on the keyboard
+	bool inResults = false;
+	int cursor = 0;
+	float scroll = 0;
+	// The games found: the source and the place in its list.
+	std::vector<std::pair<int, int>> found;
+	std::string foundFor;
+	unsigned generations[library::SourceCount] = {};
+	bool built = false;
+} searchState;
+
+constexpr int SearchColumns = 6, SearchRows = 6;
+const char *const searchKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+void openSearch()
+{
+	searchState = SearchState();
+	push(Page::Search);
+}
+
+void searchBuild()
+{
+	SearchState& s = searchState;
+	bool same = s.built && s.foundFor == s.query;
+	for (int i = 0; i < library::SourceCount; i++)
+		same = same && s.generations[i] == views[i].generation;
+	if (same)
+		return;
+	s.built = true;
+	s.foundFor = s.query;
+	s.found.clear();
+	std::vector<std::string> words;
+	{
+		std::string word;
+		for (const char c : lowercase(s.query) + " ")
+		{
+			if (c != ' ')
+				word.push_back(c);
+			else if (!word.empty())
+			{
+				words.push_back(word);
+				word.clear();
+			}
+		}
+	}
+	const std::string whole = lowercase(trim(s.query));
+	std::vector<std::pair<int, int>> later;
+	for (int source = 0; source < library::SourceCount; source++)
+	{
+		s.generations[source] = views[source].generation;
+		for (int i = 0; i < (int)views[source].games.size(); i++)
+		{
+			const std::string name = lowercase(views[source].games[(size_t)i].name);
+			bool all = true;
+			for (const std::string& word : words)
+				all = all && name.find(word) != std::string::npos;
+			if (!all)
+				continue;
+			(whole.empty() || name.rfind(whole, 0) == 0 ? s.found : later).emplace_back(source, i);
+		}
+	}
+	const auto byName = [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+		const std::string x = lowercase(views[a.first].games[(size_t)a.second].name);
+		const std::string y = lowercase(views[b.first].games[(size_t)b.second].name);
+		return x != y ? x < y : a < b;
+	};
+	std::sort(s.found.begin(), s.found.end(), byName);
+	std::sort(later.begin(), later.end(), byName);
+	s.found.insert(s.found.end(), later.begin(), later.end());
+	s.cursor = 0;
+	s.scroll = 0;
+}
+
+void searchPage(Frame&)
+{
+	const Theme& t = theme();
+	const float W = unitsWide(), H = unitsHigh();
+	SearchState& s = searchState;
+	for (int i = 0; i < library::SourceCount; i++)
+		refreshView(i);
+	searchBuild();
+	const int count = (int)s.found.size();
+	if (count == 0)
+		s.inResults = false;
+
+	text(at(64, 36), t.text, "Search", Title, 44);
+	buildTag();
+
+	// The left side: what was typed, and the keyboard.
+	const float kx = 64, key = 76, gap = 8, kw = SearchColumns * key + (SearchColumns - 1) * gap;
+	const float fieldY = 132;
+	panel(at(kx, fieldY), at(kx + kw, fieldY + 68), t.panel, 14);
+	outline(at(kx, fieldY), at(kx + kw, fieldY + 68), s.inResults ? IM_COL32(255, 255, 255, 26) : withAlpha(t.accent, 0.7f), 14, 2);
+	text(at(kx + 20, fieldY + 20), t.faint, icon::Search, Body, 26);
+	if (s.query.empty())
+		text(at(kx + 62, fieldY + 19), t.faint, "A part of the name", Body, 26);
+	else
+	{
+		const float end = textFit(at(kx + 62, fieldY + 17), px(kw - 100), t.text, s.query, Bold, 28);
+		// The caret, blinking where the next letter goes.
+		if (!s.inResults && (motion() == MotionOff || std::fmod(clock(), 1.0) < 0.6))
+			draw()->AddRectFilled(ImVec2(px(kx + 62) + end + px(3), px(fieldY + 18)),
+					ImVec2(px(kx + 62) + end + px(6), px(fieldY + 50)), t.accent);
+	}
+	const float keysY = fieldY + 92;
+	const int actionRow = SearchRows;		// Space, Delete, Clear
+	const float actionW = (kw - 2 * gap) / 3.f;
+	static const char *const actions[3] = { "Space", "Delete", "Clear" };
+	for (int r = 0; r <= SearchRows; r++)
+	{
+		const int columns = r == actionRow ? 3 : SearchColumns;
+		for (int c = 0; c < columns; c++)
+		{
+			const float w = r == actionRow ? actionW : key;
+			const float x = kx + (float)c * (w + gap), y = keysY + (float)r * (key - 8 + gap);
+			const bool focused = !s.inResults && s.row == r && (r == actionRow ? s.column / 2 == c : s.column == c);
+			panel(at(x, y), at(x + w, y + key - 8), focused ? t.accent : t.panelHigh, 12);
+			const std::string label = r == actionRow ? actions[c] : std::string(1, searchKeys[r * SearchColumns + c]);
+			textCentred(at(x + w * 0.5f, y + (r == actionRow ? 21 : 16)), focused ? IM_COL32(8, 12, 22, 255) : t.text, label, Bold,
+					r == actionRow ? 22 : 30);
+		}
+	}
+
+	// The right side: the games.
+	const float rx0 = kx + kw + 56, rx1 = W - 64, top = 132, bottom = H - 64 - 24, rowH = 64;
+	const int visible = std::max((int)((bottom - top - 60) / rowH), 1);
+	text(at(rx0, top + 6), t.dim, count == 0 ? std::string("No game has that in its name")
+			: s.query.empty() ? format("All %d games", count) : format("%d game%s", count, count == 1 ? "" : "s"), Bold, 22);
+	const float listTop = top + 52;
+	if (s.cursor < (int)s.scroll)
+		s.scroll = (float)s.cursor;
+	if (s.cursor >= (int)s.scroll + visible)
+		s.scroll = (float)(s.cursor - visible + 1);
+	static const char *const sourceIcons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network };
+	for (int n = 0; n < visible && (int)s.scroll + n < count; n++)
+	{
+		const int index = (int)s.scroll + n;
+		const auto& [source, at2] = s.found[(size_t)index];
+		const library::Game& game = views[source].games[(size_t)at2];
+		const float y = listTop + (float)n * rowH;
+		const bool focused = s.inResults && index == s.cursor;
+		if (focused)
+		{
+			panel(at(rx0 - 12, y + 3), at(rx1, y + rowH - 3), t.panelHigh, 12);
+			panel(at(rx0 - 12, y + 14), at(rx0 - 6, y + rowH - 14), t.accent, 3);
+		}
+		std::string facts = library::sourceName(source);
+		if (!game.region.empty())
+			facts += "  \xc2\xb7  " + game.region;
+		if (game.discs.size() > 1)
+			facts += format("  \xc2\xb7  %d discs", (int)game.discs.size());
+		const float factsW = toUnits(measure(facts, Body, 20).x);
+		textRight(at(rx1 - 24, y + 21), t.faint, facts, Body, 20);
+		text(at(rx0 + 10, y + 20), focused ? t.accent : t.faint, sourceIcons[source], Body, 22);
+		textFit(at(rx0 + 50, y + 17), px(rx1 - rx0 - 110 - factsW), focused ? t.text : IM_COL32(214, 220, 234, 255), game.name,
+				Body, 26);
+	}
+	if (count > visible)
+	{
+		// Where in the list this is.
+		const float trackH = (float)visible * rowH, barH = std::max(trackH * (float)visible / (float)count, 30.f);
+		const float barY = listTop + (trackH - barH) * (s.scroll / (float)(count - visible));
+		panel(at(rx1 + 10, barY), at(rx1 + 15, barY + barH), IM_COL32(255, 255, 255, 60), 3);
+	}
+
+	// The pad.
+	bool changed = false;
+	if (!s.inResults)
+	{
+		const int columns = s.row == actionRow ? 3 : SearchColumns;
+		int c = s.row == actionRow ? s.column / 2 : s.column;
+		if (nav(Left) && c > 0)
+			c--;
+		else if (nav(Right))
+		{
+			if (c + 1 < columns)
+				c++;
+			else if (count > 0)
+				s.inResults = true;
+		}
+		s.column = s.row == actionRow ? c * 2 : c;
+		if (nav(Down) && s.row < actionRow)
+			s.row++;
+		if (nav(Up) && s.row > 0)
+			s.row--;
+		const auto erase = [&] {
+			// A whole character: a letter of two bytes goes in one piece.
+			while (!s.query.empty() && ((unsigned char)s.query.back() & 0xC0) == 0x80)
+				s.query.pop_back();
+			if (!s.query.empty())
+				s.query.pop_back();
+			changed = true;
+		};
+		const auto type = [&](char letter) {
+			if (s.query.size() < 40 && !(letter == ' ' && (s.query.empty() || s.query.back() == ' ')))
+			{
+				s.query.push_back(letter);
+				changed = true;
+			}
+		};
+		if (hit(confirmButton))
+		{
+			if (s.row < actionRow)
+				type(searchKeys[s.row * SearchColumns + s.column]);
+			else if (s.column / 2 == 0)
+				type(' ');
+			else if (s.column / 2 == 1)
+				erase();
+			else
+			{
+				changed = !s.query.empty();
+				s.query.clear();
+			}
+		}
+		else if (hit(Square))
+			erase();
+		else if (hit(Triangle))
+			type(' ');
+		if (changed)
+			sound::play(sound::Key);
+		hintBar({ { confirmButton, "Type" }, { Square, "Delete" }, { Triangle, "Space" }, { Left | Right, "To the games" },
+				{ cancelButton, "Back" } });
+	}
+	else
+	{
+		if (nav(Down))
+			s.cursor = s.cursor + 1 < count ? s.cursor + 1 : (hit(Down) ? 0 : s.cursor);
+		if (nav(Up))
+			s.cursor = s.cursor > 0 ? s.cursor - 1 : (hit(Up) ? count - 1 : s.cursor);
+		if (nav(R2))
+			s.cursor = std::min(s.cursor + visible, count - 1);
+		if (nav(L2))
+			s.cursor = std::max(s.cursor - visible, 0);
+		if (nav(Left))
+			s.inResults = false;
+		const auto& [source, index] = s.found[(size_t)std::clamp(s.cursor, 0, count - 1)];
+		if (hit(confirmButton))
+		{
+			const library::Game game = views[source].games[(size_t)index];
+			deferred = [game] { launch(game, -1); };
+		}
+		else if (hit(Triangle))
+		{
+			const library::Game game = views[source].games[(size_t)index];
+			deferred = [game] { openDetails(game); };
+		}
+		hintBar({ { confirmButton, "Play" }, { Triangle, "Details" }, { Left | Right, "To the keyboard" }, { cancelButton, "Back" } });
+	}
+}
+
 // --------------------------------------------------------------- the splash
 
 // The start-up animation, with its sound (sound.cpp; the times of both are
@@ -3178,11 +3546,36 @@ bool blocksEmulation()
 	return !stack.empty();
 }
 
+// The menus' sounds, by what was pressed while a menu has the pad: not in a
+// game, and not while an animation has the screen.
+void menuSounds()
+{
+	if (in.pressed == 0 && in.repeat == 0)
+		return;
+	if (stack.empty() ? (host::running() || splash.state != Splash::Over)
+			: (stack.back().page == Page::Launch || stack.back().page == Page::Loading))
+		return;
+	// The search's keyboard has its own sound for a letter.
+	const bool typing = !stack.empty() && stack.back().page == Page::Search && !searchState.inResults;
+	if (hit(confirmButton))
+	{
+		if (!typing)
+			sound::play(sound::Select);
+	}
+	else if (hit(cancelButton))
+		sound::play(sound::Back);
+	else if (hit(L1 | R1 | Options) || (!typing && hit(Triangle | TouchLeft | TouchRight)))
+		sound::play(sound::Tab);
+	else if (nav(Up | Down | Left | Right | L2 | R2))
+		sound::play(sound::Move);
+}
+
 void frame()
 {
 	widgetsFrame();
 	imagesFrame();
 	readInput();
+	menuSounds();
 	if (closeGame)
 	{
 		closeGame = false;
@@ -3234,6 +3627,7 @@ void frame()
 		case Page::Details: detailsPage(f); break;
 		case Page::Launch: launchPage(f); break;
 		case Page::Loading: loadingPage(f); break;
+		case Page::Search: searchPage(f); break;
 		case Page::Message: messagePage(f, false); break;
 		case Page::Confirm: messagePage(f, true); break;
 		}

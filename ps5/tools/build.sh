@@ -116,6 +116,7 @@ if [[ -n ${NETWORK_PATH:-} ]]; then
     } > "$app/network.cfg"
 fi
 cp -- "$ps5/README.txt" "$app/README.txt"
+cp -- "$ps5/CHANGELOG.txt" "$app/CHANGELOG.txt"
 cp -- "$src/LICENSE" "$app/licenses/GPL-3.0.txt"
 cp -- "$ps5/licenses/"* "$app/licenses/"
 {

@@ -157,10 +157,18 @@ enum Id
 	Splash,		// the start-up animation, from its first moment to the open doors
 	Flight,		// the swan's flight to its corner
 	Chime,		// the lift's bell alone
+	// The menus: the cursor moved, something was chosen, a step back, another
+	// tab or section, a letter typed.
+	Move,
+	Select,
+	Back,
+	Tab,
+	Key,
 	Count
 };
 void init();
-// Not heard when "Start-up sound" is off.
+// The first three are not heard when "Start-up sound" is off, the others
+// when "Interface sounds" is.
 void play(Id id);
 void stop();
 }
@@ -209,6 +217,7 @@ struct Frontend
 	bool swapConfirm = false;	// Circle confirms in the menus
 	bool splash = true;			// the start-up animation
 	bool splashSound = true;	// and its sound
+	bool uiSounds = true;		// the menus' sounds
 	int animations = 0;			// 0 everything moves, 1 little does, 2 nothing does
 	int uiScale = 100;			// percent
 	int accent = 0;

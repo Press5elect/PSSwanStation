@@ -52,7 +52,9 @@ In the menus
   D-pad, left stick     move
   Cross / Circle        confirm / back (they can be swapped in Settings)
   L1, R1                the library's tabs; a settings section
-  L2, R2                a page up or down
+  L2, R2                in the library, the letter before and the letter after;
+                        in other lists, a page up or down
+  Touch pad             in the library, search
   Square                scan for games; in settings, back to the default;
                         in a game's details, the next disc
   Triangle              a game's details
@@ -77,6 +79,13 @@ shown: with games in the folder only there is the one tab, and L1 and R1
 appear when there is a second. Square looks through all three again, so a
 drive plugged in or a share filled since gets its tab. With no games anywhere
 the screen says where each place's games go.
+
+Finding a game: L2 and R2 jump to the letter before and the letter after
+(the letters stand down the right edge for a moment). Pressing the touch pad
+opens the search: a keyboard for the D-pad on the left (Cross types, Square
+deletes, Triangle is a space) and, on the right, every game from all three
+places whose name has what was typed, as it is typed. Right goes over to the
+games; Cross plays one, Triangle opens its details.
 
 The games played lately are on a shelf of their own at the top ("Continue
 playing"), with when and for how long; a game on several discs starts from
@@ -156,6 +165,9 @@ and flies at the screen when a game starts. Any button skips the start-up
 animation. Reduced keeps the swan still (the start-up screen is the finished
 picture, with the bell) and starts games at once; Off stops every movement
 of the interface and skips the start-up screen.
+
+"Interface sounds" (Interface) are the small sounds of the menus: the cursor
+moving, a choice, a step back, a letter typed.
 
 "Start-up sound" (Interface) is what that animation sounds like - water, the
 lift, the bell, wings - at the Volume set under Sound. The sounds are made by

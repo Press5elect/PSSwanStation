@@ -79,6 +79,8 @@ constexpr const char *Card = "\xef\x9f\x82";		// f7c2
 constexpr const char *Server = "\xef\x88\xb3";		// f233
 constexpr const char *Sync = "\xef\x80\xa1";		// f021
 constexpr const char *Bolt = "\xef\x83\xa7";		// f0e7
+constexpr const char *Search = "\xef\x80\x82";		// f002
+constexpr const char *Backspace = "\xef\x95\x9a";	// f55a
 }
 
 enum Font { Body, Bold, Title, Huge };

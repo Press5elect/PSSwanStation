@@ -1,0 +1,35 @@
+PSSwanStation - what changed
+============================
+
+Build 9
+  - Library: L2 and R2 jump to the previous and the next letter.
+  - Search: press the touch pad in the library, type a part of the name, and
+    the games from the console, USB and the network that match are listed.
+  - Menu sounds (Settings, Interface, "Interface sounds" to switch them off).
+
+Build 8
+  - Opening Options or Cheats for a network game no longer freezes the
+    screen while the share answers.
+  - Loading a network game: one progress bar for the whole game, the swan no
+    longer jumps back, the text is under the bar with speed and time left.
+
+Build 7
+  - The title is now called PSSwanStation.
+
+Build 6
+  - Games from an FTP server (a "path = ftp://..." line in network.cfg).
+  - Players 2 to 4: other users logged in on the console, picked up while
+    the title runs; the multitap is on the Controllers page.
+
+Build 5
+  - New start-up animation with sound: the swan takes the lift.
+
+Build 4
+  - The library only shows the places (Internal, USB, Network) that have games.
+
+Build 3
+  - The swan moves: it flies to its corner, looks about, flies at the screen.
+
+Build 2
+  - Start-up screen, a game's details with description, its own options and
+    its cheats, disc change from the details, playlists hidden.
