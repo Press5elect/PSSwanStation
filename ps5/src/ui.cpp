@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the interface: the library, the menus, the settings.
+	PSSwanStation - the interface: the library, the menus, the settings.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -889,7 +889,7 @@ std::string factsLine(const gamedb::Info& info, bool makers)
 std::string usbHint()
 {
 	if (!options::frontend().usb)
-		return "USB drives are off. Turn them on in Settings, Games and network, then restart SwanStation.";
+		return "USB drives are off. Turn them on in Settings, Games and network, then restart PSSwanStation.";
 	return library::sourceHint(library::Usb);
 }
 
@@ -900,6 +900,17 @@ void buildTag(float alpha = 1.f)
 	const float W = unitsWide();
 	textRight(at(W - 56, 38), withAlpha(t.accent, alpha), format("WIP  \xc2\xb7  BUILD %d", BuildNumber), Bold, 20);
 	textRight(at(W - 56, 66), withAlpha(t.faint, alpha), format("%s  \xc2\xb7  %s", BuildDate, Developer), Body, 18);
+}
+
+// The title's name as its mark has it: "PS" in the accent colour, the
+// emulator's name after it in the text's.
+void wordmark(ImVec2 where, float alpha, Font font, float size)
+{
+	const Theme& t = theme();
+	const std::string name = AppName;
+	text(where, withAlpha(t.accent, alpha), name.substr(0, 2), font, size);
+	text(ImVec2(where.x + measure(name.substr(0, 2), font, size).x, where.y), withAlpha(t.text, alpha), name.substr(2),
+			font, size);
 }
 
 void drawHeader()
@@ -919,12 +930,14 @@ void drawHeader()
 		}
 	}
 	if (headerNameAlpha > 0.01f)
-		text(at(136, 36), withAlpha(t.text, headerNameAlpha), AppName, Title, 44);
+		wordmark(at(136, 36), headerNameAlpha, Title, 44);
+	// The tabs begin where the name ends.
+	const float nameEnd = 136 + toUnits(measure(AppName, Title, 44).x);
 
 	// A tab for each place that has games; L1 and R1 when there is a choice.
 	static const char *icons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network };
 	const bool choice = shownSources() > 1;
-	float x = choice ? 470 : 424;
+	float x = choice ? nameEnd + 90 : nameEnd + 44;
 	for (int i = 0; i < library::SourceCount; i++)
 	{
 		const bool selected = i == source;
@@ -945,7 +958,7 @@ void drawHeader()
 	}
 	if (choice)
 	{
-		buttonGlyph(at(430, 65), 30, L1);
+		buttonGlyph(at(nameEnd + 50, 65), 30, L1);
 		buttonGlyph(at(x + 32, 65), 30, R1);
 	}
 	buildTag();
@@ -1474,7 +1487,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 				[](int i) { options::frontend().animations = i; }));
 		{
 			Item item = toggle("Start-up animation", &f.splash,
-					"How SwanStation opens: the swan paddles along the bottom of the screen, takes the lift up to "
+					"How PSSwanStation opens: the swan paddles along the bottom of the screen, takes the lift up to "
 					"the middle, and flies to its corner as the library comes in. Any button skips it.");
 			if (f.animations == 2)
 			{
@@ -1504,7 +1517,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"Shows, in a corner of the game, how many frames a second the emulator runs and how that compares "
 				"with the game's own speed."));
 		items.push_back(toggle("Console notices", &f.notifications,
-				"Lets SwanStation use the console's pop-up notices for things that matter outside its own screen "
+				"Lets PSSwanStation use the console's pop-up notices for things that matter outside its own screen "
 				"(a start-up problem, for one).",
 				[] { diag::setNotifications(options::frontend().notifications); }));
 		break;
@@ -1548,9 +1561,9 @@ void frontendItems(int kind, std::vector<Item>& items)
 			}
 		items.push_back(fact("Controllers", connected == 0 ? std::string("None") : connected == 1 ? std::string("Player 1")
 				: "Players " + who,
-				"Player 1 is whoever started SwanStation. Every other player is another user logged in on the console "
+				"Player 1 is whoever started PSSwanStation. Every other player is another user logged in on the console "
 				"with a controller of their own (press the PS button on it and choose a user), in the order they "
-				"joined; a controller that joins while SwanStation runs is taken up within a few seconds. Any of "
+				"joined; a controller that joins while PSSwanStation runs is taken up within a few seconds. Any of "
 				"them moves through these menus."));
 		static const char *const modes[4] = { "Disabled", "Port1Only", "Port2Only", "BothPorts" };
 		static const char *const tapKey = "swanstation_ControllerPorts_MultitapMode";
@@ -1589,7 +1602,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 		items.push_back(toggle("Vibration", &f.rumble, "Passes the game's vibration to the DualSense."));
 		items.push_back(fact("Select and Start", "Touch pad",
 				"The left half of the touch pad is the PlayStation's Select, the right half is Start: press the pad "
-				"down on that side. OPTIONS opens SwanStation's menu."));
+				"down on that side. OPTIONS opens PSSwanStation's menu."));
 		break;
 	case 4:
 		items.push_back(toggle("Save when a game is closed", &f.autoSaveOnExit,
@@ -1601,9 +1614,9 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"Reads a game from the network share completely before it starts, so the game never waits for the "
 				"network while it runs. Off starts sooner and reads as the game asks."));
 		items.push_back(toggle("USB drives", &f.usb,
-				"Lets SwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
+				"Lets PSSwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
 				"of the drive). This needs the ELF loader listening on port 9021 and takes effect the next time "
-				"SwanStation starts."));
+				"PSSwanStation starts."));
 		{
 			std::string folders;
 			for (const std::string& folder : smb::gameFolders())
@@ -1611,7 +1624,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
 					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
 					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "
-					"itself. SwanStation reads it when it starts."));
+					"itself. PSSwanStation reads it when it starts."));
 			items.push_back(fact("Folders", shownRoot(),
 					"Games go in " + shownRoot() + "games, BIOS files in bios, covers in covers, your own cheat "
 					"files in cheats. Memory cards, states and settings are kept in data."));
@@ -1685,7 +1698,7 @@ void aboutItems(std::vector<Item>& items)
 {
 	retro_system_info info{};
 	retro_get_system_info(&info);
-	items.push_back(header("SwanStation for PS5"));
+	items.push_back(header("PSSwanStation"));
 	items.push_back(fact("Build", format("%d  \xc2\xb7  work in progress  \xc2\xb7  %s", BuildNumber, BuildDate),
 			format("Build %d of %s. A work in progress: not everything has been run on a console yet.", BuildNumber,
 			BuildDate)));
@@ -1697,7 +1710,7 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Display", format("%d x %d at %.2f Hz", display::width(), display::height(),
 			display::refreshRate())));
 	items.push_back(fact("BIOS", host::biosSummary(),
-			host::biosSummary() + ". SwanStation carries OpenBIOS and needs no BIOS file; games are more "
+			host::biosSummary() + ". PSSwanStation carries OpenBIOS and needs no BIOS file; games are more "
 			"compatible with an original one (scph5500.bin, scph5501.bin, scph5502.bin) in " + shownRoot() + "bios."));
 	items.push_back(fact("Game database", gamedb::summary(),
 			gamedb::summary() + ". Descriptions, developers, publishers, release years and genres, and the serial "
@@ -1871,7 +1884,7 @@ void mainMenuPage(Frame& f)
 		const int about = (int)settingsCategories(false).size() - 1;
 		push(Page::Settings, about);
 	}));
-	items.push_back(action(icon::Power, "Close SwanStation", "Back to the console's home screen.", [] { quit = true; }));
+	items.push_back(action(icon::Power, "Close PSSwanStation", "Back to the console's home screen.", [] { quit = true; }));
 	standardHints(menuPage(f, "Menu", "", items, 620));
 }
 
@@ -2804,9 +2817,8 @@ void drawSplash(float t, float flight)
 	const float nameY0 = y0 + side0 + H * 0.035f + 18.f * (1.f - named);
 	const float nx = (W - nameW0) * 0.5f + (136 - (W - nameW0) * 0.5f) * ease;
 	const float ny = nameY0 + (36 - nameY0) * ease;
-	text(at(flies ? nx : (W - nameW0) * 0.5f, flies ? ny : nameY0),
-			withAlpha(th.text, (flies ? 1.f - std::clamp(flight / 0.55f, 0.f, 1.f) : cover) * named), AppName, Huge,
-			flies ? size : size0);
+	wordmark(at(flies ? nx : (W - nameW0) * 0.5f, flies ? ny : nameY0),
+			(flies ? 1.f - std::clamp(flight / 0.55f, 0.f, 1.f) : cover) * named, Huge, flies ? size : size0);
 	// What leaves when the flight begins.
 	if (rest > 0.01f)
 	{

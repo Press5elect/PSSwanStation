@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the title's main: start-up order, the frame loop.
+	PSSwanStation - the title's main: start-up order, the frame loop.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -25,7 +25,7 @@ namespace fe
 
 std::string rootDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 6;
+const int BuildNumber = 7;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 
@@ -172,7 +172,7 @@ int main(int, char **)
 	diag::mark("main: display");
 	if (!display::init())
 	{
-		diag::notify("%s: the display could not be opened (see %sswanstation-boot.log)", AppName, shownRoot().c_str());
+		diag::notify("%s: the display could not be opened (see %spsswanstation-boot.log)", AppName, shownRoot().c_str());
 		platform::quit();
 	}
 	platform::lateInit();

@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 (from PSFlyCast) - every thread on a 2 MiB stack libkernel allocates.
+	PSSwanStation (from PSFlyCast) - every thread on a 2 MiB stack libkernel allocates.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5)
 	SPDX-License-Identifier: GPL-2.0-or-later

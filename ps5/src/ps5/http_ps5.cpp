@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - HTTP(S) through the console's own client.
+	PSSwanStation - HTTP(S) through the console's own client.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -59,10 +59,10 @@ bool init()
 		return false;
 	}
 	const int net = sceNetInit();	// an error only means it was up already
-	const int pool = sceNetPoolCreate("swanstation-http", 64 * 1024, 0);
+	const int pool = sceNetPoolCreate("psswanstation-http", 64 * 1024, 0);
 	const int ssl = pool >= 0 ? sceSslInit(256 * 1024) : -1;
 	const int context = ssl >= 0 ? sceHttp2Init(pool, ssl, 256 * 1024, 1) : -1;
-	templateId = context >= 0 ? sceHttp2CreateTemplate(context, "SwanStation-PS5/1.0", 3, 1) : -1;
+	templateId = context >= 0 ? sceHttp2CreateTemplate(context, "PSSwanStation/1.0", 3, 1) : -1;
 	diag::mark("http: net %#x pool %#x ssl %#x http2 %#x template %#x", (unsigned)net, (unsigned)pool, (unsigned)ssl,
 			(unsigned)context, (unsigned)templateId);
 	ok = templateId >= 0;

@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - start-up record and crash report.
+	PSSwanStation - start-up record and crash report.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -205,7 +205,7 @@ void report(int signal, siginfo_t *info, void *contextPointer)
 			fflush(stream);
 			funlockfile(stream);
 		}
-	sendNotification("SwanStation stopped. Please send swanstation-boot.log from its folder.");
+	sendNotification("PSSwanStation stopped. Please send psswanstation-boot.log from its folder.");
 	std::signal(signal, SIG_DFL);
 	std::raise(signal);
 }
@@ -241,9 +241,9 @@ bool open(const std::string& dir)
 {
 	if (logFd >= 0)
 		return true;
-	const std::string a = dir + "swanstation-boot.log";
-	const std::string b = dir + "swanstation-boot.1.log";
-	const std::string c = dir + "swanstation-boot.2.log";
+	const std::string a = dir + "psswanstation-boot.log";
+	const std::string b = dir + "psswanstation-boot.1.log";
+	const std::string c = dir + "psswanstation-boot.2.log";
 	rename(b.c_str(), c.c_str());
 	rename(a.c_str(), b.c_str());
 	const int fd = ::open(a.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0666);

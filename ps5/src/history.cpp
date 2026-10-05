@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - what was played: when, for how long, and which disc
+	PSSwanStation - what was played: when, for how long, and which disc
 	of a game on several was in the tray.
 
 	SPDX-License-Identifier: GPL-3.0-or-later

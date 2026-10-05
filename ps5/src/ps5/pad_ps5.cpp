@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the DualSense, read through libScePad.
+	PSSwanStation - the DualSense, read through libScePad.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

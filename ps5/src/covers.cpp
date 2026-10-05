@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - cover downloads.
+	PSSwanStation - cover downloads.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5/ps5_covers.cpp)
 	SPDX-License-Identifier: GPL-3.0-or-later

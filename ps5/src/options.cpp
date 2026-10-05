@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - settings: the frontend's own, and every option of the core.
+	PSSwanStation - settings: the frontend's own, and every option of the core.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

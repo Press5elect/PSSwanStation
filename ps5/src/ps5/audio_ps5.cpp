@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - audio through libSceAudioOut.
+	PSSwanStation - audio through libSceAudioOut.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

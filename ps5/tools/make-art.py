@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SwanStation for PS5 - draws the title's pictures.
+"""PSSwanStation - draws the title's pictures.
 
   ps5/assets/logo-box.png  the mark's box, without the swan, for the interface (512 x 512)
   ps5/sce_sys/icon0.png    the home screen's icon (512 x 512)
@@ -139,9 +139,12 @@ def backdrop(width, height, loading):
     d = ImageDraw.Draw(image)
     bold = ImageFont.truetype(os.path.join(ASSETS, "Roboto-Bold.ttf"), int(height * 0.085))
     medium = ImageFont.truetype(os.path.join(ASSETS, "Roboto-Medium.ttf"), int(height * 0.030))
-    name = "SwanStation"
+    # The name: "PS" in the mark's blue, the emulator's name after it.
+    name = "PSSwanStation"
     w = d.textlength(name, font=bold)
-    d.text((cx - w / 2, top + side + height * 0.035), name, font=bold, fill=(238, 242, 250, 255))
+    d.text((cx - w / 2, top + side + height * 0.035), name[:2], font=bold, fill=BLUE + (255,))
+    d.text((cx - w / 2 + d.textlength(name[:2], font=bold), top + side + height * 0.035), name[2:], font=bold,
+           fill=(238, 242, 250, 255))
     line = "for PS5"
     w = d.textlength(line, font=medium)
     d.text((cx - w / 2, top + side + height * 0.145), line, font=medium, fill=(160, 170, 192, 255))

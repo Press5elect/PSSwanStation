@@ -1,9 +1,10 @@
-SwanStation for PS5
-===================
+PSSwanStation
+=============
 
 A PlayStation (PS1) emulator as a PS5 homebrew title: SwanStation, the
 libretro fork of DuckStation, with a controller interface of its own, drawing
-with Vulkan (the RADV driver, linked into the title).
+with Vulkan (the RADV driver, linked into the title). PSSwanStation is the
+title; SwanStation is the emulator inside it.
 
 It contains no games and no original BIOS. Use games you own, from your own
 discs.
@@ -63,7 +64,7 @@ In a game
   their own controller (see "More players" below).
   Touch pad, left half   SELECT   (press the pad down)
   Touch pad, right half  START
-  OPTIONS                SwanStation's menu: save and load states, change
+  OPTIONS                PSSwanStation's menu: save and load states, change
                          disc, cheats and patches, settings, reset, close
 
 
@@ -99,7 +100,7 @@ Network: an SMB share (Windows sharing) or an FTP server, or several of
 either. Name each folder in network.cfg with a "path" line, for example
   path = 192.168.1.10/Games/PSX
   path = ftp://192.168.1.10/games/psx
-with the server by its IP address, and restart SwanStation. An FTP server on
+with the server by its IP address, and restart PSSwanStation. An FTP server on
 another port is ftp://192.168.1.10:2121/games; one with an account of its
 own is ftp://user:password@192.168.1.10/games (otherwise the "user" and
 "password" lines are used, and guest with no password logs in to an FTP
@@ -130,7 +131,7 @@ the menu: "Settings" changes them for every game, "Game settings" for this
 game only. A dot marks a value that is the game's own; Square gives it back
 to the general value.
 
-More players: player 1 is whoever started SwanStation. A second person
+More players: player 1 is whoever started PSSwanStation. A second person
 presses the PS button on their controller and chooses a user; they are
 player 2, in port 2, within a couple of seconds, with no restart. For three
 or four, switch the Multitap on (Settings, Controllers): "In port 1" puts all
@@ -139,7 +140,7 @@ player 1 in port 1. Leave it off otherwise: some games for one or two do not
 see a controller behind a multitap. Each player's controller type is set on
 the same page, where the first line shows who is connected.
 
-The swan: with Animations (Interface) on Full, SwanStation opens with its
+The swan: with Animations (Interface) on Full, PSSwanStation opens with its
 head coming up in the bottom right corner and paddling along the bottom of
 the screen to the middle, where it goes under and takes the lift: the box
 comes up between its rails to the middle of the screen, its bell rings, its
@@ -191,13 +192,13 @@ console and are kept one for each game.
 When something goes wrong
 -------------------------
 
-/data/homebrew/PPSA99248/swanstation-boot.log is written from the first
+/data/homebrew/PPSA99248/psswanstation-boot.log is written from the first
 moment of every start (the two starts before it are kept as .1.log and
-.2.log); a crash writes its report there. logs/swanstation.log is the
+.2.log); a crash writes its report there. logs/psswanstation.log is the
 emulator's own log. Those two files say what happened.
 
   The screen stays black after the icon is chosen: look at
-  swanstation-boot.log; if there is none, the title did not start at all
+  psswanstation-boot.log; if there is none, the title did not start at all
   (kstuff, the folder's place and name).
 
   A game stops or crashes at once: try CPU Execution Mode "Cached

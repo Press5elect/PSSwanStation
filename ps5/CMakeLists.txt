@@ -1,4 +1,4 @@
-# SwanStation for PS5: the title's build (ps5/tools/build.sh drives it).
+# PSSwanStation: the title's build (ps5/tools/build.sh drives it).
 #
 # SwanStation is a libretro core. This project compiles the core as it is
 # (dep/, src/common, src/core, src/libretro), links it statically into a title

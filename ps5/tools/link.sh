@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SwanStation for PS5: link the executable CMake built into a signed eboot.
+# PSSwanStation: link the executable CMake built into a signed eboot.
 #
 #   link.sh TARGET OBJECT... -- LIBRARY...
 #

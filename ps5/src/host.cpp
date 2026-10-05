@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the libretro host: the emulator core, run by the title.
+	PSSwanStation - the libretro host: the emulator core, run by the title.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

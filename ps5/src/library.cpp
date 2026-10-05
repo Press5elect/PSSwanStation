@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the game library: what is in the folders.
+	PSSwanStation - the game library: what is in the folders.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -470,13 +470,13 @@ std::string sourceHint(int source)
 	{
 		if (!platform::usbAvailable())
 			return "USB drives could not be opened: this needs elfldr listening on port 9021. "
-					"Restart SwanStation once it runs.";
+					"Restart PSSwanStation once it runs.";
 		return "Put your games in a folder named psx (or ps1, playstation) at the top of the drive, "
 				"then press Square to scan.";
 	}
 	if (smb::gameFolders().empty())
 		return "Name your share or FTP server in " + shownRoot() + "network.cfg (path = 192.168.1.10/Games/PSX, "
-				"or path = ftp://192.168.1.10/games/psx), then restart SwanStation.";
+				"or path = ftp://192.168.1.10/games/psx), then restart PSSwanStation.";
 	return "Press Square to scan the share again.";
 }
 

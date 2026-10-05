@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the swan, drawn so that it can move.
+	PSSwanStation - the swan, drawn so that it can move.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

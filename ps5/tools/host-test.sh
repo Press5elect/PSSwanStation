@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SwanStation for PS5: the PC test run.
+# PSSwanStation: the PC test run.
 #
 #   ps5/tools/host-test.sh [ROOT_DIR]
 #
@@ -88,9 +88,9 @@ cat > "$root/script.txt" <<'SCRIPT'
 SCRIPT
 SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=1170 \
     SWANSTATION_SIZE=${SWANSTATION_SIZE:-1920x1080} "$build/swanstation" > "$root/run.log" 2>&1
-grep -E "game:|cheats:|state:|shot|CRASH" "$root/swanstation-boot.log"
-if grep -q CRASH "$root/swanstation-boot.log"; then
-    echo "host-test: the run crashed (see $root/swanstation-boot.log)" >&2
+grep -E "game:|cheats:|state:|shot|CRASH" "$root/psswanstation-boot.log"
+if grep -q CRASH "$root/psswanstation-boot.log"; then
+    echo "host-test: the run crashed (see $root/psswanstation-boot.log)" >&2
     exit 1
 fi
 echo "host-test: screenshots are in $root"

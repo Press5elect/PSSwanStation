@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 (from PSFlyCast) - libc entry points the console's libc does not export.
+	PSSwanStation (from PSFlyCast) - libc entry points the console's libc does not export.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5)
 	SPDX-License-Identifier: GPL-2.0-or-later

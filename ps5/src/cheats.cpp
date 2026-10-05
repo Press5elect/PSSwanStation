@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - cheats and patches, from DuckStation's database.
+	PSSwanStation - cheats and patches, from DuckStation's database.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

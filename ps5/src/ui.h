@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the interface's own declarations (ui.cpp,
+	PSSwanStation - the interface's own declarations (ui.cpp,
 	ui_widgets.cpp, texture.cpp).
 
 	SPDX-License-Identifier: GPL-3.0-or-later

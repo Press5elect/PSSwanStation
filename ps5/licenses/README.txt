@@ -1,5 +1,5 @@
-SwanStation for PS5 - what it is made of
-========================================
+PSSwanStation - what it is made of
+==================================
 
 The title as a whole is distributed under the GNU General Public License,
 version 3 (GPL-3.0.txt), WITHOUT ANY WARRANTY. Its source is the SwanStation
@@ -44,7 +44,7 @@ This title contains no games, no BIOS file of an original console, no console
 firmware and no keys. Use games you own, from your own discs, and a BIOS
 dumped from hardware you own.
 
-SwanStation for PS5 is an unofficial port. It is not affiliated with or
+PSSwanStation is an unofficial port of SwanStation to the PS5. It is not affiliated with or
 endorsed by Sony Interactive Entertainment, the libretro team or the
 DuckStation project. "PlayStation" and "PS5" are trademarks of Sony
 Interactive Entertainment. Vulkan is a registered trademark of the Khronos

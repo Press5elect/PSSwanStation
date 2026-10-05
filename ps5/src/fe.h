@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the frontend's shared declarations.
+	PSSwanStation - the frontend's shared declarations.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -27,7 +27,8 @@ extern std::string rootDir;
 // The root as a person reaches it over FTP.
 std::string shownRoot();
 
-constexpr const char *AppName = "SwanStation";
+// The title's name; the emulator inside it is SwanStation.
+constexpr const char *AppName = "PSSwanStation";
 constexpr const char *TitleId = "PPSA99248";
 extern const int BuildNumber;
 // "2026-10-04", and who makes the builds.
@@ -37,7 +38,7 @@ constexpr const char *Developer = "Press5elect";
 // ------------------------------------------------------------------ diag.cpp
 namespace diag
 {
-// Opens <dir>swanstation-boot.log for this run (the two before it are kept as
+// Opens <dir>psswanstation-boot.log for this run (the two before it are kept as
 // .1.log and .2.log) and writes the marks made before it was open.
 bool open(const std::string& dir);
 // One line of the boot log, written straight to the file.

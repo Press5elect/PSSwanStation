@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the sound: the emulator's 44.1 kHz to the output's 48.
+	PSSwanStation - the sound: the emulator's 44.1 kHz to the output's 48.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

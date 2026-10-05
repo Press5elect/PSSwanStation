@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the interface's sounds.
+	PSSwanStation - the interface's sounds.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SwanStation for PS5: build the homebrew title.
+# PSSwanStation: build the homebrew title.
 #
 #   ps5/tools/build.sh [OUT_DIR]
 #
@@ -101,7 +101,7 @@ else
 fi
 if [[ -n ${NETWORK_PATH:-} ]]; then
     {
-        echo "# SwanStation - games on the network: an SMB share (Windows sharing) or an"
+        echo "# PSSwanStation - games on the network: an SMB share (Windows sharing) or an"
         echo "# FTP server."
         echo "#"
         echo "# One \"path\" line for each folder to scan, the server by its IP address:"
@@ -119,7 +119,7 @@ cp -- "$ps5/README.txt" "$app/README.txt"
 cp -- "$src/LICENSE" "$app/licenses/GPL-3.0.txt"
 cp -- "$ps5/licenses/"* "$app/licenses/"
 {
-    echo "SwanStation for PS5, build $(sed -n 's/^const int BuildNumber = \([0-9]*\);.*/\1/p' "$ps5/src/main.cpp"), built $(date -u +%Y-%m-%d)"
+    echo "PSSwanStation, build $(sed -n 's/^const int BuildNumber = \([0-9]*\);.*/\1/p' "$ps5/src/main.cpp"), built $(date -u +%Y-%m-%d)"
     echo "SwanStation: $(git -C "$src" rev-parse HEAD 2>/dev/null || echo unknown) plus the ps5 folder"
     echo "PS5_Vulkan:  $(git -C "$vk" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "SDK:         $(cat "$PS5_PAYLOAD_SDK/.ps5-sdk-revision" 2>/dev/null || echo unknown)"

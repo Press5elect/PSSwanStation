@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - what the network sources share (smb.cpp, ftp.cpp).
+	PSSwanStation - what the network sources share (smb.cpp, ftp.cpp).
 
 	SPDX-License-Identifier: GPL-2.0-or-later
 

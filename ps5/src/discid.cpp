@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - a disc image's serial number, read without starting it.
+	PSSwanStation - a disc image's serial number, read without starting it.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

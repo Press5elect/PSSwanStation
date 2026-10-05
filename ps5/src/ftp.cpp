@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - games on an FTP server.
+	PSSwanStation - games on an FTP server.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

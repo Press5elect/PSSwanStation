@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the host build's platform: a PC, for test runs.
+	PSSwanStation - the host build's platform: a PC, for test runs.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

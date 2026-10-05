@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the interface's drawing: fonts, colours, the pieces
+	PSSwanStation - the interface's drawing: fonts, colours, the pieces
 	every screen is made of.
 
 	SPDX-License-Identifier: GPL-3.0-or-later

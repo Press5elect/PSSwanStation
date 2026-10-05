@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the file system the frontend gives the core.
+	PSSwanStation - the file system the frontend gives the core.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

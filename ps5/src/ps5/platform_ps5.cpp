@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the console: folders, the sandbox, the log, the end.
+	PSSwanStation - the console: folders, the sandbox, the log, the end.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -14,7 +14,7 @@
 	     folder. Everything the title reads or writes lives under it.
 	  4. The boot log, the folders (0777, so the console's FTP server can reach
 	     them), the modes of what earlier runs left, RADV's shader cache
-	     folder, and stdout/stderr in logs/swanstation.log.
+	     folder, and stdout/stderr in logs/psswanstation.log.
 	A title must not exit(): the shell is asked to close it.
 */
 #include "fe.h"
@@ -122,7 +122,7 @@ void repairModes(const std::string& dir, int depth)
 // paid it on whichever thread logged (PSFlyCast's finding).
 void redirectLogs(const std::string& root)
 {
-	const std::string log = root + "logs/swanstation.log";
+	const std::string log = root + "logs/psswanstation.log";
 	const std::string prev = root + "logs/swanstation.prev.log";
 	rename(log.c_str(), prev.c_str());
 	if (freopen(log.c_str(), "a", stdout) == nullptr)
@@ -164,7 +164,7 @@ void findUsbDirs()
 				continue;
 			entries++;
 			const std::string lower = lowercase(entry->d_name);
-			for (const char *wanted : { "psx", "ps1", "playstation", "psone", "swanstation" })
+			for (const char *wanted : { "psx", "ps1", "playstation", "psone", "psswanstation", "swanstation" })
 				if (lower == wanted)
 					usbDirs.push_back(drive + "/" + entry->d_name);
 		}
@@ -230,7 +230,7 @@ void earlyInit()
 			diag::notify("%s: USB drives need elfldr running (port 9021). Continuing without them.", AppName);
 	}
 	redirectLogs(rootDir);
-	diag::mark("the emulator's log: %slogs/swanstation.log", rootDir.c_str());
+	diag::mark("the emulator's log: %slogs/psswanstation.log", rootDir.c_str());
 }
 
 void lateInit()

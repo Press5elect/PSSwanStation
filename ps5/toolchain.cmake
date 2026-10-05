@@ -1,4 +1,4 @@
-# SwanStation for PS5: cross-compile with the payload SDK PS5_PAYLOAD_SDK names
+# PSSwanStation: cross-compile with the payload SDK PS5_PAYLOAD_SDK names
 # (ps5/tools/build.sh sets it). The shape is PSFlyCast's toolchain file.
 set(CMAKE_SYSTEM_NAME FreeBSD)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)

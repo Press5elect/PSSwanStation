@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 (from PSFlyCast) - fgetpos and fsetpos.
+	PSSwanStation (from PSFlyCast) - fgetpos and fsetpos.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5)
 	SPDX-License-Identifier: GPL-2.0-or-later

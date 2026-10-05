@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - pictures for the interface: covers, the logo.
+	PSSwanStation - pictures for the interface: covers, the logo.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 

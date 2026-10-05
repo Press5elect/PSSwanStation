@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - the display: Vulkan on RADV, the swapchain, Dear ImGui.
+	PSSwanStation - the display: Vulkan on RADV, the swapchain, Dear ImGui.
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 */

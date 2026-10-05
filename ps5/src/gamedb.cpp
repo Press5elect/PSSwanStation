@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - what is known about a game: its description, who made
+	PSSwanStation - what is known about a game: its description, who made
 	it and when, by the disc's serial number.
 
 	SPDX-License-Identifier: GPL-3.0-or-later

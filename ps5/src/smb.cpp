@@ -1,5 +1,5 @@
 /*
-	SwanStation for PS5 - games on a network share (SMB), and what every
+	PSSwanStation - games on a network share (SMB), and what every
 	network source goes through (an FTP server is ftp.cpp's).
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5/ps5_smb.cpp)
@@ -911,7 +911,7 @@ void loadConfig()
 		// A template to fill in.
 		if ((f = fopen(file.c_str(), "w")) != nullptr)
 		{
-			fputs("# SwanStation - games on the network: an SMB share (Windows sharing) or an\n"
+			fputs("# PSSwanStation - games on the network: an SMB share (Windows sharing) or an\n"
 					"# FTP server.\n"
 					"#\n"
 					"# One \"path\" line for each folder to scan, the server by its IP address.\n"
@@ -920,7 +920,7 @@ void loadConfig()
 					"#   path = 192.168.1.10/Games/PSX\n"
 					"#   path = ftp://192.168.1.10/games/psx\n"
 					"# Remove the # in front of a path line to use it. The folder and the\n"
-					"# folders inside it are scanned for games when SwanStation first starts\n"
+					"# folders inside it are scanned for games when PSSwanStation first starts\n"
 					"# with it, and again with Square in the library; the list is kept, so\n"
 					"# the share is not asked again until a game is started. The library has\n"
 					"# a Network tab once games were found.\n"

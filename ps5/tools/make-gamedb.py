@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SwanStation for PS5 - makes the title's game database.
+"""PSSwanStation - makes the title's game database.
 
   make-gamedb.py LIBRETRO_DATABASE_DIR OUT.zip
 

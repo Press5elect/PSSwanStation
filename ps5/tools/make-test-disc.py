@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SwanStation for PS5 - makes a disc image for the host test runs.
+"""PSSwanStation - makes a disc image for the host test runs.
 
 No game is needed to test the title on a PC: this writes a PlayStation disc
 image whose program is thirty instructions of its own (it sets a video mode
