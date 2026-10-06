@@ -257,6 +257,109 @@ void init()
 {
 }
 
+namespace
+{
+std::atomic<int> chooseNow{ChooseIdle};
+
+const char *const kindFolders[KindCount] = { "Named_Boxarts", "Named_Titles", "Named_Snaps" };
+
+// The collection's picture of one kind for a game, as bytes. 1 found, 0 the
+// collection has none, -1 it could not be asked.
+int fetchKind(const std::string& base, int kind, std::vector<uint8_t>& data)
+{
+	bool answered = false;
+	for (int source = 0; source < SourceCount; source++)
+	{
+		std::string root = Sources[source].baseUrl;
+		const size_t folder = root.find("Named_Boxarts");
+		if (folder == std::string::npos)
+			continue;
+		root.replace(folder, strlen("Named_Boxarts"), kindFolders[kind]);
+		for (const std::string& name : namesFor(base))
+		{
+			std::string url = root + urlEncode(thumbnailName(name)) + ".png";
+			int status = platform::httpGet(url, data, 20);
+			if (Sources[source].links && status == 200 && !isImage(data) && data.size() < 512)
+			{
+				const std::string target = trim(std::string(data.begin(), data.end()));
+				if (target.size() > 4 && target.find('/') == std::string::npos)
+					status = platform::httpGet(root + urlEncode(target), data, 20);
+			}
+			if (status == 200 && isImage(data))
+				return 1;
+			if (status == 404 || status == 200)
+				answered = true;
+			else
+				break;		// this source does not answer: the next one
+		}
+		if (answered)
+			return 0;
+	}
+	return -1;
+}
+
+void removeCoverFiles(const std::string& base)
+{
+	for (const char *ext : { ".png", ".jpg", ".jpeg" })
+		unlink((coversDir() + base + ext).c_str());
+}
+}
+
+void choose(const library::Game& game, int kind)
+{
+	if (kind < 0 || kind >= KindCount || chooseNow.exchange(ChooseWorking) == ChooseWorking)
+		return;
+	const std::string base = game.fileTitle;
+	std::thread([base, kind] {
+		std::vector<uint8_t> data;
+		const int result = fetchKind(base, kind, data);
+		if (result == 1)
+		{
+			removeCoverFiles(base);
+			if (writeFile(coversDir() + base + ".png", data.data(), data.size()))
+			{
+				currentGeneration++;
+				chooseNow = ChooseDone;
+			}
+			else
+				chooseNow = ChooseFailed;
+		}
+		else
+			chooseNow = result == 0 ? ChooseNotFound : ChooseFailed;
+		diag::mark("covers: a %s picture was asked for: %s", kindFolders[kind],
+				chooseNow == ChooseDone ? "saved" : chooseNow == ChooseNotFound ? "the collection has none" : "no answer");
+	}).detach();
+}
+
+ChooseState chooseState()
+{
+	return (ChooseState)chooseNow.load();
+}
+
+bool setFrom(const library::Game& game, const std::string& pictureFile)
+{
+	std::vector<uint8_t> data;
+	if (!readFile(pictureFile, data) || !isImage(data))
+		return false;
+	removeCoverFiles(game.fileTitle);
+	const bool jpeg = data[0] == 0xff;
+	if (!writeFile(coversDir() + game.fileTitle + (jpeg ? ".jpg" : ".png"), data.data(), data.size()))
+		return false;
+	currentGeneration++;
+	return true;
+}
+
+void remove(const library::Game& game)
+{
+	removeCoverFiles(game.fileTitle);
+	{
+		// The automatic one may be asked for again.
+		std::lock_guard<std::mutex> lock(mutex);
+		asked.erase(game.fileTitle);
+	}
+	currentGeneration++;
+}
+
 std::string find(const library::Game& game)
 {
 	for (const char *ext : { ".png", ".jpg", ".jpeg" })

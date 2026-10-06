@@ -7,12 +7,14 @@
 	48 kHz clock, and the two drift apart. push() resamples linearly into a
 	ring the output thread drains, at a ratio nudged by at most 0.5 %,
 	inaudibly, to keep the ring about a third full (dynamic rate control, as
-	RetroArch and PSFlyCast do). With "Sync to display" off the ratio is the
-	exact one. A full ring drops what does not fit instead of holding the
-	emulator; a dry one plays silence.
+	RetroArch and PSFlyCast do). When the game keeps its own exact speed (the
+	pacing setting) the nudging is a fifth of that, only against the two
+	clocks' slow drift. A full ring drops what does not fit instead of holding
+	the emulator; a dry one plays silence.
 
 	The interface's own sounds (sound.cpp) are 48 kHz already: they are mixed
-	into what goes out, game or no game.
+	into what goes out, game or no game. So is the menus' music, one piece
+	played round and round, which comes and goes with a fade.
 */
 #include "fe.h"
 
@@ -52,6 +54,48 @@ struct Voice
 };
 constexpr int FadeFrames = 1920;		// 40 ms
 std::vector<Voice> voices;
+
+// The menus' music: what plays, and what should.
+std::shared_ptr<const std::vector<int16_t>> musicNow, musicWanted;
+size_t musicAt;
+float musicGain;						// 0..1, moving towards 1 or 0
+std::atomic<int> musicVolume{60};
+std::atomic<bool> muted{false};
+constexpr float MusicFade = 1.f / (48000.f * 1.2f);		// per frame: 1.2 s from silence to full
+
+// With the lock held.
+void mixMusic(int16_t *out, size_t frames)
+{
+	if (!musicNow && !musicWanted)
+		return;
+	const float level = (float)volume * (float)musicVolume / 10000.f;
+	for (size_t i = 0; i < frames; i++)
+	{
+		if (musicNow != musicWanted)
+		{
+			// The piece changes, or ends: this one goes out first.
+			musicGain -= MusicFade * 2.f;
+			if (musicGain <= 0 || !musicNow)
+			{
+				musicNow = musicWanted;
+				musicAt = 0;
+				musicGain = 0;
+			}
+		}
+		else if (musicGain < 1.f)
+			musicGain = std::min(musicGain + MusicFade, 1.f);
+		if (!musicNow)
+			return;
+		const std::vector<int16_t>& data = *musicNow;
+		const size_t total = data.size() / 2;
+		if (total == 0)
+			return;
+		const float gain = musicGain * level;
+		out[i * 2] = (int16_t)std::clamp((int)(out[i * 2] + data[musicAt * 2] * gain), -32768, 32767);
+		out[i * 2 + 1] = (int16_t)std::clamp((int)(out[i * 2 + 1] + data[musicAt * 2 + 1] * gain), -32768, 32767);
+		musicAt = (musicAt + 1) % total;
+	}
+}
 
 // With the lock held.
 void mixVoices(int16_t *out, size_t frames)
@@ -130,11 +174,13 @@ unsigned underruns()
 
 void push(const int16_t *samples, size_t frames)
 {
+	if (muted)
+		return;
 	std::lock_guard<std::mutex> lock(mutex);
 	double deviation = ((double)filled - (double)Target) / (double)Target;
 	deviation = std::clamp(deviation, -1.0, 1.0);
-	if (!options::frontend().syncToDisplay)
-		deviation = 0;
+	if (options::frontend().pacing != 0)
+		deviation *= 0.2;
 	// More than the target in the ring: consume the input a little faster.
 	const double step = InRate / OutRate * (1.0 + MaxRateDelta * deviation);
 	for (size_t i = 0; i < frames; i++)
@@ -169,6 +215,23 @@ void playSound(std::shared_ptr<const std::vector<int16_t>> frames)
 	Voice voice;
 	voice.frames = std::move(frames);
 	voices.push_back(std::move(voice));
+}
+
+void setMusic(std::shared_ptr<const std::vector<int16_t>> frames)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	musicWanted = std::move(frames);
+}
+
+void setMusicVolume(int percent)
+{
+	musicVolume = std::clamp(percent, 0, 100);
+}
+
+void setMuted(bool mute)
+{
+	if (muted.exchange(mute) != mute)
+		clear();
 }
 
 void stopSounds()
@@ -228,6 +291,7 @@ void render(int16_t *out, size_t frames)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	renderGame(out, frames);
+	mixMusic(out, frames);
 	mixVoices(out, frames);
 }
 

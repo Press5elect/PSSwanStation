@@ -97,7 +97,7 @@ void swan(ImVec2 origin, float size, const SwanPose& pose, float alpha, ImDrawLi
 			// Its trailing edge, so a white wing shows against the white body.
 			for (int i = 0; i <= 12; i++)
 				list->PathLineTo(place(bezier(tip, trail1, trail2, back, (float)i / 12.f)));
-			list->PathStroke(shade, 0, std::max(size * 0.012f, 1.f));
+			list->PathStroke(shade, std::max(size * 0.012f, 1.f));
 		}
 	};
 

@@ -13,8 +13,14 @@
 #                     repository) prepared with tools/setup-native-dependencies.sh,
 #                     tools/build-radv.sh release and tools/rebuild-libc.sh
 #   PS5_PAYLOAD_SDK   the payload SDK fork (default: PS5_Vulkan's)
-#   IMGUI_DIR         Dear ImGui v1.91 (default: ../imgui)
+#   IMGUI_DIR         Dear ImGui v1.92 (default: ../imgui)
 #   LIBSMB2_DIR       libsmb2 (default: ../deps-src/libsmb2)
+#   RCHEEVOS_DIR      rcheevos v12 (default: ../deps-src/rcheevos)
+#   LAPY_HELPER_DIR   a folder holding lapy.elf and lapy-manifest.json: the
+#                     Lapy helper for this title, as ps5-native-app-boilerplate's
+#                     tools/build-lapy-helper.py PPSA99248 builds it (default:
+#                     ../deps-src/lapy). It is what lets the title leave its
+#                     sandbox (USB drives, files kept outside the title folder)
 # and, optionally:
 #   CHTDB_DIR         a folder holding cheats.zip and patches.zip from the
 #                     DuckStation chtdb release (default: ../deps-src); without
@@ -37,6 +43,8 @@ export PS5_PAYLOAD_SDK=${PS5_PAYLOAD_SDK:-$vk/.deps/native/ps5-payload-sdk}
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang-18 || command -v clang)}
 imgui=${IMGUI_DIR:-$src/../imgui}
 libsmb2=${LIBSMB2_DIR:-$src/../deps-src/libsmb2}
+rcheevos=${RCHEEVOS_DIR:-$src/../deps-src/rcheevos}
+lapy=${LAPY_HELPER_DIR:-$src/../deps-src/lapy}
 chtdb=${CHTDB_DIR:-$src/../deps-src}
 build="$src/build-ps5"
 out=${1:-$build/dist}
@@ -48,12 +56,13 @@ tool="$vk/build/host/ps5-native-tool"
 missing=0
 for file in "$PS5_PAYLOAD_SDK/bin/prospero-clang++" \
         "$vk/.deps/native/radv-release/lib/libvulkan_radeon.ps5.a" \
-        "$vk/runtime/libc.prx" "$tool" "$imgui/imgui.cpp" "$libsmb2/lib/libsmb2.c"; do
+        "$vk/runtime/libc.prx" "$tool" "$imgui/imgui.cpp" "$libsmb2/lib/libsmb2.c" \
+        "$rcheevos/src/rc_client.c" "$lapy/lapy.elf" "$lapy/lapy-manifest.json"; do
     [[ -e $file ]] || { echo "missing: $file" >&2; missing=1; }
 done
 if (( missing )); then
     echo "Prepare $vk first (tools/setup-native-dependencies.sh, tools/build-radv.sh release," >&2
-    echo "tools/rebuild-libc.sh), and check IMGUI_DIR and LIBSMB2_DIR." >&2
+    echo "tools/rebuild-libc.sh), and check IMGUI_DIR, LIBSMB2_DIR, RCHEEVOS_DIR and LAPY_HELPER_DIR." >&2
     exit 2
 fi
 (cd "$vk/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
@@ -62,7 +71,7 @@ fi
 mkdir -p "$build"
 cmake -S "$ps5" -B "$build" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$ps5/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
-    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" > "$build/configure.log" 2>&1 \
+    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" -DRCHEEVOS_DIR="$rcheevos" > "$build/configure.log" 2>&1 \
     || { cat "$build/configure.log" >&2; exit 2; }
 cmake --build "$build" --target swanstation --parallel "${JOBS:-$(nproc)}"
 
@@ -74,15 +83,22 @@ cp -- "$ps5/sce_sys/param.json" "$ps5/sce_sys/icon0.png" "$ps5/sce_sys/pic0.dds"
     "$app/sce_sys/"
 cp -- "$vk/runtime/libc.prx" "$app/sce_module/libc.prx"
 # The folders the title keeps its files in (README.txt says what goes where).
-for dir in games bios covers cheats; do
+for dir in games bios covers cheats screenshots textures music borders memcards/import memcards/export; do
     mkdir -p "$app/$dir"
 done
-# The helper elfldr runs when "USB drives" is on (ps5/src/ps5/elevation, from
-# ps5-native-app-boilerplate's sandbox-elevation example).
-make -s -C "$ps5/src/ps5/elevation/payload" PS5_PAYLOAD_SDK="$PS5_PAYLOAD_SDK" \
-    OUTPUT="$build/sandbox-elevator.elf"
-python3 "$ps5/src/ps5/elevation/validate-elevation-helper.py" "$build/sandbox-elevator.elf"
-cp -- "$build/sandbox-elevator.elf" "$app/sandbox-elevator.elf"
+# The Lapy helper the ELF loader runs when the title has to leave its sandbox
+# and no resident Lapy service answers (ps5/src/ps5/elevation). It is built for
+# this title alone: its record must name it and the file it describes.
+python3 - "$lapy" "$title" <<'CHECK'
+import hashlib, json, sys
+folder, title = sys.argv[1], sys.argv[2]
+record = json.load(open(folder + "/lapy-manifest.json"))
+if record.get("target_title") != title:
+    sys.exit("build.sh: the Lapy helper in %s was built for %s, not %s" % (folder, record.get("target_title"), title))
+if hashlib.sha256(open(folder + "/lapy.elf", "rb").read()).hexdigest() != record.get("elf_sha256"):
+    sys.exit("build.sh: lapy.elf is not the file lapy-manifest.json describes")
+CHECK
+cp -- "$lapy/lapy.elf" "$lapy/lapy-manifest.json" "$app/"
 # The cheat and patch database (DuckStation's chtdb), as its release ships it.
 staged_db=0
 for archive in cheats.zip patches.zip; do
@@ -127,9 +143,13 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     grep -h -E '^(revision|sdk):' "$vk/.deps/native/radv-release/PROVENANCE.txt" 2>/dev/null | sed 's/^/RADV /'
     echo "Dear ImGui:  $(git -C "$imgui" describe --tags --always 2>/dev/null || echo unknown)"
     echo "libsmb2:     $(git -C "$libsmb2" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "rcheevos:    $(git -C "$rcheevos" describe --tags --always 2>/dev/null || echo unknown)"
+    echo "Lapy helper: $(sed -n 's/.*"elf_sha256": "\([0-9a-f]*\)".*/\1/p' "$lapy/lapy-manifest.json") (sha256)"
     echo "eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)"
 } > "$app/BUILD.txt"
-# Everything is readable and writable over FTP.
+# Everything is readable and writable over FTP; the program's own files as the
+# console wants a title's (and as the updater leaves them).
 find "$app" -type d -exec chmod 0777 {} +
 find "$app" -type f -exec chmod 0666 {} +
+chmod 0777 "$app/eboot.bin" "$app/lapy.elf" "$app/sce_module/libc.prx" "$app/sce_sys/param.json"
 printf 'Built %s (eboot.bin %s bytes)\n' "$app" "$(stat -c %s "$app/eboot.bin")"

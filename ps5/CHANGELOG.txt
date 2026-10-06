@@ -1,6 +1,30 @@
 PSSwanStation - what changed
 ============================
 
+Build 10
+  New. None of it has run on a console yet; the README says what each is.
+  - While playing, OPTIONS held with another button: fast forward (R2),
+    rewind (L2, kept in memory only), screenshot (Triangle), save and load a
+    state (R1, L1). A tap of OPTIONS opens the menu as before.
+  - Save states show the picture they were saved at.
+  - Picture: presets, picture-tube lines, what is beside a 4:3 picture,
+    120 Hz output with black frame insertion, a variable refresh rate.
+  - Library: favourites, hidden games, sorting and filters (Square), a
+    cover of your choice, the time in the header.
+  - Memory card manager: copy, delete, bring in and put out saves; a copy of
+    a card is kept whenever it changes.
+  - Controllers: button remapping and turbo, tilt steering, player lights,
+    neGcon and GunCon.
+  - RetroAchievements and two-console netplay, both as experiments.
+  - Updater (Menu, Update): fetches a new build and keeps your files.
+  - Also: menu music, faster loading, texture packs, waking a sleeping
+    server, the newest cheat database, your files outside the title folder,
+    safe start (hold L1 and R1 at start), the swan as a screen saver.
+  - A controller's battery is not shown: the console offers a title no way
+    to read it that I know of.
+  Under it: Dear ImGui 1.92, the newest Vulkan driver, SDK and template, and
+  the Lapy helper in place of the earlier one for leaving the sandbox.
+
 Build 9
   - Library: L2 and R2 jump to the previous and the next letter.
   - Search: press the touch pad in the library, type a part of the name, and

@@ -67,22 +67,8 @@ const Accent accents[AccentCount] = {
 	{ "Green", IM_COL32(74, 222, 128, 255) },
 };
 
-const ImWchar textRanges[] = {
-	0x0020, 0x00FF,		// Basic Latin, Latin-1
-	0x0100, 0x017F,		// Latin Extended-A
-	0x2010, 0x2027,		// dashes, quotes, the ellipsis
-	0x2122, 0x2122,		// trade mark
-	0,
-};
-const ImWchar symbolRanges[] = {
-	0xf002, 0xf002, 0xf55a, 0xf55a, 0xf00a, 0xf00a, 0xf00c, 0xf00d, 0xf011, 0xf011, 0xf013, 0xf013, 0xf017, 0xf017, 0xf019, 0xf019, 0xf021, 0xf021,
-	0xf028, 0xf028, 0xf03a, 0xf03a, 0xf03e, 0xf03e, 0xf04b, 0xf04b, 0xf054, 0xf054, 0xf05a, 0xf05a, 0xf071, 0xf071,
-	0xf07c, 0xf07c, 0xf093, 0xf093, 0xf0a0, 0xf0a0, 0xf0ad, 0xf0ad, 0xf0c7, 0xf0c7, 0xf0d0, 0xf0d0, 0xf0e2, 0xf0e2,
-	0xf0e7, 0xf0e7, 0xf11b, 0xf11b, 0xf1de, 0xf1de, 0xf1e6, 0xf1e6, 0xf233, 0xf233, 0xf26c, 0xf26c, 0xf2db, 0xf2db,
-	0xf51f, 0xf51f, 0xf538, 0xf538, 0xf53f, 0xf53f, 0xf6ff, 0xf6ff, 0xf7c2, 0xf7c2,
-	0,
-};
-
+// Which letters and symbols a font gives is not listed any more: Dear ImGui
+// takes each from the font's file the first time it is drawn.
 ImFont *addFont(const unsigned char *data, const unsigned char *end, float pixels)
 {
 	ImGuiIO& io = ImGui::GetIO();
@@ -91,7 +77,7 @@ ImFont *addFont(const unsigned char *data, const unsigned char *end, float pixel
 	config.OversampleH = 2;
 	config.OversampleV = 1;
 	ImFont *font = io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(data), (int)(end - data), pixels,
-			&config, textRanges);
+			&config, nullptr);
 	ImFontConfig symbols;
 	symbols.FontDataOwnedByAtlas = false;
 	symbols.MergeMode = true;
@@ -100,7 +86,7 @@ ImFont *addFont(const unsigned char *data, const unsigned char *end, float pixel
 	symbols.GlyphMinAdvanceX = pixels;
 	symbols.GlyphOffset = ImVec2(0, pixels * 0.04f);
 	io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(fe_font_symbols),
-			(int)(fe_font_symbols_end - fe_font_symbols), pixels * 0.82f, &symbols, symbolRanges);
+			(int)(fe_font_symbols_end - fe_font_symbols), pixels * 0.82f, &symbols, nullptr);
 	return font;
 }
 
@@ -155,9 +141,12 @@ void widgetsInit()
 	const float scale = display::scale();
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Clear();
-	// A 4096-wide atlas at most: the console's driver takes it, and so does
-	// every PC's.
-	io.Fonts->TexDesiredWidth = scale > 1.5f ? 4096 : 2048;
+	// Dear ImGui (1.92 and later) draws each size asked for from the font's
+	// outlines, into an atlas that grows as sizes and letters are first used:
+	// text is sharp at every size, and nothing is built ahead. A 4096-wide
+	// atlas at most: the console's driver takes it, and so does every PC's.
+	io.Fonts->TexMaxWidth = 4096;
+	io.Fonts->TexMaxHeight = 4096;
 	fontPixels[Body] = std::floor(26.f * scale);
 	fontPixels[Bold] = std::floor(26.f * scale);
 	fontPixels[Title] = std::floor(44.f * scale);
@@ -167,17 +156,14 @@ void widgetsInit()
 	// The splash's name: the plain letters only, large.
 	fontPixels[Huge] = std::floor(92.f * scale);
 	{
-		static const ImWchar plain[] = { 0x0020, 0x007E, 0 };
 		ImFontConfig config;
 		config.FontDataOwnedByAtlas = false;
 		config.OversampleH = 1;
 		config.OversampleV = 1;
 		fonts[Huge] = io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(fe_font_bold),
-				(int)(fe_font_bold_end - fe_font_bold), fontPixels[Huge], &config, plain);
+				(int)(fe_font_bold_end - fe_font_bold), fontPixels[Huge], &config, nullptr);
 	}
-	if (!io.Fonts->Build())
-		diag::mark("ui: the font atlas could not be built");
-	diag::mark("ui: fonts %d x %d", io.Fonts->TexWidth, io.Fonts->TexHeight);
+	diag::mark("ui: fonts ready");
 	logoImage = imageFromMemory(fe_logo_box_png, (size_t)(fe_logo_box_png_end - fe_logo_box_png));
 	widgetsFrame();
 }
@@ -329,7 +315,7 @@ void panel(ImVec2 a, ImVec2 b, ImU32 colour, float rounding)
 
 void outline(ImVec2 a, ImVec2 b, ImU32 colour, float rounding, float thickness)
 {
-	draw()->AddRect(a, b, colour, px(rounding), 0, px(thickness));
+	draw()->AddRect(a, b, colour, px(rounding), px(thickness));
 }
 
 void backdrop()
@@ -374,7 +360,7 @@ void waves(float alpha)
 		const float y = h * rows[row];
 		for (float x = 0; x <= w; x += px(8))
 			list->PathLineTo(ImVec2(x, y + std::sin(x / w * 3.14159f * 9.f + t * (0.9f + 0.25f * (float)row)) * h * 0.006f));
-		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * std::clamp(alpha, 0.f, 1.f))), 0,
+		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * std::clamp(alpha, 0.f, 1.f))),
 				std::max(h / 360.f, 2.f));
 	}
 }
@@ -452,7 +438,7 @@ void buttonGlyph(ImVec2 centre, float size, uint32_t button)
 	case Square:
 		face();
 		list->AddRect(ImVec2(centre.x - k, centre.y - k), ImVec2(centre.x + k, centre.y + k), IM_COL32(255, 105, 248, 255),
-				0, 0, stroke);
+				0, stroke);
 		return;
 	case Triangle:
 	{
@@ -487,7 +473,7 @@ void buttonGlyph(ImVec2 centre, float size, uint32_t button)
 	list->AddRectFilled(ImVec2(centre.x - half, centre.y - r * 0.82f), ImVec2(centre.x + half, centre.y + r * 0.82f), body,
 			r * 0.4f);
 	list->AddRect(ImVec2(centre.x - half, centre.y - r * 0.82f), ImVec2(centre.x + half, centre.y + r * 0.82f), rim,
-			r * 0.4f, 0, std::max(px(1.5f), 1.f));
+			r * 0.4f, std::max(px(1.5f), 1.f));
 	text(ImVec2(centre.x - extent.x * 0.5f, centre.y - extent.y * 0.5f), IM_COL32(220, 226, 238, 255), label, Bold,
 			textSize);
 }

@@ -33,6 +33,7 @@
 	Which entries are on is kept per game in <root>data/cheats/<serial>.txt.
 */
 #include "fe.h"
+#include "netplay.h"
 
 #include <libretro.h>
 #include <miniz.h>
@@ -40,10 +41,15 @@
 #include "core/cheats.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <ctime>
+#include <mutex>
+#include <thread>
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <sys/stat.h>
 
@@ -54,33 +60,50 @@ namespace
 std::vector<Cheat> entries;
 std::string loadedSerial;
 std::string summaryText;
+std::mutex summaryMutex;
 
+// The database the title came with (assets/), or a newer one fetched since
+// (data/, see refresh()).
 std::string cheatsArchive()
 {
-	return rootDir + "assets/cheats.zip";
+	const std::string fetched = rootDir + "data/cheats.zip";
+	return fileExists(fetched) ? fetched : appDir + "assets/cheats.zip";
 }
 
 std::string patchesArchive()
 {
-	return rootDir + "assets/patches.zip";
+	const std::string fetched = rootDir + "data/patches.zip";
+	return fileExists(fetched) ? fetched : appDir + "assets/patches.zip";
 }
 
-// The two archives are small (2.5 MB and 80 KB): each is read once and kept.
-const std::vector<uint8_t>& archiveData(const std::string& archive)
+std::mutex archiveMutex;
+using Archive = std::shared_ptr<const std::vector<uint8_t>>;
+std::map<std::string, Archive>& keptArchives()
 {
-	static std::map<std::string, std::vector<uint8_t>> kept;
+	static std::map<std::string, Archive> kept;
+	return kept;
+}
+
+// The two archives are small (2.5 MB and 80 KB): each is read once and kept,
+// until a newer one is fetched. Whoever reads one holds on to it meanwhile.
+Archive archiveData(const std::string& archive)
+{
+	std::lock_guard<std::mutex> lock(archiveMutex);
+	std::map<std::string, Archive>& kept = keptArchives();
 	auto it = kept.find(archive);
 	if (it == kept.end())
 	{
-		it = kept.emplace(archive, std::vector<uint8_t>()).first;
-		readFile(archive, it->second);
+		auto bytes = std::make_shared<std::vector<uint8_t>>();
+		readFile(archive, *bytes);
+		it = kept.emplace(archive, std::move(bytes)).first;
 	}
 	return it->second;
 }
 
 bool readFromArchive(const std::string& archive, const std::string& name, std::string& text)
 {
-	const std::vector<uint8_t>& data = archiveData(archive);
+	const Archive held = archiveData(archive);
+	const std::vector<uint8_t>& data = *held;
 	mz_zip_archive zip{};
 	if (data.empty() || !mz_zip_reader_init_mem(&zip, data.data(), data.size(), 0))
 		return false;
@@ -103,7 +126,8 @@ bool readFromArchive(const std::string& archive, const std::string& name, std::s
 
 int countArchive(const std::string& archive)
 {
-	const std::vector<uint8_t>& data = archiveData(archive);
+	const Archive held = archiveData(archive);
+	const std::vector<uint8_t>& data = *held;
 	mz_zip_archive zip{};
 	if (data.empty() || !mz_zip_reader_init_mem(&zip, data.data(), data.size(), 0))
 		return -1;
@@ -392,11 +416,96 @@ void init()
 {
 	const int cheatFiles = countArchive(cheatsArchive());
 	const int patchFiles = countArchive(patchesArchive());
+	std::string text;
 	if (cheatFiles < 0 && patchFiles < 0)
-		summaryText = "not installed (assets/cheats.zip, assets/patches.zip)";
+		text = "not installed (assets/cheats.zip, assets/patches.zip)";
 	else
-		summaryText = format("cheats for %d games, patches for %d", std::max(cheatFiles, 0), std::max(patchFiles, 0));
-	diag::mark("cheats: database: %s", summaryText.c_str());
+		text = format("cheats for %d games, patches for %d", std::max(cheatFiles, 0), std::max(patchFiles, 0));
+	if (fileExists(rootDir + "data/cheats.zip"))
+	{
+		struct stat st;
+		char day[32] = "";
+		if (stat((rootDir + "data/cheats.zip").c_str(), &st) == 0)
+		{
+			struct tm tm;
+			const time_t when = st.st_mtime;
+			gmtime_r(&when, &tm);
+			strftime(day, sizeof(day), "%Y-%m-%d", &tm);
+		}
+		text += std::string(", fetched ") + day;
+	}
+	diag::mark("cheats: database: %s", text.c_str());
+	std::lock_guard<std::mutex> lock(summaryMutex);
+	summaryText = text;
+}
+
+namespace
+{
+std::mutex refreshMutex;
+std::string refreshText;
+std::atomic<bool> refreshBusy{false};
+
+void say(const std::string& text)
+{
+	std::lock_guard<std::mutex> lock(refreshMutex);
+	refreshText = text;
+}
+
+// An archive of the database as it should be: a ZIP with at least `least`
+// files in it.
+bool plausible(const std::vector<uint8_t>& data, int least)
+{
+	mz_zip_archive zip{};
+	if (data.size() < 1024 || !mz_zip_reader_init_mem(&zip, data.data(), data.size(), 0))
+		return false;
+	const int files = (int)mz_zip_reader_get_num_files(&zip);
+	mz_zip_reader_end(&zip);
+	return files >= least;
+}
+}
+
+void refresh()
+{
+	if (refreshBusy.exchange(true))
+		return;
+	say("Fetching the cheat database\xe2\x80\xa6");
+	std::thread([] {
+		// The chtdb project's release that always holds the newest of both.
+		static const char *const base = "https://github.com/duckstation/chtdb/releases/download/latest/";
+		std::vector<uint8_t> cheatData, patchData;
+		const int a = platform::httpGet(std::string(base) + "cheats.zip", cheatData, 60);
+		const int b = a == 200 ? platform::httpGet(std::string(base) + "patches.zip", patchData, 60) : -1;
+		if (a != 200 || b != 200)
+			say(a < 0 || (a == 200 && b < 0) ? "The database could not be fetched: no answer from GitHub."
+					: format("The database could not be fetched: the server answered %d.", a != 200 ? a : b));
+		else if (!plausible(cheatData, 1000) || !plausible(patchData, 20))
+			say("What came is not the database: nothing was changed.");
+		else if (!writeFile(rootDir + "data/cheats.zip", cheatData.data(), cheatData.size())
+				|| !writeFile(rootDir + "data/patches.zip", patchData.data(), patchData.size()))
+			say("The database could not be saved.");
+		else
+		{
+			{
+				std::lock_guard<std::mutex> lock(archiveMutex);
+				keptArchives().clear();
+			}
+			init();
+			say("The database is up to date: " + summary() + ".");
+		}
+		diag::mark("cheats: refresh: %s", refreshStatus().c_str());
+		refreshBusy = false;
+	}).detach();
+}
+
+bool refreshing()
+{
+	return refreshBusy;
+}
+
+std::string refreshStatus()
+{
+	std::lock_guard<std::mutex> lock(refreshMutex);
+	return refreshText;
 }
 
 void loadFor(const std::string& gameSerial, const std::string& firstDisc)
@@ -457,7 +566,14 @@ void apply()
 	if (!host::running())
 		return;
 	retro_cheat_reset();
+	// In netplay the settings that are held are the session's, and a cheat on
+	// one console would part the two: none run, and nothing held is let go.
+	if (netplay::active())
+		return;
 	options::clearOverrides();
+	// RetroAchievements' hardcore mode allows none.
+	if (host::restricted())
+		return;
 	unsigned index = 0;
 	for (const Cheat& cheat : entries)
 	{
@@ -507,6 +623,7 @@ void runOnce(size_t index)
 
 std::string summary()
 {
+	std::lock_guard<std::mutex> lock(summaryMutex);
 	return summaryText;
 }
 

@@ -21,11 +21,18 @@
 namespace fe
 {
 
-// The title's folder, with a trailing '/': /app0/ on the console (which is
-// /data/homebrew/PPSA99248/ over FTP), the test folder on a PC.
+// Where the user's files are, with a trailing '/': games, BIOS, covers,
+// cheats, data, the logs. The title's folder (/app0/ on the console, which is
+// /data/homebrew/PPSA99248/ over FTP; the test folder on a PC), unless "keep
+// my files outside the title folder" is on and the folder outside
+// (/data/psswanstation/) can be reached.
 extern std::string rootDir;
-// The root as a person reaches it over FTP.
+// The title's own folder, with a trailing '/': the program, its assets,
+// sce_sys, frontend.cfg. The updater replaces files here and nowhere else.
+extern std::string appDir;
+// The root as a person reaches it over FTP, and the title's folder.
 std::string shownRoot();
+std::string shownApp();
 
 // The title's name; the emulator inside it is SwanStation.
 constexpr const char *AppName = "PSSwanStation";
@@ -87,6 +94,16 @@ struct Pad
 	float lx = 0, ly = 0;	// -1..1
 	float rx = 0, ry = 0;
 	float l2 = 0, r2 = 0;	// 0..1
+	// The motion sensor, when the pad has one and it is on (padMotion): which
+	// way gravity pulls, in g, in the pad's own axes (x to its right, y up
+	// out of its face, z towards the player), and how fast it turns about
+	// those axes, in radians a second.
+	bool hasMotion = false;
+	float gravity[3] = { 0, 0, 0 };
+	float turning[3] = { 0, 0, 0 };
+	// A finger on the touch pad: where, 0..1 across and down.
+	bool touching = false;
+	float touchX = 0, touchY = 0;
 };
 
 constexpr int MaxPads = 4;
@@ -103,6 +120,10 @@ const Pad& pad(int index);
 int padCount();
 // 0..1 for the large and the small motor.
 void padRumble(int index, float strong, float weak);
+// The pad's light bar: a colour, or (0, 0, 0) to give it back to the console.
+void padLight(int index, uint8_t red, uint8_t green, uint8_t blue);
+// Switches the motion sensors of every pad on or off.
+void padMotion(bool on);
 
 // The sound output: opens it and starts the thread that feeds it from
 // audio::render(). False when there is none.
@@ -110,8 +131,26 @@ bool audioOpen();
 void audioClose();
 
 // One HTTP(S) GET. The status code, or -1 when the request could not be made.
+// The answer's body is given for error statuses too (a server's reason).
 int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, int *error = nullptr);
+// One HTTP(S) GET written to a file as it arrives, for what is too large for
+// memory. `progress` is told how far it is (total 0 when the server did not
+// say) and stops it by answering false. The status code, or -1; anything but
+// 200 leaves no file.
+int httpDownload(const std::string& url, const std::string& path, uint64_t limit,
+		const std::function<bool(uint64_t done, uint64_t total)>& progress);
 bool httpAvailable();
+
+// Seconds to add to UTC for the console's local time (its time zone and
+// summer time), for clocks on the screen.
+int localTimeOffset();
+// Whether the folder outside the title's (for "keep my files outside") can be
+// reached this run, and why not when it cannot.
+bool outsideAvailable();
+std::string outsideProblem();
+// The previous start did not get as far as the library (it is tried without
+// leaving the sandbox this time).
+bool startedSafely();
 
 // USB drives: whether they can be read at all, and the folders found on them.
 bool usbAvailable();
@@ -121,6 +160,28 @@ std::vector<std::string> usbGameDirs();
 uint64_t freeMemory();
 // Whether memory can be made executable (the recompiler needs it).
 bool jitAvailable();
+}
+
+// --------------------------------------------------------------- storage.cpp
+namespace storage
+{
+// The folder a user's files are kept in when they are kept outside the
+// title's folder.
+constexpr const char *OutsideDir = "/data/psswanstation/";
+// The folders a user's files go in, made under `root` (0777).
+void makeFolders(const std::string& root);
+// The first start with the files outside: what the title's folder holds of
+// them is copied to `to`, where it is not there yet. How many files were copied.
+int migrate(const std::string& from, const std::string& to);
+// The display mode sce_sys/param.json declares (0 59.94 Hz, 1 119.88 Hz,
+// 2 119.88 Hz with a variable refresh rate), or -1; and making it what the
+// setting says, true when the file was changed (it counts from the next start).
+int displayModeIn(const std::string& paramJson);
+bool syncDisplayMode(const std::string& paramJson, int displayMode);
+// A start begins: true when the one before it never finished. And it has
+// finished: the library has been on the screen for a while, or the title closes.
+bool startBegan(const std::string& appDir);
+void startCompleted(const std::string& appDir);
 }
 
 // ----------------------------------------------------------------- audio.cpp
@@ -145,6 +206,12 @@ unsigned underruns();
 void playSound(std::shared_ptr<const std::vector<int16_t>> frames);
 // Fades out what is playing of them.
 void stopSounds();
+// The menus' music: 48 kHz stereo frames played round and round, faded in;
+// null fades out what plays. `volume` 0..100.
+void setMusic(std::shared_ptr<const std::vector<int16_t>> frames);
+void setMusicVolume(int percent);
+// The game's sound is not heard (fast forward, rewind); the ring is emptied.
+void setMuted(bool muted);
 }
 
 // ----------------------------------------------------------------- sound.cpp
@@ -164,6 +231,7 @@ enum Id
 	Back,
 	Tab,
 	Key,
+	Unlock,		// an achievement was earned
 	Count
 };
 void init();
@@ -171,6 +239,14 @@ void init();
 // when "Interface sounds" is.
 void play(Id id);
 void stop();
+// The menus' music, by the setting: the title's own piece (computed, as the
+// sounds are), or the user's file (<root>music/menu.wav, .ogg or .flac).
+// `wanted` says a menu has the screen; in a game it fades out.
+void music(bool wanted);
+// What the music setting found, for the settings page.
+std::string musicStatus();
+// An achievement was earned.
+void unlock();
 }
 
 // When what happens in the start-up animation, in seconds from its start: the
@@ -208,19 +284,62 @@ struct Frontend
 	bool linearFilter = true;	// how the picture is stretched to the screen
 	int volume = 100;
 	bool showFps = false;
-	bool syncToDisplay = true;	// the sound follows the display's pace
+	// How frames are timed: 0 by the display (one frame of the game for each
+	// refresh when the rates are within one percent), 1 the game's own speed
+	// on the display's refreshes, 2 the game's own speed by the clock, each
+	// frame shown when it is ready (for a display with a variable refresh rate).
+	int pacing = 0;
+	// What the console is asked for (sce_sys/param.json, from the next start):
+	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
+	int displayMode = 0;
+	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
+	int crt = 0;				// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask
+	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
+	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
 	bool autoLoadOnStart = false;	// and start from it
-	int controller[4] = {1, 1, 1, 1};	// players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none
+	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
+	// 4 neGcon, 5 GunCon.
+	int controller[4] = {1, 1, 1, 1};
 	float deadZone = 0.10f;
 	bool rumble = true;
+	bool playerLights = true;	// each player's light bar in their colour
+	// The PlayStation's sixteen buttons (libretro's order: Cross, Square,
+	// Select, Start, Up, Down, Left, Right, Circle, Triangle, L1, R1, L2, R2,
+	// L3, R3): which button of the pad presses each (the same order; -1 none).
+	int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+	unsigned turbo = 0;			// the PlayStation buttons that fire repeatedly while held, as bits
+	int turboRate = 1;			// 0 slow (7 a second), 1 normal (10), 2 fast (15)
+	bool hotkeys = true;		// OPTIONS held with another button: fast forward, rewind, screenshot, quick save and load
+	int fastForward = 1;		// its speed: 0 2x, 1 3x, 2 4x, 3 8x, 4 as fast as it goes
+	bool rewind = false;		// keep the last while of play in memory, to go back
+	int rewindDetail = 1;		// a state every 0: 3 frames, 1: 6, 2: 12
+	int rewindMemory = 1;		// 0: 128 MB, 1: 256, 2: 512, 3: 1024
+	int motion = 0;				// player 1's pad, tilted: 0 nothing, 1 steers (left stick, left and right), 2 is the left stick
+	int motionRange = 2;		// how far it must be tilted for the stick's whole way: 0 20, 1 30, 2 40, 3 55, 4 70 degrees
+	bool motionInvert = false;
 	bool swapConfirm = false;	// Circle confirms in the menus
 	bool splash = true;			// the start-up animation
 	bool splashSound = true;	// and its sound
 	bool uiSounds = true;		// the menus' sounds
+	int music = 0;				// in the menus: 0 none, 1 the title's own, 2 the file in the music folder
+	int musicVolume = 60;
 	int animations = 0;			// 0 everything moves, 1 little does, 2 nothing does
 	int uiScale = 100;			// percent
 	int accent = 0;
+	int sort = 0;				// library: 0 name, 1 last played, 2 most played, 3 year, 4 size
+	int filter = 0;				// 0 all, 1 favourites, 2 not played yet, 3 hidden
+	int regionFilter = 0;		// 0 all, 1 USA, 2 Europe, 3 Japan
+	int idleMinutes = 5;		// the swan takes the screen after this long without a button; 0 never
+	bool clock = true;			// the time in the library's header
+	bool outside = false;		// keep the user's files in /data/psswanstation (needs the sandbox left)
+	int cardBackups = 10;		// copies kept of each memory card that changed; 0 none
+	bool updateCheck = true;	// ask the releases page at start-up
+	int speedUp = 0;			// "faster loading": 0 off, 1 fast, 2 fastest
+	bool achievements = false;	// RetroAchievements
+	bool hardcore = false;
+	bool unofficial = false;
+	int netplayDelay = 2;		// frames
 };
 Frontend& frontend();
 void loadFrontend();
@@ -268,6 +387,10 @@ void setOverride(const std::string& key, const std::string& value);
 void clearOverrides();
 bool hasOverride(const std::string& key);
 void setVisible(const std::string& key, bool visible);
+// Every setting of the emulator back to what it is at first (the games' own
+// values stay), and the frontend's own likewise.
+void resetGlobal();
+void resetFrontend();
 }
 
 // ------------------------------------------------------------------ host.cpp
@@ -295,9 +418,32 @@ const GameInfo& game();
 bool start(const std::string& path, int stateSlot = -1, int disc = 0, const std::string& serial = "");
 void stop();
 void reset();
-// Runs the core for one display refresh (none, one or two emulated frames).
+// Runs the core for one display refresh (none, one or more emulated frames).
 void runFrame();
 std::string lastError();
+
+// Fast forward and rewind, while they are held. Rewind steps back through
+// the states kept in memory (settings); it is refused when none are kept.
+void setFastForward(bool on);
+bool fastForward();
+void setRewinding(bool on);
+bool rewinding();
+// How much play the rewind memory holds, in seconds.
+float rewindSeconds();
+// The pads are not the game's for now (a shortcut is being pressed).
+void setInputBlocked(bool blocked);
+// With black frame insertion: this refresh shows black.
+bool blackFrame();
+// The lines the PlayStation draws (240, 480...), for the scanlines.
+int nativeLines();
+// The game's picture as it is now, without the interface: RGBA8, at most
+// `maxHeight` lines. Only between a frame's begin and its end.
+bool capture(int maxHeight, std::vector<uint8_t>& rgba, int& width, int& height);
+// Saves it as <root>screenshots/<game> <date> <time>.png; the file's path, or
+// empty. The PNG is written on a thread of its own.
+std::string screenshot();
+// The time of the screen's clock ("21:07"), or empty when the console's is not set.
+std::string clockText();
 
 // The picture: an ImGui texture and its size, or 0 when there is none.
 void *frameTexture();
@@ -319,7 +465,12 @@ std::string knownSerial(const std::string& gamePath);
 // Read from a disc image now, without starting it; empty when it has none.
 std::string readSerial(const std::string& imagePath);
 std::string statePath(int slot);
+// The picture saved with a state (what the game showed).
 std::string stateThumbPath(int slot);
+std::string stateThumbPathFor(const std::string& gamePath, int slot);
+// The slot the shortcuts save to and load from: the one used last, or chosen.
+int quickSlot();
+void setQuickSlot(int slot);
 
 // Discs of the running game (an .m3u, or the files of one game).
 int discCount();
@@ -333,16 +484,65 @@ struct Message
 	std::string text;
 	double until;
 	int progress;	// -1: none
+	// A notice with a heading and perhaps a picture (an achievement).
+	std::string title, picture;
 };
 std::vector<Message> messages();
 void addMessage(const std::string& text, double seconds = 3.0);
+void addNotice(const std::string& title, const std::string& text, const std::string& picture = "",
+		double seconds = 5.0);
+
+// RetroAchievements (achievements.h does the work; these are the frontend's
+// side of it). The settings changed, or the title started: sign in with the
+// key kept from before, or out.
+void achievementsApply();
+// With a password, the first time: the key the server answers with is kept
+// (<root>data/retroachievements.cfg), never the password.
+void achievementsLogin(const std::string& user, const std::string& password);
+void achievementsLogout();
+// The name kept, or empty.
+std::string achievementsUser();
+// Once a frame of the interface, game or no game: the players' lights, the
+// motion sensors, and RetroAchievements' answers (what happened is put on
+// the screen).
+void tick();
+// A light gun's aim for the screen, when player `port` holds one: -1..1
+// across and down the picture. False when they hold none.
+bool gunAim(int port, float& x, float& y);
 
 // The controller types changed (settings): tell the core.
 void applyControllers();
+// Hardcore mode of RetroAchievements is on with a game loaded: no states are
+// loaded, no cheats, no rewind.
+bool restricted();
+// Netplay: starts hosting the running game, or joins a host with it; the
+// state it is in is netplay::state().
+bool netplayHost();
+bool netplayJoin(const std::string& address);
+void netplayStop();
+// Texture replacements for the running game: how many files its folder
+// (<root>textures/<serial>/) holds.
+int texturePackFiles(const std::string& serial);
 // Which BIOS files are in <root>bios/, for the About page.
 std::string biosSummary();
 // Memory card 1 as libretro save RAM, when that card type is chosen.
 void flushSaveRam();
+}
+
+// ---------------------------------------------------------------- rewind.cpp
+// The states rewinding steps back through, in memory.
+namespace rewind
+{
+// How much memory they may take, in bytes.
+void configure(size_t bytes);
+void clear();
+// The emulator's state now: the newest.
+void push(const std::vector<uint8_t>& state);
+// The newest kept, which is then forgotten: the one before it is the newest.
+// False when there is none.
+bool pop(std::vector<uint8_t>& state);
+size_t count();
+size_t bytes();
 }
 
 // ------------------------------------------------------------------- vfs.cpp
@@ -418,6 +618,12 @@ Status status();
 unsigned failures();
 std::string lastError();
 void clearError();
+// Waking a server that sleeps: the hardware address network.cfg names
+// ("wake = 00:11:32:AA:BB:CC"), or empty.
+std::string wakeAddress();
+// Sends the wake-up packet (Wake-on-LAN) to it. False when none is named or
+// it could not be sent.
+bool wake();
 }
 
 // --------------------------------------------------------------- library.cpp
@@ -448,6 +654,13 @@ std::string sourceName(int source);
 bool sourceAvailable(int source);
 // What the source's folder is, for the empty-list hint.
 std::string sourceHint(int source);
+
+// Favourites and hidden games, by the game's path (<root>data/marks.txt).
+bool favourite(const std::string& gamePath);
+bool hidden(const std::string& gamePath);
+void setFavourite(const std::string& gamePath, bool on);
+void setHidden(const std::string& gamePath, bool on);
+unsigned marksGeneration();
 }
 
 // ---------------------------------------------------------------- covers.cpp
@@ -459,6 +672,17 @@ void init();
 std::string find(const library::Game& game);
 unsigned generation();
 std::string status();
+// Choosing a cover. The three kinds of picture the collection has for a
+// game: its box, its title screen, a moment of play.
+enum Kind { BoxArt, TitleScreen, InGame, KindCount };
+enum ChooseState { ChooseIdle, ChooseWorking, ChooseDone, ChooseNotFound, ChooseFailed };
+// Fetches that picture for the game and makes it its cover (on a thread).
+void choose(const library::Game& game, int kind);
+ChooseState chooseState();
+// Makes a picture file (a screenshot) the game's cover.
+bool setFrom(const library::Game& game, const std::string& pictureFile);
+// Removes the game's cover: the automatic one comes back when downloads are on.
+void remove(const library::Game& game);
 }
 
 // ---------------------------------------------------------------- cheats.cpp
@@ -504,6 +728,12 @@ void runOnce(size_t index);
 void apply();
 // How many cheats and patches the databases hold, for the About page.
 std::string summary();
+// Fetches the newest database from the chtdb project's releases into
+// <root>data/, where it is used instead of the one the title came with (on a
+// thread; refreshStatus says how it goes, and ends with a full stop).
+void refresh();
+bool refreshing();
+std::string refreshStatus();
 }
 
 // ---------------------------------------------------------------- gamedb.cpp

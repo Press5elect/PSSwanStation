@@ -22,6 +22,9 @@
 
 namespace fe::sound
 {
+#if defined(SWANSTATION_HOST)
+std::shared_ptr<const std::vector<int16_t>> ownMusicForTest();
+#endif
 namespace
 {
 
@@ -282,6 +285,16 @@ void makeChime()
 	sounds[Chime] = finished(track);
 }
 
+// An achievement: the bell three times, climbing.
+void makeUnlock()
+{
+	Track track(2.6);
+	bell(track, 0.02, 783.99, 0.17f);
+	bell(track, 0.16, 987.77, 0.17f);
+	bell(track, 0.30, 1318.5, 0.20f);
+	sounds[Unlock] = finished(track);
+}
+
 // The menus' sounds are the water's: small drops, kept short and quiet so a
 // held D-pad is a patter and not a noise.
 void makeMenu()
@@ -355,13 +368,15 @@ void init()
 	makeSplash();
 	makeFlight();
 	makeChime();
+	makeUnlock();
 	makeMenu();
 #if defined(SWANSTATION_HOST)
 	if (const char *dir = getenv("SWANSTATION_SOUND_DUMP"))
 	{
-		static const char *names[Count] = { "splash", "flight", "chime", "move", "select", "back", "tab", "key" };
+		static const char *names[Count] = { "splash", "flight", "chime", "move", "select", "back", "tab", "key", "unlock" };
 		for (int i = 0; i < Count; i++)
 			writeWav(std::string(dir) + "/" + names[i] + ".wav", *sounds[i]);
+		writeWav(std::string(dir) + "/music.wav", *ownMusicForTest());
 	}
 #endif
 }
@@ -376,6 +391,11 @@ void play(Id id)
 void stop()
 {
 	audio::stopSounds();
+}
+
+void unlock()
+{
+	play(Unlock);
 }
 
 }
