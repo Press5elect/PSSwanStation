@@ -8,6 +8,7 @@
 #include "host_interface.h"
 #include "settings.h"
 #include "xxhash.h"
+#include <cstdlib>
 // PS5: one CPU, compiled for (-march=znver2): no run-time dispatch.
 #if (defined(CPU_X86) || defined(CPU_X64)) && !defined(__PROSPERO__)
 #include "xxh_x86dispatch.h"
@@ -87,6 +88,12 @@ void TextureReplacements::Shutdown()
 
 std::string TextureReplacements::GetSourceDirectory() const
 {
+#ifdef SWANSTATION_STANDALONE
+  // The PS5 title keeps texture packs with the user's other files
+  // (<root>textures/<serial>/, ps5/src/host.cpp names the folder).
+  if (const char* textures_directory = getenv("SWANSTATION_TEXTURES_DIR"))
+    return StringUtil::StdStringFromFormat("%s" FS_OSPATH_SEPARATOR_STR "%s", textures_directory, m_game_id.c_str());
+#endif
   // Use the shader cache path as base for the textures folder
   std::string cache_folder = g_host_interface_storage.GetShaderCacheBasePath();
   return g_host_interface->GetUserDirectoryRelativePath("%s" "textures" FS_OSPATH_SEPARATOR_STR "%s", cache_folder.c_str(), m_game_id.c_str());

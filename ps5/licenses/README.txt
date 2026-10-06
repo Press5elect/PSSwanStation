@@ -13,7 +13,10 @@ SwanStation (the emulator)   GPL-3.0          GPL-3.0.txt              github.co
 The PS5 frontend (ps5/)      GPL-3.0-or-later GPL-3.0.txt              this port
   runtime, libc, threads,    GPL-2.0-or-later GPL-3.0.txt (as later    PSFlyCast (shell/ps5), used under the
   network share reader                        version)                 later version
-  sandbox elevation helper   GPL-3.0-or-later GPL-3.0.txt              ps5-native-app-boilerplate (BlackBearReloaded)
+  sandbox elevation client   GPL-3.0-or-later GPL-3.0.txt              ps5-native-app-boilerplate (BlackBearReloaded)
+Lapy helper (lapy.elf)       MIT              Lapy-MIT.txt             PS5-Lapy-JB-Daemon, the exact-title helper
+                                                                       built unchanged (lapy-manifest.json is
+                                                                       that build's record)
 Mesa RADV (Vulkan driver)    MIT and others   Mesa-license.rst         the PS5 Mesa port
 PS5 payload SDK, libc.prx    see the SDK      -                        the payload SDK fork PS5_Vulkan pins
 OpenBIOS (built-in BIOS)     MIT              OpenBIOS-LICENSE.txt     PCSX-Redux project
@@ -26,6 +29,9 @@ Xbyak                        BSD-3-Clause     BSD-3-Clause.txt         github.co
 stb_image, stb_image_resize  MIT / public     MIT.txt                  github.com/nothings/stb
                              domain
 libretro-common              MIT              MIT.txt                  github.com/libretro/libretro-common
+rcheevos (RetroAchievements) MIT              rcheevos-LICENSE.txt     github.com/RetroAchievements/rcheevos
+stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,
+                             domain                                    github.com/mackron/dr_libs
 Roboto (font)                Apache-2.0       Apache-2.0.txt           Google
 Font Awesome Free (symbols)  SIL OFL 1.1      OFL-1.1.txt              fontawesome.com (the font file only)
 Cheat and patch database     see its project  -                        github.com/duckstation/chtdb (assets/

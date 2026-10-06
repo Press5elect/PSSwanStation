@@ -198,70 +198,128 @@ Frontend& frontend()
 	return current;
 }
 
+namespace
+{
+// The frontend's settings by their names in frontend.cfg, each a whole
+// number (a switch is 0 or 1) but the dead zone.
+struct Field
+{
+	const char *name;
+	int *number;
+	bool *flag;
+	int low, high;
+};
+
+std::vector<Field> fields()
+{
+	Frontend& c = current;
+	std::vector<Field> list = {
+		{ "view", &c.view, nullptr, 0, 1 },
+		{ "source", &c.source, nullptr, 0, 2 },
+		{ "covers", nullptr, &c.covers, 0, 1 },
+		{ "usb", nullptr, &c.usb, 0, 1 },
+		{ "ram_cache", nullptr, &c.ramCache, 0, 1 },
+		{ "notifications", nullptr, &c.notifications, 0, 1 },
+		{ "scaling", &c.scaling, nullptr, 0, 2 },
+		{ "linear_filter", nullptr, &c.linearFilter, 0, 1 },
+		{ "volume", &c.volume, nullptr, 0, 100 },
+		{ "show_fps", nullptr, &c.showFps, 0, 1 },
+		{ "pacing", &c.pacing, nullptr, 0, 2 },
+		{ "display_mode", &c.displayMode, nullptr, 0, 2 },
+		{ "black_frames", nullptr, &c.blackFrames, 0, 1 },
+		{ "crt", &c.crt, nullptr, 0, 3 },
+		{ "border", &c.border, nullptr, 0, 3 },
+		{ "preset", &c.preset, nullptr, 0, 3 },
+		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },
+		{ "auto_load", nullptr, &c.autoLoadOnStart, 0, 1 },
+		{ "controller1", &c.controller[0], nullptr, 0, 5 },
+		{ "controller2", &c.controller[1], nullptr, 0, 5 },
+		{ "controller3", &c.controller[2], nullptr, 0, 5 },
+		{ "controller4", &c.controller[3], nullptr, 0, 5 },
+		{ "rumble", nullptr, &c.rumble, 0, 1 },
+		{ "player_lights", nullptr, &c.playerLights, 0, 1 },
+		{ "turbo_rate", &c.turboRate, nullptr, 0, 2 },
+		{ "hotkeys", nullptr, &c.hotkeys, 0, 1 },
+		{ "fast_forward", &c.fastForward, nullptr, 0, 4 },
+		{ "rewind", nullptr, &c.rewind, 0, 1 },
+		{ "rewind_detail", &c.rewindDetail, nullptr, 0, 2 },
+		{ "rewind_memory", &c.rewindMemory, nullptr, 0, 3 },
+		{ "motion", &c.motion, nullptr, 0, 2 },
+		{ "motion_range", &c.motionRange, nullptr, 0, 4 },
+		{ "motion_invert", nullptr, &c.motionInvert, 0, 1 },
+		{ "swap_confirm", nullptr, &c.swapConfirm, 0, 1 },
+		{ "splash", nullptr, &c.splash, 0, 1 },
+		{ "splash_sound", nullptr, &c.splashSound, 0, 1 },
+		{ "ui_sounds", nullptr, &c.uiSounds, 0, 1 },
+		{ "music", &c.music, nullptr, 0, 2 },
+		{ "music_volume", &c.musicVolume, nullptr, 0, 100 },
+		{ "animations", &c.animations, nullptr, 0, 2 },
+		{ "ui_scale", &c.uiScale, nullptr, 75, 150 },
+		{ "accent", &c.accent, nullptr, 0, 7 },
+		{ "sort", &c.sort, nullptr, 0, 4 },
+		{ "filter", &c.filter, nullptr, 0, 3 },
+		{ "region_filter", &c.regionFilter, nullptr, 0, 3 },
+		{ "idle_minutes", &c.idleMinutes, nullptr, 0, 60 },
+		{ "clock", nullptr, &c.clock, 0, 1 },
+		{ "outside", nullptr, &c.outside, 0, 1 },
+		{ "card_backups", &c.cardBackups, nullptr, 0, 50 },
+		{ "update_check", nullptr, &c.updateCheck, 0, 1 },
+		{ "speed_up", &c.speedUp, nullptr, 0, 2 },
+		{ "achievements", nullptr, &c.achievements, 0, 1 },
+		{ "hardcore", nullptr, &c.hardcore, 0, 1 },
+		{ "unofficial", nullptr, &c.unofficial, 0, 1 },
+		{ "netplay_delay", &c.netplayDelay, nullptr, 1, 10 },
+	};
+	static const char *const mapNames[16] = { "map_cross", "map_square", "map_select", "map_start", "map_up", "map_down",
+			"map_left", "map_right", "map_circle", "map_triangle", "map_l1", "map_r1", "map_l2", "map_r2", "map_l3",
+			"map_r3" };
+	for (int i = 0; i < 16; i++)
+		list.push_back({ mapNames[i], &c.remap[i], nullptr, -1, 15 });
+	return list;
+}
+}
+
+// frontend.cfg is the title folder's, wherever the user's other files are:
+// it is read before the sandbox is left, to know whether to leave it.
 void loadFrontend()
 {
-	FILE *f = fopen((rootDir + "frontend.cfg").c_str(), "r");
+	FILE *f = fopen((appDir + "frontend.cfg").c_str(), "r");
 	if (f == nullptr)
 		return;
+	const std::vector<Field> known = fields();
 	char key[64];
 	float value;
 	while (fscanf(f, " %63[^= ] = %f", key, &value) == 2)
 	{
 		const int i = (int)value;
-#define INT(name, field, low, high) else if (!strcmp(key, name)) current.field = std::clamp(i, low, high)
-#define BOOL(name, field) else if (!strcmp(key, name)) current.field = i != 0
-		if (false) {}
-		INT("view", view, 0, 1);
-		INT("source", source, 0, 2);
-		BOOL("covers", covers);
-		BOOL("usb", usb);
-		BOOL("ram_cache", ramCache);
-		BOOL("notifications", notifications);
-		INT("scaling", scaling, 0, 2);
-		BOOL("linear_filter", linearFilter);
-		INT("volume", volume, 0, 100);
-		BOOL("show_fps", showFps);
-		BOOL("sync_to_display", syncToDisplay);
-		BOOL("auto_save", autoSaveOnExit);
-		BOOL("auto_load", autoLoadOnStart);
-		INT("controller1", controller[0], 0, 3);
-		INT("controller2", controller[1], 0, 3);
-		INT("controller3", controller[2], 0, 3);
-		INT("controller4", controller[3], 0, 3);
-		BOOL("rumble", rumble);
-		BOOL("swap_confirm", swapConfirm);
-		BOOL("splash", splash);
-		BOOL("splash_sound", splashSound);
-		BOOL("ui_sounds", uiSounds);
-		INT("animations", animations, 0, 2);
-		INT("ui_scale", uiScale, 75, 150);
-		INT("accent", accent, 0, 7);
-		else if (!strcmp(key, "dead_zone")) current.deadZone = std::clamp(value, 0.f, 0.5f);
-#undef INT
-#undef BOOL
+		if (!strcmp(key, "dead_zone"))
+			current.deadZone = std::clamp(value, 0.f, 0.5f);
+		else if (!strcmp(key, "turbo"))
+			current.turbo = (unsigned)i & 0xffffu;
+		// What "Follow the display" was before the pacing had three kinds.
+		else if (!strcmp(key, "sync_to_display"))
+			current.pacing = i != 0 ? 0 : 1;
+		else
+			for (const Field& field : known)
+				if (!strcmp(key, field.name))
+				{
+					if (field.flag != nullptr)
+						*field.flag = i != 0;
+					else
+						*field.number = std::clamp(i, field.low, field.high);
+					break;
+				}
 	}
 	fclose(f);
 }
 
 void saveFrontend()
 {
-	const std::string path = rootDir + "frontend.cfg";
-	FILE *f = fopen(path.c_str(), "w");
-	if (f == nullptr)
-		return;
-	fprintf(f, "view = %d\nsource = %d\ncovers = %d\nusb = %d\nram_cache = %d\nnotifications = %d\nscaling = %d\n"
-			"linear_filter = %d\nvolume = %d\nshow_fps = %d\nsync_to_display = %d\nauto_save = %d\nauto_load = %d\n"
-			"controller1 = %d\ncontroller2 = %d\ncontroller3 = %d\ncontroller4 = %d\ndead_zone = %.2f\nrumble = %d\nswap_confirm = %d\nui_scale = %d\n"
-			"accent = %d\nsplash = %d\nsplash_sound = %d\nanimations = %d\nui_sounds = %d\n",
-			current.view, current.source, (int)current.covers, (int)current.usb, (int)current.ramCache,
-			(int)current.notifications, current.scaling, (int)current.linearFilter, current.volume,
-			(int)current.showFps, (int)current.syncToDisplay, (int)current.autoSaveOnExit,
-			(int)current.autoLoadOnStart, current.controller[0], current.controller[1], current.controller[2],
-			current.controller[3], current.deadZone,
-			(int)current.rumble, (int)current.swapConfirm, current.uiScale, current.accent, (int)current.splash,
-			(int)current.splashSound, current.animations, (int)current.uiSounds);
-	fclose(f);
-	chmod(path.c_str(), 0666);
+	std::string text;
+	for (const Field& field : fields())
+		text += format("%s = %d\n", field.name, field.flag != nullptr ? (int)*field.flag : *field.number);
+	text += format("dead_zone = %.2f\nturbo = %u\n", current.deadZone, current.turbo);
+	writeFile(appDir + "frontend.cfg", text.data(), text.size());
 }
 
 void define(const void *optionsV2)
@@ -426,6 +484,21 @@ bool hasOverride(const std::string& key)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	return overrides.count(key) != 0;
+}
+
+void resetGlobal()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	globalValues.clear();
+	writeValues(globalFile(), globalValues);
+	changed = true;
+	changes++;
+}
+
+void resetFrontend()
+{
+	current = Frontend();
+	saveFrontend();
 }
 
 void setVisible(const std::string& key, bool visible)

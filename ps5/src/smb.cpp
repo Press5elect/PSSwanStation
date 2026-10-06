@@ -917,9 +917,108 @@ int stat(const std::string& path, Entry& entry)
 	return found;
 }
 
+namespace
+{
+// The hardware address of a server that sleeps (network.cfg's "wake"), as
+// text and as its six bytes.
+std::string wakeText;
+uint8_t wakeBytes[6];
+bool wakeSet;
+
+bool parseHardwareAddress(const std::string& text, uint8_t out[6])
+{
+	unsigned parts[6];
+	char end = 0;
+	if (sscanf(text.c_str(), "%2x%*1[:-]%2x%*1[:-]%2x%*1[:-]%2x%*1[:-]%2x%*1[:-]%2x%c", &parts[0], &parts[1], &parts[2],
+			&parts[3], &parts[4], &parts[5], &end) != 6)
+		return false;
+	for (int i = 0; i < 6; i++)
+		out[i] = (uint8_t)parts[i];
+	return true;
+}
+
+// The servers the folders are on, as IPv4 addresses in network order.
+std::vector<uint32_t> serverAddresses()
+{
+	std::vector<uint32_t> out;
+	for (const std::string& folder : folders)
+	{
+		size_t begin = folder.find("://");
+		begin = begin == std::string::npos ? 0 : begin + 3;
+		const size_t at = folder.find('@', begin);
+		const size_t slash = folder.find('/', begin);
+		if (at != std::string::npos && (slash == std::string::npos || at < slash))
+			begin = at + 1;
+		std::string host = folder.substr(begin, folder.find_first_of("/:", begin) - begin);
+		in_addr address{};
+		if (inet_pton(AF_INET, host.c_str(), &address) == 1
+				&& std::find(out.begin(), out.end(), address.s_addr) == out.end())
+			out.push_back(address.s_addr);
+	}
+	return out;
+}
+}
+
+std::string wakeAddress()
+{
+	return wakeSet ? wakeText : std::string();
+}
+
+// Wake-on-LAN: six bytes of 0xFF and the hardware address sixteen times, as
+// a UDP packet to everyone on the network (the server is asleep and has no
+// address of its own to send to). To the network's broadcast address, and to
+// the last address of each server's own /24, where most home networks have it.
+bool wake()
+{
+	if (!wakeSet)
+		return false;
+	uint8_t packet[6 + 16 * 6];
+	memset(packet, 0xff, 6);
+	for (int i = 0; i < 16; i++)
+		memcpy(packet + 6 + i * 6, wakeBytes, 6);
+	const int handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (handle < 0)
+	{
+		diag::mark("share: wake: no socket (%d)", errno);
+		return false;
+	}
+	const int yes = 1;
+	setsockopt(handle, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
+	std::vector<std::pair<uint32_t, uint16_t>> targets;
+	targets.emplace_back(htonl(INADDR_BROADCAST), 9);
+	for (const uint32_t server : serverAddresses())
+	{
+		targets.emplace_back((server & htonl(0xffffff00u)) | htonl(0xffu), 9);
+		targets.emplace_back((server & htonl(0xffffff00u)) | htonl(0xffu), 7);
+	}
+#if defined(SWANSTATION_HOST)
+	// A test listens on this PC instead.
+	if (const char *to = getenv("SWANSTATION_WAKE_TO"))
+	{
+		targets.clear();
+		targets.emplace_back(htonl(INADDR_LOOPBACK), (uint16_t)atoi(to));
+	}
+#endif
+	int sent = 0;
+	for (const auto& [address, port] : targets)
+	{
+		sockaddr_in to{};
+		to.sin_family = AF_INET;
+		to.sin_port = htons(port);
+		to.sin_addr.s_addr = address;
+		if (sendto(handle, packet, sizeof(packet), 0, reinterpret_cast<const sockaddr *>(&to), sizeof(to))
+				== (ssize_t)sizeof(packet))
+			sent++;
+	}
+	close(handle);
+	diag::mark("share: wake: the packet for %s went out %d time(s) of %d", wakeText.c_str(), sent, (int)targets.size());
+	return sent > 0;
+}
+
 void loadConfig()
 {
 	folders.clear();
+	wakeSet = false;
 	const std::string file = rootDir + "network.cfg";
 	FILE *f = fopen(file.c_str(), "r");
 	if (f == nullptr)
@@ -944,11 +1043,16 @@ void loadConfig()
 					"# The account: leave it as guest with no password for an open share (an\n"
 					"# FTP server is then asked as \"anonymous\"). An FTP server with an account\n"
 					"# of its own: ftp://user:password@server/folder.\n"
+					"#\n"
+					"# A server that sleeps can be woken (Wake-on-LAN) before it is asked:\n"
+					"# name its network card's hardware address on a \"wake\" line, as\n"
+					"#   wake = 00:11:32:AA:BB:CC\n"
 					"\n"
 					"# path = server/share/folder\n"
 					"user = guest\n"
 					"password =\n"
-					"# domain = WORKGROUP\n", f);
+					"# domain = WORKGROUP\n"
+					"# wake = 00:11:32:AA:BB:CC\n", f);
 			fclose(f);
 			chmod(file.c_str(), 0666);
 		}
@@ -986,6 +1090,13 @@ void loadConfig()
 			account.password = value;
 		else if (key == "domain")
 			account.domain = value;
+		else if (key == "wake" && !value.empty())
+		{
+			wakeSet = parseHardwareAddress(value, wakeBytes);
+			wakeText = value;
+			if (!wakeSet)
+				diag::mark("share: network.cfg: \"%s\" is not a hardware address (00:11:22:33:44:55)", value.c_str());
+		}
 	}
 	fclose(f);
 	for (const auto& [index, value] : ftpLines)
@@ -998,6 +1109,10 @@ void loadConfig()
 	for (const std::string& folder : folders)
 		diag::mark("share: games folder %s%s", folder.c_str(),
 				ftp::isPath(folder) ? "" : (" (user " + account.user + ")").c_str());
+	// A server that sleeps is woken as the title starts: it is up by the time
+	// its games are asked for.
+	if (wakeSet && !folders.empty())
+		wake();
 }
 
 const std::vector<std::string>& gameFolders()
@@ -1012,6 +1127,9 @@ bool isNetworkPath(const std::string& path)
 
 void retryNow()
 {
+	// Asked for again by hand: a server that went back to sleep is woken first.
+	if (wakeSet)
+		wake();
 	ftp::retryNow();
 	std::lock_guard<std::mutex> lock(sharesMutex);
 	for (auto& [name, share] : shares)

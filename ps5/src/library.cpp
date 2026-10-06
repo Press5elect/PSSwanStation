@@ -342,7 +342,12 @@ void run(int source, bool force)
 	std::vector<Found> found;
 	std::string status;
 	if (source == Internal)
+	{
 		walkLocal(rootDir + "games", 0, found);
+		// With the user's files outside the title's folder, games may be in either.
+		if (appDir != rootDir)
+			walkLocal(appDir + "games", 0, found);
+	}
 	else if (source == Usb)
 	{
 		for (const std::string& dir : platform::usbGameDirs())
@@ -394,6 +399,79 @@ void run(int source, bool force)
 }
 
 } // namespace
+
+namespace
+{
+// Favourites and hidden games: "F<tab>path" and "H<tab>path" lines.
+std::mutex marksMutex;
+std::set<std::string> favourites, hiddenGames;
+bool marksLoaded;
+std::atomic<unsigned> marksChanges{1};
+
+void loadMarks()
+{
+	if (marksLoaded)
+		return;
+	marksLoaded = true;
+	FILE *f = fopen((rootDir + "data/marks.txt").c_str(), "r");
+	if (f == nullptr)
+		return;
+	char line[4096];
+	while (fgets(line, sizeof(line), f) != nullptr)
+	{
+		const std::string text = trim(line);
+		if (text.size() > 2 && text[1] == '\t')
+			(text[0] == 'F' ? favourites : hiddenGames).insert(text.substr(2));
+	}
+	fclose(f);
+}
+
+void saveMarks()
+{
+	std::string text;
+	for (const std::string& path : favourites)
+		text += "F\t" + path + "\n";
+	for (const std::string& path : hiddenGames)
+		text += "H\t" + path + "\n";
+	writeFile(rootDir + "data/marks.txt", text.data(), text.size());
+	marksChanges++;
+}
+}
+
+bool favourite(const std::string& gamePath)
+{
+	std::lock_guard<std::mutex> lock(marksMutex);
+	loadMarks();
+	return favourites.count(gamePath) != 0;
+}
+
+bool hidden(const std::string& gamePath)
+{
+	std::lock_guard<std::mutex> lock(marksMutex);
+	loadMarks();
+	return hiddenGames.count(gamePath) != 0;
+}
+
+void setFavourite(const std::string& gamePath, bool on)
+{
+	std::lock_guard<std::mutex> lock(marksMutex);
+	loadMarks();
+	if (on ? favourites.insert(gamePath).second : favourites.erase(gamePath) != 0)
+		saveMarks();
+}
+
+void setHidden(const std::string& gamePath, bool on)
+{
+	std::lock_guard<std::mutex> lock(marksMutex);
+	loadMarks();
+	if (on ? hiddenGames.insert(gamePath).second : hiddenGames.erase(gamePath) != 0)
+		saveMarks();
+}
+
+unsigned marksGeneration()
+{
+	return marksChanges;
+}
 
 void init()
 {

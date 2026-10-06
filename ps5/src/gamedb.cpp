@@ -61,7 +61,7 @@ void init()
 {
 	std::vector<uint8_t> file;
 	mz_zip_archive zip{};
-	if (!readFile(rootDir + "assets/gamedb.zip", file) || file.empty()
+	if (!readFile(appDir + "assets/gamedb.zip", file) || file.empty()
 			|| !mz_zip_reader_init_mem(&zip, file.data(), file.size(), 0))
 	{
 		diag::mark("gamedb: %s", summaryText.c_str());

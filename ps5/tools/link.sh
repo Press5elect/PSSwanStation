@@ -120,6 +120,22 @@ title_defsyms=()
     "${radv_link_inputs[@]}" \
     --as-needed "$sdk_root"/target/lib/*.so
 
+# A title loads neither libkernel_sys's exports nor libScePosixForWebKit's: an
+# import only their stubs define links, and is null at run time, so its first
+# call jumps to address 0. Refused here rather than found on the console (the
+# check is PS5_VulkanTemplate's).
+null_imports=$(comm -23 \
+    <("$sdk_root/bin/llvm-nm" -D --undefined-only "$work/llvm-pie.elf" |
+        awk '$1 == "U" { sub(/@.*/, "", $2); print $2 }' | sort -u) \
+    <(for library in "$sdk_root"/target/lib/*.so "$work/stubs/libSceAgc.so" "$work/stubs/libSceAgcDriver.so"; do
+        case ${library##*/} in libkernel_sys.so | libScePosixForWebKit.so) continue ;; esac
+        "$sdk_root/bin/llvm-nm" -D --defined-only "$library" 2>/dev/null | awk '{ print $NF }'
+    done | sort -u))
+if [[ -n $null_imports ]]; then
+    echo "link: imports that no module a title loads exports (null at run time): ${null_imports//$'\n'/ }" >&2
+    echo "link: bind them in ps5/src/ps5/libc_ps5.cpp (the list above) or the platform layer" >&2
+    exit 1
+fi
 "$tool" link --in "$work/llvm-pie.elf" --out "$work/eboot.elf" \
     --stub-dir "$sdk_root/target/lib" --stub "$work/stubs/libSceAgc.so" \
     --stub "$work/stubs/libSceAgcDriver.so" --module-sdk 0x02000009 \

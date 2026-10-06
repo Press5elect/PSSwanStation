@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace fe::display
 {
@@ -18,8 +19,11 @@ void shutdown();
 
 int width();
 int height();
-// What the display's mode says, in Hz.
+// How often a picture goes to the screen, in Hz: the display mode's rate (or
+// half of it, when each picture is held for two refreshes).
 float refreshRate();
+// What the output itself refreshes at.
+float outputRefreshRate();
 // The interface's scale: 1 at 1080 lines.
 float scale();
 std::string deviceName();
@@ -47,8 +51,21 @@ int textureHeight(const Texture *texture);
 // drawable by ImGui. The id stays the same while the view does.
 void *wrapView(void *imageView, int layout);
 void releaseWrapped();
-// Nearest or linear sampling for the game's picture.
-void setLinear(bool linear);
+// Nearest or linear sampling for what is drawn next into an ImDrawList (the
+// game's picture); linear is what everything else is drawn with.
+void sampling(void *drawList, bool nearest);
+
+// The picture `texture` (its part up to u, v) alone, drawn `width` x `height`
+// and read back as RGBA8. Slow: it waits for the graphics processor. Only
+// between a frame's begin and its end.
+bool capture(void *texture, float u, float v, int width, int height, std::vector<uint8_t>& rgba);
+// A few soft pixels of `texture`, averaged over the last half second, for
+// ImGui to stretch over the screen; null when it cannot be made.
+void *ambient(void *texture, float u, float v);
+// The next one starts anew (another game).
+void forgetAmbient();
+// RGBA8 pixels as a PNG file. May be called on any thread.
+bool writePng(const std::string& path, const uint8_t *rgba, int width, int height);
 
 // The last frame as a PNG (the test runs' evidence).
 bool saveScreenshot(const std::string& path);

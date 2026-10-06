@@ -37,6 +37,11 @@ struct Image
 Image image(const std::string& path);
 // From memory, decoded at once (the logo).
 Image imageFromMemory(const uint8_t *data, size_t size);
+// From pixels the caller has (0xAABBGGRR each), kept under `key` while it is
+// shown; `enlarge` times as large, by whole pixels (a memory card's icon).
+Image imageFromPixels(const std::string& key, const uint32_t *pixels, int width, int height, int enlarge = 1);
+// The file changed (a new cover, a state saved again): read it anew.
+void forgetImage(const std::string& path);
 // Once a frame: uploads what was decoded, lets go of pictures long unused.
 void imagesFrame();
 
@@ -81,6 +86,22 @@ constexpr const char *Sync = "\xef\x80\xa1";		// f021
 constexpr const char *Bolt = "\xef\x83\xa7";		// f0e7
 constexpr const char *Search = "\xef\x80\x82";		// f002
 constexpr const char *Backspace = "\xef\x95\x9a";	// f55a
+constexpr const char *Heart = "\xef\x80\x84";		// f004
+constexpr const char *Star = "\xef\x80\x85";		// f005
+constexpr const char *EyeOff = "\xef\x81\xb0";		// f070
+constexpr const char *Trophy = "\xef\x82\x91";		// f091
+constexpr const char *Users = "\xef\x83\x80";		// f0c0
+constexpr const char *Camera = "\xef\x80\xb0";		// f030
+constexpr const char *Forward = "\xef\x81\x8e";		// f04e
+constexpr const char *Backward = "\xef\x81\x8a";	// f04a
+constexpr const char *Music = "\xef\x80\x81";		// f001
+constexpr const char *Lock = "\xef\x80\xa3";		// f023
+constexpr const char *Trash = "\xef\x87\xb8";		// f1f8
+constexpr const char *Copy = "\xef\x83\x85";		// f0c5
+constexpr const char *Keyboard = "\xef\x84\x9c";	// f11c
+constexpr const char *User = "\xef\x80\x87";		// f007
+constexpr const char *Shield = "\xef\x84\xb2";		// f132
+constexpr const char *Moon = "\xef\x86\x86";		// f186
 }
 
 enum Font { Body, Bold, Title, Huge };

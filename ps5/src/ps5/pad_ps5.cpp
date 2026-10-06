@@ -17,9 +17,18 @@
 	is the PlayStation's Select, on its right half Start. The state carries the
 	touch points (their count at 0x34, the first one's x at 0x3c, 0 to 1919
 	across the pad); a click with no finger reported takes the side touched last.
+
+	The light bar is set with scePadSetLightBar and a four-byte colour, as
+	PS5_VulkanTemplate's platform layer sets it on the console. The motion
+	sensor's readings are in the same state (the acceleration, in g, at 0x1c;
+	the turning rates, in radians a second, at 0x28), as libScePad has had them
+	since the PlayStation 4; scePadSetMotionSensorState switches the sensor on.
+	That the readings arrive as described is not established on a console yet:
+	tilt control is offered as an experiment (Settings, Controllers).
 */
 #include "fe.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -34,6 +43,9 @@ int scePadReadState(int32_t handle, void *data);
 int scePadClose(int32_t handle);
 int scePadSetVibration(int32_t handle, const void *param);
 int scePadSetVibrationMode(int32_t handle, int32_t mode);
+int scePadSetLightBar(int32_t handle, const void *colour);
+int scePadResetLightBar(int32_t handle);
+int scePadSetMotionSensorState(int32_t handle, bool enable);
 int sceUserServiceInitialize(const void *params);
 int sceUserServiceGetInitialUser(int32_t *userId);
 int sceUserServiceGetLoginUserIdList(int32_t *userIds);
@@ -101,11 +113,14 @@ struct Device
 	int32_t handle = -1;
 	bool touchRight = true;		// the half of the touch pad touched last
 	uint8_t sentLarge = 0, sentSmall = 0;
+	uint32_t sentLight = 0;		// 0x01RRGGBB once a colour was set
+	bool motionOn = false;
 };
 std::array<Device, MaxPads> devices;
 std::array<Pad, MaxPads> pads;
 bool opened;
 int32_t firstUser = -1;		// who started the title: player 1
+bool motionWanted;
 
 int32_t openPad(int32_t user)
 {
@@ -286,6 +301,30 @@ void padPoll()
 		pad.ry = (raw.ry - 128) / 127.5f;
 		pad.l2 = raw.l2 / 255.f;
 		pad.r2 = raw.r2 / 255.f;
+		if (device.motionOn != motionWanted)
+		{
+			const int result = scePadSetMotionSensorState(device.handle, motionWanted);
+			device.motionOn = motionWanted;
+			diag::mark("pad: %d: motion sensor %s (%#x)", i + 1, motionWanted ? "on" : "off", (unsigned)result);
+		}
+		// Readings that are numbers and of a plausible size; anything else is
+		// a sensor that says nothing.
+		bool sane = device.motionOn;
+		for (int axis = 0; axis < 3 && sane; axis++)
+			sane = std::isfinite(raw.acceleration[axis]) && std::fabs(raw.acceleration[axis]) < 16.f
+					&& std::isfinite(raw.angularVelocity[axis]) && std::fabs(raw.angularVelocity[axis]) < 100.f;
+		pad.hasMotion = sane && (raw.acceleration[0] != 0.f || raw.acceleration[1] != 0.f || raw.acceleration[2] != 0.f);
+		for (int axis = 0; axis < 3; axis++)
+		{
+			pad.gravity[axis] = pad.hasMotion ? raw.acceleration[axis] : 0.f;
+			pad.turning[axis] = pad.hasMotion ? raw.angularVelocity[axis] : 0.f;
+		}
+		pad.touching = raw.touchCount > 0 && raw.touchCount <= 2;
+		if (pad.touching)
+		{
+			pad.touchX = std::clamp(raw.touch[0].x / 1919.f, 0.f, 1.f);
+			pad.touchY = std::clamp(raw.touch[0].y / 1079.f, 0.f, 1.f);
+		}
 	}
 }
 
@@ -301,6 +340,33 @@ int padCount()
 	for (const Pad& pad : pads)
 		n += pad.connected;
 	return n;
+}
+
+void padLight(int index, uint8_t red, uint8_t green, uint8_t blue)
+{
+	if (index < 0 || index >= MaxPads || devices[index].handle < 0)
+		return;
+	Device& device = devices[index];
+	const uint32_t wanted = red == 0 && green == 0 && blue == 0 ? 0u
+			: 0x01000000u | ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
+	if (wanted == device.sentLight)
+		return;
+	device.sentLight = wanted;
+	if (wanted == 0)
+	{
+		scePadResetLightBar(device.handle);
+		return;
+	}
+	const uint8_t colour[4] = { red, green, blue, 0 };
+	const int result = scePadSetLightBar(device.handle, colour);
+	static int said;
+	if (said++ < 4)
+		diag::mark("pad: %d: light bar %02x%02x%02x (%#x)", index + 1, red, green, blue, (unsigned)result);
+}
+
+void padMotion(bool on)
+{
+	motionWanted = on;
 }
 
 void padRumble(int index, float strong, float weak)

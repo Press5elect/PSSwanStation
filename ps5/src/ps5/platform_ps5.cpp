@@ -6,15 +6,20 @@
 	Start-up, in the order PSFlyCast's shell/ps5/ps5_main.cpp found to work:
 	  1. The crash report and the first marks.
 	  2. The frontend's options, read from the title's folder as the sandbox
-	     shows it (/app0). With "USB drives" on, the title asks elfldr to run
-	     its helper (src/ps5/elevation, from ps5-native-app-boilerplate), which
-	     lets this process out of its sandbox so /mnt/usb0-7 can be read. This
+	     shows it (/app0), and the start marker (storage.cpp): after a start
+	     that did not finish, this one is made as plainly as can be.
+	  3. With "USB drives" or "keep my files outside the title folder" on, the
+	     title asks to be let out of its sandbox, so that /mnt/usb0-7 and /data
+	     can be reached. The asking is ps5/elevation's (BlackBearReloaded's
+	     Lapy client, see its README.txt): a resident Lapy service first, else
+	     the packaged one-shot helper through the ELF loader on port 9021. It
 	     has to happen before any other thread exists.
-	  3. The root folder: /app0 in the sandbox; outside it, the title's real
-	     folder. Everything the title reads or writes lives under it.
-	  4. The boot log, the folders (0777, so the console's FTP server can reach
+	  4. The title's folder as this process now sees it, and the root folder
+	     the user's files are in: the title's folder, or /data/psswanstation.
+	  5. The boot log, the folders (0777, so the console's FTP server can reach
 	     them), the modes of what earlier runs left, RADV's shader cache
-	     folder, and stdout/stderr in logs/psswanstation.log.
+	     folder, the display mode in param.json, and stdout/stderr in
+	     logs/psswanstation.log.
 	A title must not exit(): the shell is asked to close it.
 */
 #include "fe.h"
@@ -29,6 +34,7 @@
 #include <string>
 #include <sys/stat.h>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
 #include <vector>
 
@@ -41,9 +47,11 @@ int sceKernelAvailableDirectMemorySize(int64_t searchStart, int64_t searchEnd, s
 		size_t *sizeOut);
 }
 
-namespace ps5
+#include "elevation/elevation.hpp"
+
+extern "C"
 {
-unsigned elevateFilesystem(const char *helperPath);	// elevation/ps5_elevate.cpp
+int sceKernelConvertUtcToLocaltime(int64_t utc, int64_t *local, void *zone, uint64_t *summerTime);
 }
 
 namespace fe::diag
@@ -58,6 +66,9 @@ void padOpen();
 namespace
 {
 bool elevated;
+bool safeStart;
+bool outsideUsed;
+std::string outsideWhy;
 std::vector<std::string> usbDirs;
 
 bool hasFile(const std::string& path)
@@ -98,7 +109,8 @@ void repairModes(const std::string& dir, int depth)
 	for (const std::string& name : names)
 	{
 		if (depth == 0 && (name == "games" || name == "sce_sys" || name == "sce_module" || name == "eboot.bin"
-				|| name == "sandbox-elevator.elf" || name == "licenses" || name == "assets"))
+				|| name == "lapy.elf" || name == "lapy-manifest.json" || name == ".update" || name == "licenses"
+				|| name == "assets"))
 			continue;
 		const std::string path = dir + name;
 		struct stat st;
@@ -183,52 +195,105 @@ void earlyInit()
 
 	// The options decide whether the sandbox is left; they are read from the
 	// title's folder, which the sandbox shows as /app0.
-	rootDir = "/app0/";
+	appDir = rootDir = "/app0/";
 	options::loadFrontend();
 	diag::setNotifications(options::frontend().notifications);
-	if (options::frontend().usb)
+	safeStart = storage::startBegan(appDir);
+	if (safeStart)
+		diag::mark("main: the last start did not finish: this one stays in the sandbox, at 59.94 Hz");
+	const bool wantOut = (options::frontend().usb || options::frontend().outside) && !safeStart;
+	if (wantOut)
 	{
 		// Before any other thread exists, as the helper's protocol asks.
-		const unsigned status = ps5::elevateFilesystem("/app0/sandbox-elevator.elf");
-		elevated = status == 0;
-		diag::mark("usb: sandbox elevation %s (status %u)", elevated ? "granted" : "not granted", status);
+		const elevation::Status status = elevation::request(elevation::Capability::filesystem, "/app0/lapy.elf");
+		elevated = status == elevation::Status::ok;
+		diag::mark("sandbox: leaving it %s (status %u, by way of %s)", elevated ? "granted" : "not granted",
+				(unsigned)status, elevation::path());
 	}
+	// The title's folder as this process sees it now. Outside the sandbox
+	// /app0 may no longer be a path: the folder is where the launcher mounted
+	// it from, or where the console mounts the title it runs.
 	std::vector<std::string> candidates;
 	if (elevated)
 	{
-		// Outside the sandbox /app0 is no longer a path: the title's folder is
-		// where the launcher mounted it from, or under the sandbox's mount.
 		candidates.push_back(std::string("/data/homebrew/") + TitleId);
+		candidates.push_back(std::string("/system_ex/app/") + TitleId);
 		candidates.push_back(std::string("/mnt/sandbox/") + TitleId + "_000/app0");
 	}
 	candidates.push_back("/app0");
-	candidates.push_back("/download0");
-	rootDir.clear();
+	appDir.clear();
 	for (const std::string& candidate : candidates)
-		if ((candidate == "/download0" || hasFile(candidate + "/eboot.bin")) && writableDir(candidate))
+		if (hasFile(candidate + "/eboot.bin") && writableDir(candidate))
 		{
-			rootDir = candidate + "/";
+			appDir = candidate + "/";
 			break;
 		}
-	if (rootDir.empty())
-		rootDir = "/app0/";
+	if (appDir.empty())
+		appDir = "/app0/";
+	rootDir = appDir;
 	options::loadFrontend();
 	diag::setNotifications(options::frontend().notifications);
+
+	// The user's files: outside the title's folder when that is asked for and
+	// can be reached.
+	int migrated = 0;
+	if (options::frontend().outside)
+	{
+		const std::string outside = storage::OutsideDir;
+		if (!elevated)
+			outsideWhy = safeStart ? "the last start did not finish, so this one stayed in the sandbox"
+					: "the sandbox could not be left (it needs a resident Lapy service, or the ELF loader on port 9021)";
+		else if (!writableDir(outside.substr(0, outside.size() - 1)))
+			outsideWhy = outside + " cannot be written to";
+		else
+		{
+			migrated = storage::migrate(appDir, outside);
+			rootDir = outside;
+			outsideUsed = true;
+		}
+	}
 	diag::open(rootDir);
-	diag::mark("%s, build %d; root folder: %s", AppName, BuildNumber, rootDir.c_str());
-	for (const char *sub : { "", "bios", "games", "covers", "cheats", "data", "logs", "data/saves", "data/states",
-			"data/game-options", "data/cheats", "data/cache" })
-		makeDir(rootDir + sub);
+	diag::mark("%s, build %d; title folder: %s; files: %s", AppName, BuildNumber, appDir.c_str(), rootDir.c_str());
+	if (migrated > 0)
+		diag::mark("storage: first start with the files outside: %d copied", migrated);
+	if (!outsideWhy.empty())
+		diag::mark("storage: the files are kept in %s, which this start cannot use: %s", storage::OutsideDir,
+				outsideWhy.c_str());
+	storage::makeFolders(rootDir);
+	if (rootDir != appDir)
+		makeDir(appDir + "games");
 	repairModes(rootDir, 0);
-	// RADV's shader cache, in the root whichever path that is this run.
+	// RADV's shader cache, with the user's files (it is theirs to delete).
 	setenv("MESA_SHADER_CACHE_DIR", (rootDir + "radv-shader-cache").c_str(), 1);
+
+	// The display mode: what param.json declares is what the console grants
+	// and what the driver asks for, so the setting is kept there. A start
+	// after one that failed shows the driver a file that declares nothing.
+	const std::string param = appDir + "sce_sys/param.json";
+	const int declared = storage::displayModeIn(param);
+	if (storage::syncDisplayMode(param, options::frontend().displayMode))
+		diag::mark("display: mode %d was declared, %d is set", declared, options::frontend().displayMode);
+	std::string driverParam = param;
+	if (safeStart)
+	{
+		driverParam = rootDir + "data/safe-param.json";
+		const char plain[] = "{ \"attribute3\": 0 }\n";
+		writeFile(driverParam, plain, sizeof(plain) - 1);
+	}
+	// The driver looks in /app0, which a process outside the sandbox has not.
+	setenv("PS5_VIDEOOUT_PARAM_JSON", driverParam.c_str(), 1);
+
 	if (options::frontend().usb)
 	{
 		if (elevated)
 			findUsbDirs();
-		else
-			diag::notify("%s: USB drives need elfldr running (port 9021). Continuing without them.", AppName);
+		else if (!safeStart)
+			diag::notify("%s: USB drives need a resident Lapy service or the ELF loader (port 9021). Continuing "
+					"without them.", AppName);
 	}
+	// Whether the console gives the title a folder of its own for downloads,
+	// noted for later builds.
+	diag::mark("storage: /download0 %s", writableDir("/download0") ? "can be written to" : "cannot be written to");
 	redirectLogs(rootDir);
 	diag::mark("the emulator's log: %slogs/psswanstation.log", rootDir.c_str());
 }
@@ -242,6 +307,9 @@ void lateInit()
 [[noreturn]] void quit()
 {
 	diag::mark("quit");
+	storage::startCompleted(appDir);
+	for (int i = 0; i < MaxPads; i++)
+		padLight(i, 0, 0, 0);
 	fflush(nullptr);
 	const int result = sceSystemServiceLoadExec("exit", nullptr);
 	diag::mark("close request: %d", result);
@@ -252,6 +320,38 @@ void lateInit()
 bool usbAvailable()
 {
 	return elevated;
+}
+
+bool outsideAvailable()
+{
+	return outsideUsed;
+}
+
+std::string outsideProblem()
+{
+	return outsideWhy;
+}
+
+bool startedSafely()
+{
+	return safeStart;
+}
+
+int localTimeOffset()
+{
+	// Asked once a minute: summer time begins and ends while a title runs.
+	static int offset;
+	static double askedAt = -1000;
+	if (now() - askedAt < 60)
+		return offset;
+	askedAt = now();
+	const int64_t utc = (int64_t)time(nullptr);
+	int64_t local = utc;
+	// Room for more than the two answers are documented to take.
+	uint64_t zone[8] = {}, summer[2] = {};
+	if (sceKernelConvertUtcToLocaltime(utc, &local, zone, summer) == 0 && local - utc > -86400 && local - utc < 86400)
+		offset = (int)(local - utc);
+	return offset;
 }
 
 std::vector<std::string> usbGameDirs()
@@ -293,6 +393,13 @@ std::string fe::shownRoot()
 	if (rootDir == "/app0/")
 		return std::string("/data/homebrew/") + TitleId + "/";
 	return rootDir;
+}
+
+std::string fe::shownApp()
+{
+	if (appDir == "/app0/")
+		return std::string("/data/homebrew/") + TitleId + "/";
+	return appDir;
 }
 
 // _start (ps5/runtime/ps5_crt.cpp) calls this when main returns: the kernel's

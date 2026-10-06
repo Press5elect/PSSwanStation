@@ -19,8 +19,9 @@ cmake_minimum_required(VERSION 3.20)
 project(swanstation_ps5 C CXX)
 
 set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
-set(IMGUI_DIR "${ROOT}/../imgui" CACHE PATH "Dear ImGui (v1.91)")
+set(IMGUI_DIR "${ROOT}/../imgui" CACHE PATH "Dear ImGui (v1.92)")
 set(LIBSMB2_DIR "${ROOT}/../deps-src/libsmb2" CACHE PATH "libsmb2")
+set(RCHEEVOS_DIR "${ROOT}/../deps-src/rcheevos" CACHE PATH "rcheevos (v12)")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -107,8 +108,36 @@ target_include_directories(smb2 PRIVATE "${LIBSMB2_DIR}/include" "${LIBSMB2_DIR}
 target_include_directories(smb2 INTERFACE "${LIBSMB2_DIR}/include")
 target_compile_options(smb2 PRIVATE -w)
 
+# rcheevos (MIT): RetroAchievements. Its client, the server API, the
+# achievement runtime and the hash of a PlayStation disc; nothing for other
+# systems. The three definitions are needed by whatever includes its headers
+# too (they change a structure's layout).
+set(RCHEEVOS_NAMES
+	rc_client rc_compat rc_util rc_version
+	rapi/rc_api_common rapi/rc_api_info rapi/rc_api_runtime rapi/rc_api_user
+	rcheevos/alloc rcheevos/condition rcheevos/condset rcheevos/consoleinfo rcheevos/format rcheevos/lboard
+	rcheevos/memref rcheevos/operand rcheevos/richpresence rcheevos/runtime rcheevos/runtime_progress
+	rcheevos/trigger rcheevos/value
+	rhash/md5 rhash/hash rhash/hash_disc rhash/cdreader)
+set(RCHEEVOS_SOURCES)
+foreach(name ${RCHEEVOS_NAMES})
+	list(APPEND RCHEEVOS_SOURCES "${RCHEEVOS_DIR}/src/${name}.c")
+endforeach()
+add_library(rcheevos STATIC ${RCHEEVOS_SOURCES})
+target_include_directories(rcheevos PUBLIC "${RCHEEVOS_DIR}/include")
+target_compile_definitions(rcheevos PUBLIC RC_HASH_NO_ROM RC_HASH_NO_ZIP RC_HASH_NO_ENCRYPTED)
+target_compile_options(rcheevos PRIVATE -w)
+
 set(frontend_sources
 	src/main.cpp
+	src/storage.cpp
+	src/rewind.cpp
+	src/music.cpp
+	src/memcard.cpp
+	src/netplay.cpp
+	src/achievements.cpp
+	src/update.cpp
+	src/ui_more.cpp
 	src/display.cpp
 	src/host.cpp
 	src/options.cpp
@@ -136,8 +165,7 @@ if(SWANSTATION_PS5)
 		src/ps5/threads_ps5.cpp
 		src/ps5/stdio_ps5.cpp
 		src/ps5/platform_ps5.cpp
-		src/ps5/elevation/elevation.cpp
-		src/ps5/elevation/ps5_elevate.cpp)
+		src/ps5/elevation/elevation.cpp)
 else()
 	list(APPEND frontend_sources src/host/platform_host.cpp)
 endif()
@@ -160,7 +188,7 @@ set(imgui_sources
 	${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
 
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources} ${imgui_sources})
-target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2)
+target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 rcheevos)
 target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen)
 # ImGui's Vulkan backend draws through the core's function table
@@ -172,6 +200,8 @@ target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKA
 set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS
 	"${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/logo-box.png")
 set_source_files_properties(${frontend_sources} PROPERTIES COMPILE_OPTIONS "-std=c++20")
+# The two decoders in it are other people's C, compiled as they are.
+set_source_files_properties(src/music.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20;-w")
 # The build's date, in main.cpp alone so a new day recompiles one file.
 string(TIMESTAMP FE_BUILD_DATE "%Y-%m-%d" UTC)
 set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS "FE_BUILD_DATE=\"${FE_BUILD_DATE}\"")

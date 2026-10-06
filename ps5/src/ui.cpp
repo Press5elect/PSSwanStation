@@ -15,8 +15,10 @@
 	of the touch pad are the PlayStation's Select and Start, and OPTIONS opens
 	the menu.
 */
-#include "ui.h"
+#include "ui_internal.h"
+#include "netplay.h"
 #include "display.h"
+#include "update.h"
 
 #include <libretro.h>
 
@@ -30,19 +32,14 @@
 
 namespace fe::ui
 {
-namespace
-{
 
 using namespace platform;
 
 // ------------------------------------------------------------------- input
 
-struct Input
-{
-	uint32_t held = 0, pressed = 0, repeat = 0;
-};
 Input in;
 uint32_t confirmButton = Cross, cancelButton = Circle;
+double lastInputAt;
 
 void readInput()
 {
@@ -70,6 +67,8 @@ void readInput()
 	}
 	in.held = held;
 	in.pressed = held & ~before;
+	if (held != 0)
+		lastInputAt = clock();
 	in.repeat = in.pressed;
 	const uint32_t repeating = Up | Down | Left | Right | L2 | R2;
 	const double t = now();
@@ -103,36 +102,6 @@ void consumeInput()
 
 // ------------------------------------------------------------------- pages
 
-enum class Page
-{
-	MainMenu,
-	Settings,	// a: category, b: 1 for the running game's own values
-	Pause,
-	States,		// a: 0 save, 1 load
-	Discs,
-	Cheats,
-	Details,	// the game in `chosen`
-	Launch,		// the swan sees the game in `chosen` off; a: state slot, b: disc
-	Loading,	// a network game being read; a: state slot
-	Search,		// a game looked for by its name
-	Message,	// s: title, s2: text
-	Confirm,	// s: title, s2: text, action
-};
-
-struct Frame
-{
-	Page page;
-	int a = 0, b = 0;
-	std::string s, s2;
-	std::function<void()> action;
-	int cursor = 0;
-	float scroll = 0, scrollTarget = 0;
-	bool fresh = true;
-	int picker = -1, pickCursor = 0;
-	float pickScroll = 0;
-	double opened = 0;
-};
-
 std::vector<Frame> stack;
 // What a page asked for; done after the frame is drawn, when no reference
 // into the stack or a page's list is alive.
@@ -143,8 +112,7 @@ bool closeGame;
 bool quit;
 library::Game chosen;
 
-void push(Page page, int a = 0, int b = 0, const std::string& s = "", const std::string& s2 = "",
-		std::function<void()> action = {})
+void push(Page page, int a, int b, const std::string& s, const std::string& s2, std::function<void()> action)
 {
 	Frame frame;
 	frame.page = page;
@@ -166,6 +134,11 @@ void pop()
 void message(const std::string& title, const std::string& text)
 {
 	push(Page::Message, 0, 0, title, text);
+}
+
+void inform(const std::string& title, const std::string& text)
+{
+	push(Page::Message, 1, 0, title, text);
 }
 
 // Logical size of the screen, in units (1920 x 1080 at the normal size).
@@ -190,7 +163,7 @@ float toUnits(float pixels)
 }
 
 // How high wrapped body text is, in units.
-float fontsHeight(const std::string& value, float wrapUnits, float size = 23)
+float fontsHeight(const std::string& value, float wrapUnits, float size)
 {
 	return toUnits(wrappedHeight(value, px(wrapUnits), Body, size));
 }
@@ -266,7 +239,7 @@ void launchNow(const library::Game& game, int slot, int disc)
 }
 
 // `disc`: the one in the tray at the start; -1 for the one last played.
-void launch(const library::Game& game, int slot, int disc = -1)
+void launch(const library::Game& game, int slot, int disc)
 {
 	if (slot == -1 && options::frontend().autoLoadOnStart && host::stateExistsFor(game.path, host::ResumeSlot))
 		slot = host::ResumeSlot;
@@ -291,26 +264,6 @@ void launch(const library::Game& game, int slot, int disc = -1)
 
 // ------------------------------------------------------------------- lists
 
-struct Item
-{
-	std::string label, value, info;
-	const char *icon = nullptr;
-	bool enabled = true, header = false;
-	int mark = 0;		// 1: the game's own value, 2: held by a patch
-	bool ticked = false;
-	// One of several: Left/Right steps through them, confirm opens the list
-	// (or flips, when there are two).
-	std::vector<std::string> choices;
-	int current = -1;
-	std::function<void(int)> choose;
-	// A number: Left/Right steps it.
-	std::function<void(int)> adjust;
-	std::function<void()> activate;
-	std::function<void()> alt;		// Square
-	std::string altHint;
-	std::string confirmHint;
-};
-
 Item header(const std::string& label)
 {
 	Item item;
@@ -320,7 +273,7 @@ Item header(const std::string& label)
 }
 
 Item action(const char *icon, const std::string& label, const std::string& info, std::function<void()> activate,
-		bool enabled = true)
+		bool enabled)
 {
 	Item item;
 	item.icon = icon;
@@ -331,7 +284,7 @@ Item action(const char *icon, const std::string& label, const std::string& info,
 	return item;
 }
 
-Item fact(const std::string& label, const std::string& value, const std::string& info = "")
+Item fact(const std::string& label, const std::string& value, const std::string& info)
 {
 	Item item;
 	item.label = label;
@@ -474,7 +427,7 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 		{
 			if (item.adjust)
 				deferred = [adjust = item.adjust, direction] { adjust(direction); };
-			else if (!item.choices.empty() && item.choose)
+			else if (!item.choices.empty() && item.choose && !item.menu)
 			{
 				const int last = (int)item.choices.size() - 1;
 				const int index = item.current < 0 ? 0 : std::clamp(item.current + direction, 0, last);
@@ -486,7 +439,7 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 		{
 			if (!item.choices.empty() && item.choose)
 			{
-				if (item.choices.size() == 2)
+				if (item.choices.size() == 2 && !item.menu)
 					deferred = [choose = item.choose, index = item.current == 0 ? 1 : 0] { choose(index); };
 				else
 				{
@@ -546,14 +499,20 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 		}
 		const ImU32 colour = !item.enabled ? t.faint : focused ? t.text : IM_COL32(214, 220, 234, 255);
 		float x = x0 + 30;
-		if (item.icon != nullptr)
+		if (item.picture.id != nullptr)
+		{
+			imageFit(item.picture, at(x - 6, y + 7), at(x + 40, y + h - 7), 6,
+					item.enabled ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 110));
+			x += 58;
+		}
+		else if (item.icon != nullptr)
 		{
 			text(at(x, y + 17), focused && item.enabled ? t.accent : t.faint, item.icon, Body, 24);
 			x += 50;
 		}
 		// The value, at the right.
 		float right = x1 - 28;
-		const bool steps = item.enabled && focused && (item.adjust || item.choices.size() > 1);
+		const bool steps = item.enabled && focused && !item.menu && (item.adjust || item.choices.size() > 1);
 		if (!item.value.empty() || item.ticked)
 		{
 			const float maxValue = (x1 - x0) * 0.46f;
@@ -611,13 +570,18 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 
 // ------------------------------------------------------------ the game view
 
+ImVec2 gameA, gameB;
+bool optionsSpent;
+
 void drawGame(float dim)
 {
 	ImDrawList *list = ImGui::GetBackgroundDrawList();
 	const float W = width(), H = height();
 	list->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(0, 0, 0, 255));
 	void *texture = host::frameTexture();
-	if (texture != nullptr)
+	// With black frame insertion every second refresh shows nothing (not under
+	// a menu, where the game stands still).
+	if (texture != nullptr && !(dim <= 0 && host::blackFrame()))
 	{
 		int w = 0, h = 0;
 		float aspect = 4.f / 3.f;
@@ -639,7 +603,19 @@ void drawGame(float dim)
 			}
 		}
 		const ImVec2 p0(std::floor((W - dw) * 0.5f), std::floor((H - dh) * 0.5f));
-		list->AddImage((ImTextureID)texture, p0, ImVec2(p0.x + dw, p0.y + dh), ImVec2(0, 0), ImVec2(u, v));
+		const ImVec2 p1(p0.x + dw, p0.y + dh);
+		gameA = p0;
+		gameB = p1;
+		// What is beside the picture, then the picture, then the lines of a
+		// picture tube over it.
+		drawBorder(list, texture, u, v, p0, p1);
+		const bool squares = !options::frontend().linearFilter;
+		if (squares)
+			display::sampling(list, true);
+		list->AddImage((ImTextureID)texture, p0, p1, ImVec2(0, 0), ImVec2(u, v));
+		if (squares)
+			display::sampling(list, false);
+		drawScanlines(list, p0, p1);
 	}
 	if (dim > 0)
 		list->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(6, 8, 14, (int)(dim * 255)));
@@ -653,6 +629,12 @@ void drawMessages()
 	for (size_t i = messages.size(); i-- > 0;)
 	{
 		const host::Message& m = messages[i];
+		if (!m.title.empty())
+		{
+			// A notice with a heading (an achievement).
+			y -= drawNotice(m, y) + 10;
+			continue;
+		}
 		const float textW = toUnits(measure(m.text, Body, 24).x);
 		const float w = std::min(textW + 48, unitsWide() - 96);
 		const float h = m.progress >= 0 ? 70.f : 52.f;
@@ -704,8 +686,12 @@ struct Meta
 
 struct LibraryView
 {
+	// Every game of the source, by name; and the ones on the screen, as the
+	// library is sorted and filtered.
+	std::vector<library::Game> all;
 	std::vector<library::Game> games;
 	unsigned generation = ~0u;
+	unsigned orderSeen = ~0u;
 	std::vector<std::string> cover;
 	std::vector<unsigned> coverSeen;
 	std::vector<Meta> meta;
@@ -731,7 +717,72 @@ float tabGlow[library::SourceCount];
 
 bool sourceShown(int index)
 {
-	return !views[index].games.empty();
+	return !views[index].all.empty();
+}
+
+// Counts the changes to how the library is sorted and what it shows.
+unsigned orderChanges = 1;
+
+void libraryChanged()
+{
+	orderChanges++;
+}
+
+// A game's release year, for sorting by it: 9999 when the database has none.
+int yearOf(const library::Game& game)
+{
+	static std::map<std::string, int> known;
+	const auto it = known.find(game.path);
+	if (it != known.end())
+		return it->second;
+	gamedb::Info info;
+	const std::string serial = quickSerial(game, 0);
+	const int year = !serial.empty() && gamedb::find(serial, info) && info.year > 0 ? info.year : 9999;
+	known[game.path] = year;
+	return year;
+}
+
+// The games of a source that the filters let through, in the order asked for.
+void orderView(LibraryView& view)
+{
+	const options::Frontend& settings = options::frontend();
+	static const char *const regions[4] = { "", "USA", "Europe", "Japan" };
+	view.games.clear();
+	for (const library::Game& game : view.all)
+	{
+		const bool hiddenGame = library::hidden(game.path);
+		if (settings.filter == 3 ? !hiddenGame : hiddenGame)
+			continue;
+		if (settings.filter == 1 && !library::favourite(game.path))
+			continue;
+		if (settings.filter == 2 && history::get(game.path).lastPlayed != 0)
+			continue;
+		if (settings.regionFilter != 0 && game.region != regions[std::clamp(settings.regionFilter, 0, 3)])
+			continue;
+		view.games.push_back(game);
+	}
+	// By name already; the other orders keep that among equals.
+	switch (settings.sort)
+	{
+	case 1:
+		std::stable_sort(view.games.begin(), view.games.end(), [](const library::Game& a, const library::Game& b) {
+			return history::get(a.path).lastPlayed > history::get(b.path).lastPlayed;
+		});
+		break;
+	case 2:
+		std::stable_sort(view.games.begin(), view.games.end(), [](const library::Game& a, const library::Game& b) {
+			return history::get(a.path).seconds > history::get(b.path).seconds;
+		});
+		break;
+	case 3:
+		std::stable_sort(view.games.begin(), view.games.end(),
+				[](const library::Game& a, const library::Game& b) { return yearOf(a) < yearOf(b); });
+		break;
+	case 4:
+		std::stable_sort(view.games.begin(), view.games.end(),
+				[](const library::Game& a, const library::Game& b) { return a.size > b.size; });
+		break;
+	}
 }
 
 int shownSources()
@@ -768,12 +819,20 @@ void refreshView(int index)
 {
 	LibraryView& view = views[index];
 	const unsigned generation = library::generation(index);
-	if (generation != view.generation)
+	// What the order depends on: the list itself, the marks, the settings,
+	// and (for the orders by play) what was played.
+	const unsigned order = orderChanges * 7919u + library::marksGeneration() * 104729u
+			+ (options::frontend().sort == 1 || options::frontend().sort == 2 || options::frontend().filter == 2
+					? history::generation() : 0u);
+	if (generation != view.generation || order != view.orderSeen)
 	{
 		// The cursor stays on its game when the list is replaced.
 		const std::string keep = view.cursor < (int)view.games.size() ? view.games[view.cursor].path : "";
-		view.games = library::games(index);
+		if (generation != view.generation)
+			view.all = library::games(index);
 		view.generation = generation;
+		view.orderSeen = order;
+		orderView(view);
 		view.cover.assign(view.games.size(), "");
 		view.coverSeen.assign(view.games.size(), ~0u);
 		view.meta.assign(view.games.size(), Meta());
@@ -906,7 +965,7 @@ std::string usbHint()
 }
 
 // Which build this is, in the top right corner.
-void buildTag(float alpha = 1.f)
+void buildTag(float alpha)
 {
 	const Theme& t = theme();
 	const float W = unitsWide();
@@ -974,6 +1033,26 @@ void drawHeader()
 		buttonGlyph(at(x + 32, 65), 30, R1);
 	}
 	buildTag();
+	// The time, and a newer build when the releases page has one.
+	const float W = unitsWide();
+	float right = W - 56 - 250;
+	if (options::frontend().clock)
+	{
+		const std::string time = host::clockText();
+		if (!time.empty())
+		{
+			textRight(at(right, 44), t.dim, time, Bold, 30);
+			right -= toUnits(measure(time, Bold, 30).x) + 28;
+		}
+	}
+	const update::Status newer = update::status();
+	if (newer.state == update::State::Available || newer.state == update::State::Ready)
+	{
+		const std::string label = std::string(icon::Download) + format("   Build %d is out", newer.build);
+		const float w = toUnits(measure(label, Bold, 20).x) + 36;
+		panel(at(right - w, 44), at(right, 84), t.accentSoft, 20);
+		text(at(right - w + 18, 53), t.accent, label, Bold, 20);
+	}
 }
 
 // What is going on besides: a scan, cover downloads.
@@ -1077,6 +1156,12 @@ void drawCell(LibraryView& view, int index, float x, float y, float cell, bool f
 		panel(at(x + size - w - 8, y + 8), at(x + size - 8, y + 38), IM_COL32(0, 0, 0, 170), 8);
 		text(at(x + size - w + 2, y + 13), t.text, discs, Bold, 18);
 	}
+	if (library::favourite(game.path))
+	{
+		// A favourite: a heart in the corner.
+		panel(at(x + 8, y + 8), at(x + 44, y + 44), IM_COL32(0, 0, 0, 170), 18);
+		text(at(x + 16, y + 16), IM_COL32(255, 96, 128, 255), icon::Heart, Body, 20);
+	}
 	const float ty = y + size + (focused ? 6 : 10);
 	const float maxW = px(size);
 	const float tw = measure(game.name, focused ? Bold : Body, 22).x;
@@ -1096,7 +1181,21 @@ void searchPage(Frame& f);
 
 // The letter a game is filed under: A to Z, and '#' for a name that begins
 // with anything else.
+char letterOfName(const std::string& name);
+
+// What L2 and R2 jump by. Sorted by name it is the first letter; in any other
+// order there are no letters to jump by, and it is a tenth of the list.
+bool sortedByName()
+{
+	return options::frontend().sort == 0;
+}
+
 char letterOf(const std::string& name)
+{
+	return letterOfName(name);
+}
+
+char letterOfName(const std::string& name)
 {
 	for (const unsigned char c : name)
 	{
@@ -1116,6 +1215,8 @@ int letterJump(const std::vector<library::Game>& games, int from, bool forwards)
 	if (count == 0)
 		return 0;
 	from = std::clamp(from, 0, count - 1);
+	if (!sortedByName())
+		return std::clamp(from + (forwards ? 1 : -1) * std::max(count / 10, 1), 0, count - 1);
 	const char here = letterOf(games[(size_t)from].name);
 	if (forwards)
 	{
@@ -1143,7 +1244,7 @@ double letterShownAt = -10;
 void letterRail(const std::vector<library::Game>& games, int focus)
 {
 	const float age = (float)(clock() - letterShownAt);
-	if (age < 0 || age > 1.5f || games.empty())
+	if (age < 0 || age > 1.5f || games.empty() || !sortedByName())
 		return;
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
@@ -1217,7 +1318,20 @@ void libraryPage(bool active)
 	coverLookups = 0;
 	int focus = -1;		// the game under the cursor
 
-	if (count == 0)
+	if (count == 0 && !view.all.empty())
+	{
+		// Games, but none that the filters let through.
+		libraryWash("");
+		const Theme& th = theme();
+		const float cx = W * 0.5f, cy = H * 0.46f;
+		textCentred(at(cx, cy - 120), withAlpha(th.accent, 0.8f), icon::Sliders, Title, 84);
+		textCentred(at(cx, cy), th.text, options::frontend().filter == 1 ? "No favourites here yet"
+				: options::frontend().filter == 3 ? "No hidden games here" : "No game here passes the filter", Bold, 34);
+		textCentred(at(cx, cy + 64), th.dim, options::frontend().filter == 1
+				? "A game becomes a favourite in its details (Triangle), under More. Square changes what is shown."
+				: "Square changes what the library shows.", Body, 24);
+	}
+	else if (count == 0)
 	{
 		// No games anywhere: what is being looked through, or where games go.
 		libraryWash("");
@@ -1461,7 +1575,7 @@ void libraryPage(bool active)
 		hints.push_back({ L2 | R2, "Letter" });
 		hints.push_back({ TouchLeft | TouchRight, "Search" });
 	}
-	hints.push_back({ Square, "Scan" });
+	hints.push_back({ Square, "Sort and filter" });
 	hints.push_back({ Options, "Menu" });
 	if (!libraryBehind)
 	{
@@ -1478,7 +1592,7 @@ void libraryPage(bool active)
 	else if (hit(TouchLeft | TouchRight) && count > 0)
 		deferred = [] { openSearch(); };
 	else if (hit(Square))
-		scanEverything();
+		push(Page::LibraryOptions);
 	else if (focus >= 0 && hit(confirmButton))
 	{
 		const library::Game game = view.games[focus];
@@ -1510,7 +1624,9 @@ std::vector<SettingsCategory> settingsCategories(bool forGame)
 		list.push_back({ "Picture", "", icon::Screen, 1, "" });
 		list.push_back({ "Sound", "", icon::Volume, 2, "" });
 		list.push_back({ "Controllers", "", icon::Gamepad, 3, "" });
+		list.push_back({ "Shortcuts and rewind", "", icon::Forward, 5, "" });
 		list.push_back({ "Games and network", "", icon::Server, 4, "" });
+		list.push_back({ "RetroAchievements", "", icon::Trophy, 6, "" });
 	}
 	bool uncategorised = false;
 	for (const options::Option& option : options::all())
@@ -1533,7 +1649,7 @@ std::vector<SettingsCategory> settingsCategories(bool forGame)
 	return list;
 }
 
-Item toggle(const std::string& label, bool *value, const std::string& info, std::function<void()> changed = {})
+Item toggle(const std::string& label, bool *value, const std::string& info, std::function<void()> changed)
 {
 	Item item;
 	item.label = label;
@@ -1643,12 +1759,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"screen and distorts.",
 				[](int i) { options::frontend().scaling = i; }));
 		items.push_back(toggle("Smooth scaling", &f.linearFilter,
-				"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares.",
-				[] { display::setLinear(options::frontend().linearFilter); }));
-		items.push_back(toggle("Follow the display", &f.syncToDisplay,
-				"Runs one frame of the game for each refresh of the display when their rates are within one percent, "
-				"and stretches the sound to match: no stutter and no tearing. Off keeps the game's exact speed and "
-				"drops or repeats a frame now and then."));
+				"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares."));
 		break;
 	case 2:
 		items.push_back(choice("Volume", f.volume / 5,
@@ -1695,9 +1806,13 @@ void frontendItems(int kind, std::vector<Item>& items)
 		for (int player = 0; player < 4; player++)
 		{
 			Item item = choice(format("Player %d's controller", player + 1), f.controller[player],
-					{ "Digital controller", "DualShock", "Analog joystick", "None" },
+					{ "Digital controller", "DualShock", "Analog joystick", "None", "neGcon", "GunCon (light gun)" },
 					"What the game finds plugged in for this player. DualShock suits most games; a few early ones only "
-					"know the digital controller.",
+					"know the digital controller. The neGcon is Namco's twisting controller, which racing games of "
+					"the time steer finely with: the left stick (or the pad leant, see Tilt steering) is its twist, "
+					"R2 and L2 its two analogue buttons. The GunCon is a light gun: the sticks move its aim, as does "
+					"turning the pad when its motion sensor answers; R2 or Cross fires, L2 or Circle fires away "
+					"from the screen (which reloads), Square and Triangle are its two buttons.",
 					[player](int i) {
 						options::frontend().controller[player] = i;
 						host::applyControllers();
@@ -1730,8 +1845,9 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"network while it runs. Off starts sooner and reads as the game asks."));
 		items.push_back(toggle("USB drives", &f.usb,
 				"Lets PSSwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
-				"of the drive). This needs the ELF loader listening on port 9021 and takes effect the next time "
-				"PSSwanStation starts."));
+				"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs a resident "
+				"Lapy service or the ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
+				"starts."));
 		{
 			std::string folders;
 			for (const std::string& folder : smb::gameFolders())
@@ -1746,6 +1862,8 @@ void frontendItems(int kind, std::vector<Item>& items)
 		}
 		break;
 	}
+	// What later builds added to each page, and the pages they added.
+	moreSettings(kind, items);
 }
 
 void optionItems(const std::string& category, bool uncategorised, bool forGame, std::vector<Item>& items)
@@ -1943,7 +2061,7 @@ void settingsPage(Frame& f)
 
 // A page that is one list at the left with an explanation at the right.
 const Item *menuPage(Frame& f, const std::string& title, const std::string& subtitle, std::vector<Item>& items,
-		float listWidth = 780)
+		float listWidth)
 {
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
@@ -1965,12 +2083,12 @@ const Item *menuPage(Frame& f, const std::string& title, const std::string& subt
 	return focused;
 }
 
-void standardHints(const Item *focused, const char *confirm = "Select")
+void standardHints(const Item *focused, const char *confirm)
 {
 	std::vector<Hint> hints;
 	if (focused != nullptr && focused->enabled && (focused->activate || !focused->choices.empty()))
 		hints.push_back({ confirmButton, focused->confirmHint.empty() ? confirm : focused->confirmHint });
-	if (focused != nullptr && focused->enabled && (focused->adjust || focused->choices.size() > 1))
+	if (focused != nullptr && focused->enabled && !focused->menu && (focused->adjust || focused->choices.size() > 1))
 		hints.push_back({ Left | Right, "Change" });
 	if (focused != nullptr && focused->alt)
 		hints.push_back({ Square, focused->altHint });
@@ -1981,6 +2099,8 @@ void standardHints(const Item *focused, const char *confirm = "Select")
 void resume()
 {
 	stack.clear();
+	// OPTIONS, if that is what did it, is not the next menu's too.
+	optionsSpent = true;
 }
 
 void mainMenuPage(Frame& f)
@@ -1993,6 +2113,9 @@ void mainMenuPage(Frame& f)
 				pop();
 				openSearch();
 			}));
+	items.push_back(action(icon::Card, "Memory cards", "What is saved on each memory card: copy a save to another "
+			"card, delete it, take saves in from files and put them out as files, and go back to an earlier copy "
+			"of a card.", [] { push(Page::Cards); }));
 	items.push_back(action(icon::Chip, "Start the BIOS", "Starts the PlayStation without a disc: the memory card "
 			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { startBios(); }));
 	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
@@ -2000,6 +2123,14 @@ void mainMenuPage(Frame& f)
 				scanEverything();
 				pop();
 			}));
+	{
+		const update::Status newer = update::status();
+		Item item = action(icon::Download, "Update", "Asks the releases page whether a newer build is out, and puts "
+				"it in place of this one. Your games, saves and settings are not touched.", [] { push(Page::Update); });
+		if (newer.state == update::State::Available || newer.state == update::State::Ready)
+			item.value = format("Build %d is out", newer.build);
+		items.push_back(item);
+	}
 	items.push_back(action(icon::Info, "About", "Versions, folders and licences.", [] {
 		const int about = (int)settingsCategories(false).size() - 1;
 		push(Page::Settings, about);
@@ -2036,6 +2167,7 @@ void pausePage(Frame& f)
 				: format("%d", (int)cheats::list().size());
 		items.push_back(item);
 	}
+	pauseMoreItems(items);
 	items.push_back(action(icon::Sliders, "Game settings", "The emulator's settings for this game alone: what is "
 			"set there is kept with the game and used whenever it runs.",
 			[] { push(Page::Settings, 0, 1); }, !game.serial.empty()));
@@ -2061,20 +2193,24 @@ void pausePage(Frame& f)
 
 void statesPage(Frame& f)
 {
+	const Theme& t = theme();
 	const bool load = f.a == 1;
 	std::vector<Item> items;
+	// Which slot each row is.
+	std::vector<int> slots;
 	if (load)
 	{
 		std::string when;
 		if (host::stateExists(host::ResumeSlot, &when))
 		{
-			Item item = action(icon::Clock, "Where the game was closed", "The state kept when this game was last closed.",
+			Item item = action(icon::Clock, "Where the game was closed", "",
 					[] {
 						if (host::loadState(host::ResumeSlot))
 							resume();
 					});
 			item.value = when;
 			items.push_back(item);
+			slots.push_back(host::ResumeSlot);
 		}
 	}
 	for (int slot = 0; slot < host::StateSlots; slot++)
@@ -2088,12 +2224,32 @@ void statesPage(Frame& f)
 		item.enabled = !load || exists;
 		item.activate = [slot, load] {
 			if (load ? host::loadState(slot) : host::saveState(slot))
+			{
+				// Its picture is another now.
+				forgetImage(host::stateThumbPath(slot));
 				resume();
+			}
 		};
 		items.push_back(item);
+		slots.push_back(slot);
 	}
-	standardHints(menuPage(f, load ? "Load state" : "Save state", host::game().title, items, 700),
-			load ? "Load" : "Save");
+	if (f.fresh && !load)
+		f.cursor = host::quickSlot();
+	const Item *focused = menuPage(f, load ? "Load state" : "Save state", host::game().title, items, 700);
+	// What the game showed when the state under the cursor was saved.
+	const float px0 = 64 + 700 + 24, pw = std::min(unitsWide() - 64 - px0, 720.f), ph = pw * 0.75f;
+	const int slot = f.cursor >= 0 && f.cursor < (int)slots.size() ? slots[(size_t)f.cursor] : -1;
+	panel(at(px0, 128), at(px0 + pw, 128 + ph + 24), withAlpha(t.panel, 0.7f), 16);
+	const Image picture = slot != -1 && host::stateExists(slot) ? image(host::stateThumbPath(slot)) : Image();
+	if (picture.id != nullptr)
+		imageFit(picture, at(px0 + 12, 140), at(px0 + pw - 12, 140 + ph), 10);
+	else
+		textCentred(at(px0 + pw * 0.5f, 128 + ph * 0.5f), t.faint, slot != -1 && host::stateExists(slot)
+				? "No picture was kept with this state" : "Empty", Body, 24);
+	if (host::restricted() && load)
+		textWrapped(at(px0, 128 + ph + 44), px(pw), t.bad, "Hardcore mode (RetroAchievements) is on: states are not loaded.",
+				Body, 22);
+	standardHints(focused, load ? "Load" : "Save");
 }
 
 void discsPage(Frame& f)
@@ -2223,14 +2379,20 @@ void cheatsPage(Frame& f)
 		hintBar({ { cancelButton, "Back" } });
 		return;
 	}
-	standardHints(menuPage(f, "Cheats and patches", host::game().title + "  \xc2\xb7  " + serial, items, 1100));
+	// Why none of them does anything just now, where that is so.
+	std::string under = host::game().title + "  \xc2\xb7  " + serial;
+	if (netplay::active())
+		under += "  \xc2\xb7  off while playing with someone over the network";
+	else if (host::restricted())
+		under += "  \xc2\xb7  off in hardcore mode";
+	standardHints(menuPage(f, "Cheats and patches", under, items, 1100));
 }
 
 // ------------------------------------------------------------ a game's details
 
 // A game of the library, looked at before it is started: what it is, and its
 // own states, settings and cheats.
-enum DetailsTab { TabOverview, TabStates, TabOptions, TabCheats };
+enum DetailsTab { TabOverview, TabStates, TabOptions, TabCheats, TabMore };
 
 struct Details
 {
@@ -2376,6 +2538,16 @@ void detailsRestore()
 		}
 }
 
+const library::Game& detailsGame()
+{
+	return det.game;
+}
+
+const std::string& detailsSerial_()
+{
+	return det.serial;
+}
+
 void closeDetails()
 {
 	cheats::unload();
@@ -2441,8 +2613,30 @@ void detailsPage(Frame& f)
 	outline(at(x, y), at(x + w, y + h), IM_COL32(255, 255, 255, 22), 24, 1.5f);
 
 	// The left column: the cover, the file, the serial, when it was played.
+	// Among its saved states, what the game showed at the one under the cursor
+	// is there instead.
 	const float cx = x + 48, cs = 420;
-	const Image cover = image(det.cover);
+	Image cover;
+	if (f.a == TabStates)
+	{
+		int row = 0;
+		for (const int slot : { (int)host::ResumeSlot, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 })
+			if (host::stateExistsFor(game.path, slot) && row++ == f.cursor)
+				cover = image(host::stateThumbPathFor(game.path, slot));
+	}
+	// The cover may have been chosen anew since the details were opened.
+	static unsigned coversSeen;
+	if (coversSeen != covers::generation())
+	{
+		coversSeen = covers::generation();
+		forgetImage(det.cover);
+		det.cover.clear();
+		for (const char *ext : { ".png", ".jpg", ".jpeg" })
+			if (det.cover.empty() && fileExists(rootDir + "covers/" + game.fileTitle + ext))
+				det.cover = rootDir + "covers/" + game.fileTitle + ext;
+	}
+	if (cover.id == nullptr)
+		cover = image(det.cover);
 	if (cover.id != nullptr)
 		imageFit(cover, at(cx, y + 48), at(cx + cs, y + 48 + cs), 14);
 	else
@@ -2540,24 +2734,25 @@ void detailsPage(Frame& f)
 		int on = 0;
 		for (const cheats::Cheat& cheat : cheats::list())
 			on += cheat.enabled;
-		const std::string labels[4] = {
+		const std::string labels[5] = {
 			std::string(icon::Play) + "   Play",
 			std::string(icon::Upload) + "   Load state",
 			std::string(icon::Sliders) + "   Options",
 			std::string(icon::Bolt) + (on > 0 ? format("   Cheats   %d on", on) : std::string("   Cheats")),
+			std::string(library::favourite(game.path) ? icon::Heart : icon::Star) + "   More",
 		};
-		const bool enabled[4] = { true, !states.empty(), true, true };
-		det.action = std::clamp(det.action, 0, 3);
+		const bool enabled[5] = { true, !states.empty(), true, true, true };
+		det.action = std::clamp(det.action, 0, 4);
 		if (f.picker < 0)
 		{
 			if (nav(Right))
-				det.action = std::min(det.action + 1, 3);
+				det.action = std::min(det.action + 1, 4);
 			if (nav(Left))
 				det.action = std::max(det.action - 1, 0);
 		}
 		ImVec2 at0 = at(tx, pillsY);
-		for (int i = 0; i < 4; i++)
-			at0.x += pill(at0, labels[i], i == det.action, enabled[i], 64, 26) + px(18);
+		for (int i = 0; i < 5; i++)
+			at0.x += pill(at0, labels[i], i == det.action, enabled[i], 64, 24) + px(14);
 		if (det.action == 1 && states.empty())
 			text(at(tx, pillsY - (discs > 1 ? 104 : 38)), t.faint,
 					"No state is saved for this game yet: save one from the menu while playing.", Body, 20);
@@ -2600,8 +2795,9 @@ void detailsPage(Frame& f)
 	}
 
 	// A tab: its name, then its rows.
-	static const char *names[] = { "", "Start from a saved state", "Options for this game", "Cheats and patches" };
-	static const char *symbols[] = { "", icon::Upload, icon::Sliders, icon::Bolt };
+	static const char *names[] = { "", "Start from a saved state", "Options for this game", "Cheats and patches",
+			"More about this game" };
+	static const char *symbols[] = { "", icon::Upload, icon::Sliders, icon::Bolt, icon::Star };
 	text(at(tx, top + 2), t.accent, symbols[f.a], Body, 26);
 	text(at(tx + 44, top), t.text, names[f.a], Bold, 28);
 	if (f.a == TabOptions && !det.serial.empty())
@@ -2629,6 +2825,8 @@ void detailsPage(Frame& f)
 		fresh.confirmHint = "Play";
 		items.push_back(std::move(fresh));
 	}
+	else if (f.a == TabMore)
+		detailsMoreItems(items);
 	else if (det.serial.empty() && det.serialPending)
 	{
 		// Not known yet: the share is being asked, and may take its time.
@@ -2674,7 +2872,7 @@ void detailsPage(Frame& f)
 	else
 	{
 		// The rows, and under them what the one under the cursor is about.
-		const float infoH = f.a == TabStates ? 0 : 84;
+		const float infoH = f.a == TabStates ? 0 : f.a == TabMore ? 110 : 84;
 		const Item *focused = runList(f, items, tx - 14, listTop, tx + tw - 4, bottom - infoH);
 		if (focused != nullptr && infoH > 0)
 		{
@@ -2868,7 +3066,10 @@ void messagePage(Frame& f, bool confirm)
 	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, 130));
 	panel(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(24, 30, 48, 252), 20);
 	outline(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(255, 255, 255, 26), 20, 1.5f);
-	text(at(x0 + 44, y0 + 36), confirm ? t.accent : t.bad, confirm ? icon::Info : icon::Warning, Body, 30);
+	// Something to answer or to know is marked in the accent colour; something
+	// that went wrong, in red.
+	const bool plain = confirm || f.a == 1;
+	text(at(x0 + 44, y0 + 36), plain ? t.accent : t.bad, plain ? icon::Info : icon::Warning, Body, 30);
 	textFit(at(x0 + 96, y0 + 34), px(w - 140), t.text, f.s, Bold, 32);
 	textWrapped(at(x0 + 44, y0 + 98), px(w - 88), t.dim, f.s2, Body, 24);
 	// The buttons.
@@ -2960,9 +3161,12 @@ void searchBuild()
 	for (int source = 0; source < library::SourceCount; source++)
 	{
 		s.generations[source] = views[source].generation;
-		for (int i = 0; i < (int)views[source].games.size(); i++)
+		for (int i = 0; i < (int)views[source].all.size(); i++)
 		{
-			const std::string name = lowercase(views[source].games[(size_t)i].name);
+			// A hidden game is not found either.
+			if (library::hidden(views[source].all[(size_t)i].path))
+				continue;
+			const std::string name = lowercase(views[source].all[(size_t)i].name);
 			bool all = true;
 			for (const std::string& word : words)
 				all = all && name.find(word) != std::string::npos;
@@ -2972,8 +3176,8 @@ void searchBuild()
 		}
 	}
 	const auto byName = [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
-		const std::string x = lowercase(views[a.first].games[(size_t)a.second].name);
-		const std::string y = lowercase(views[b.first].games[(size_t)b.second].name);
+		const std::string x = lowercase(views[a.first].all[(size_t)a.second].name);
+		const std::string y = lowercase(views[b.first].all[(size_t)b.second].name);
 		return x != y ? x < y : a < b;
 	};
 	std::sort(s.found.begin(), s.found.end(), byName);
@@ -3048,7 +3252,7 @@ void searchPage(Frame&)
 	{
 		const int index = (int)s.scroll + n;
 		const auto& [source, at2] = s.found[(size_t)index];
-		const library::Game& game = views[source].games[(size_t)at2];
+		const library::Game& game = views[source].all[(size_t)at2];
 		const float y = listTop + (float)n * rowH;
 		const bool focused = s.inResults && index == s.cursor;
 		if (focused)
@@ -3148,12 +3352,12 @@ void searchPage(Frame&)
 		const auto& [source, index] = s.found[(size_t)std::clamp(s.cursor, 0, count - 1)];
 		if (hit(confirmButton))
 		{
-			const library::Game game = views[source].games[(size_t)index];
+			const library::Game game = views[source].all[(size_t)index];
 			deferred = [game] { launch(game, -1); };
 		}
 		else if (hit(Triangle))
 		{
-			const library::Game game = views[source].games[(size_t)index];
+			const library::Game game = views[source].all[(size_t)index];
 			deferred = [game] { openDetails(game); };
 		}
 		hintBar({ { confirmButton, "Play" }, { Triangle, "Details" }, { Left | Right, "To the keyboard" }, { cancelButton, "Back" } });
@@ -3241,7 +3445,7 @@ void liftDoor(ImVec2 a, ImVec2 b, bool left, float open)
 	const ImVec2 pa(left ? a.x + inset + shift : mid + inset * 0.6f + shift, a.y + inset);
 	const ImVec2 pb(left ? mid - inset * 0.6f + shift : b.x - inset + shift, b.y - inset);
 	list->AddRectFilled(pa, pb, withAlpha(IM_COL32(40, 58, 108, 255), alpha), side * 0.035f);
-	list->AddRect(pa, pb, withAlpha(IM_COL32(120, 160, 230, 70), alpha), side * 0.035f, 0, std::max(side * 0.006f, 1.f));
+	list->AddRect(pa, pb, withAlpha(IM_COL32(120, 160, 230, 70), alpha), side * 0.035f, std::max(side * 0.006f, 1.f));
 	// Light along the edge that meets the other door.
 	const float edge = left ? x1 : x0;
 	const float glint = side * 0.05f;
@@ -3279,7 +3483,7 @@ void drawSplash(float t, float flight)
 		for (float x = 0; x <= width(); x += px(8))
 			list->PathLineTo(ImVec2(x, y + std::sin(x / width() * 3.14159f * 9.f + t * (1.3f + 0.3f * (float)row))
 					* height() * 0.006f));
-		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * rest)), 0, std::max(height() / 360.f, 2.f));
+		list->PathStroke(IM_COL32(150, 200, 255, (int)(255 * strength[row] * rest)), std::max(height() / 360.f, 2.f));
 	}
 
 	// Where the box ends up: the middle of the screen.
@@ -3527,8 +3731,6 @@ void launchPage(Frame& f)
 	}
 }
 
-} // namespace
-
 void init()
 {
 	widgetsInit();
@@ -3556,7 +3758,8 @@ void menuSounds()
 			: (stack.back().page == Page::Launch || stack.back().page == Page::Loading))
 		return;
 	// The search's keyboard has its own sound for a letter.
-	const bool typing = !stack.empty() && stack.back().page == Page::Search && !searchState.inResults;
+	const bool typing = !stack.empty() && ((stack.back().page == Page::Search && !searchState.inResults)
+			|| stack.back().page == Page::Text);
 	if (hit(confirmButton))
 	{
 		if (!typing)
@@ -3585,17 +3788,52 @@ void frame()
 	}
 
 	const bool game = host::running();
+	// L1 and R1 held as the title starts: the safe start page, before anything else.
+	static bool safeAsked;
+	if (!safeAsked && display::frameCount() < 90 && !game && stack.empty()
+			&& (in.held & (L1 | R1)) == (L1 | R1))
+	{
+		safeAsked = true;
+		splash.state = Splash::Over;
+		// A display output the screen cannot show leaves this page unseen: that
+		// one is put back without being asked for, for the next start.
+		options::Frontend& o = options::frontend();
+		if (o.displayMode != 0)
+		{
+			o.displayMode = 0;
+			o.blackFrames = false;
+			options::saveFrontend();
+			storage::syncDisplayMode(appDir + "sce_sys/param.json", 0);
+			diag::mark("safe start: the display output is 60 Hz again from the next start");
+			push(Page::SafeStart, 1);
+		}
+		else
+			push(Page::SafeStart);
+		consumeInput();
+	}
+	// The menus' music plays while a menu or the library has the screen.
+	sound::music(!game && splash.state == Splash::Over);
+
 	if (!game && stack.empty() && runSplash())
 	{
 		// The animation has the screen.
 	}
+	else if (!game && idleSwan(stack.empty() || (stack.back().page != Page::Loading && stack.back().page != Page::Launch
+			&& stack.back().page != Page::Update)))
+	{
+		// Nothing was pressed for a while: the swan has the screen.
+	}
 	else if (!game && stack.empty())
+	{
 		libraryPage(true);
+		startNotices();
+	}
 	else if (game && stack.empty())
 	{
 		drawGame(0);
+		gameMarks();
 		drawGameOverlay();
-		if (hit(Options))
+		if (gameShortcuts())
 		{
 			push(Page::Pause);
 			consumeInput();
@@ -3608,7 +3846,8 @@ void frame()
 		const Page page = f.page;
 		if (game)
 			drawGame(0.72f);
-		else if (page == Page::Details || page == Page::Launch || page == Page::Loading)
+		else if (page == Page::Details || page == Page::Launch || page == Page::Loading || page == Page::LibraryOptions
+				|| page == Page::Cover)
 		{
 			libraryBehind = true;
 			libraryPage(false);
@@ -3630,16 +3869,36 @@ void frame()
 		case Page::Search: searchPage(f); break;
 		case Page::Message: messagePage(f, false); break;
 		case Page::Confirm: messagePage(f, true); break;
+		case Page::LibraryOptions: libraryOptionsPage(f); break;
+		case Page::Cover: coverPage(f); break;
+		case Page::Cards: cardsPage(f); break;
+		case Page::Card: cardPage(f); break;
+		case Page::CardPick: cardPickPage(f); break;
+		case Page::Buttons: buttonsPage(f); break;
+		case Page::Achievements: achievementsPage(f); break;
+		case Page::Account: accountPage(f); break;
+		case Page::Netplay: netplayPage(f); break;
+		case Page::Text: textPage(f); break;
+		case Page::Update: updatePage(f); break;
+		case Page::SafeStart: safeStartPage(f); break;
+		case Page::Shortcuts: shortcutsPage(f); break;
 		}
 		if (game)
 			drawMessages();
-		// Circle goes back; OPTIONS, over a game, returns to it at once.
-		if (!deferred && page != Page::Loading && page != Page::Launch)
+		// Circle goes back; OPTIONS, over a game, returns to it at once. Pages
+		// that have a use of their own for Circle, or that must be answered,
+		// see to it themselves.
+		if (!deferred && page != Page::Loading && page != Page::Launch && page != Page::Text && page != Page::Update
+				&& page != Page::Netplay)
 		{
 			if (hit(cancelButton) && page != Page::Details)
 				pop();
 			else if (game && hit(Options))
+			{
 				stack.clear();
+				// The same press is not the next menu's.
+				optionsSpent = true;
+			}
 		}
 	}
 

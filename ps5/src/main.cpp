@@ -10,6 +10,7 @@
 */
 #include "fe.h"
 #include "display.h"
+#include "update.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -24,8 +25,9 @@ namespace fe
 {
 
 std::string rootDir;
+std::string appDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 9;
+const int BuildNumber = 10;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 
@@ -166,9 +168,36 @@ double now()
 
 using namespace fe;
 
+// Where the updater asks for the newest release: the repository this title's
+// source is in.
+constexpr const char *ReleasesUrl = "https://api.github.com/repos/Press5elect/PSSwanStation/releases/latest";
+
 int main(int, char **)
 {
 	platform::earlyInit();
+	// An update that a power cut interrupted is undone before anything reads
+	// the title's files.
+	if (update::recover(appDir))
+		diag::mark("update: an interrupted install was undone");
+	{
+		update::Setup setup;
+		setup.appDir = appDir;
+		setup.build = BuildNumber;
+		setup.titleId = TitleId;
+		setup.latestUrl = ReleasesUrl;
+#if defined(SWANSTATION_HOST)
+		if (const char *url = getenv("SWANSTATION_UPDATE_URL"))
+			setup.latestUrl = url;
+		// A test can be an older build than it is, to be offered this one.
+		if (const char *build = getenv("SWANSTATION_UPDATE_BUILD"))
+			setup.build = atoi(build);
+#endif
+		setup.httpGet = [](const std::string& url, std::vector<uint8_t>& out, unsigned seconds) {
+			return platform::httpGet(url, out, seconds);
+		};
+		setup.httpDownload = platform::httpDownload;
+		update::init(setup);
+	}
 	diag::mark("main: display");
 	if (!display::init())
 	{
@@ -182,7 +211,6 @@ int main(int, char **)
 	audio::init();
 	sound::init();
 	audio::setVolume(options::frontend().volume);
-	display::setLinear(options::frontend().linearFilter);
 
 	diag::mark("main: emulator");
 	if (!host::init())
@@ -204,6 +232,8 @@ int main(int, char **)
 #endif
 	covers::init();
 	ui::init();
+	if (options::frontend().updateCheck && platform::httpAvailable())
+		update::check();
 	diag::mark("main: running");
 
 #ifdef SWANSTATION_HOST
@@ -232,8 +262,12 @@ int main(int, char **)
 		}
 		if (!ui::blocksEmulation())
 			host::runFrame();
+		host::tick();
 		ui::frame();
 		display::endFrame();
+		// The library has been on the screen for a while: this start worked.
+		if (display::frameCount() == 180)
+			storage::startCompleted(appDir);
 #ifdef SWANSTATION_HOST
 		if (lastFrame != 0 && display::frameCount() >= lastFrame)
 			break;

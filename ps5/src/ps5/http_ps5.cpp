@@ -5,12 +5,17 @@
 
 	libSceHttp2 on the calling thread, with the calls, pool sizes and time-outs
 	of PSFlyCast's cover downloader (shell/ps5/ps5_covers.cpp, after PS5SX2's
-	cover fetcher), which runs in a title's sandbox. One request at a time.
+	cover fetcher), which runs in a title's sandbox. One request at a time: a
+	long download (the updater's) holds the others back until it is done or
+	stopped.
 */
 #include "fe.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <mutex>
+#include <sys/stat.h>
+#include <unistd.h>
 
 extern "C"
 {
@@ -76,10 +81,20 @@ bool httpAvailable()
 	return init();
 }
 
-int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, int *error)
+namespace
 {
-	std::lock_guard<std::mutex> lock(mutex);
-	out.clear();
+// What of a URL goes into the log: never what follows a '?', where a request
+// can carry a name or a key.
+std::string shown(const std::string& url)
+{
+	return url.substr(0, std::min(url.find('?'), (size_t)60));
+}
+
+// Makes the request and waits for its status. The request's id, with
+// `status` set, or a negative number.
+int begin(const std::string& url, unsigned seconds, int& status, int *error)
+{
+	status = -1;
 	if (error != nullptr)
 		*error = 0;
 	if (!init())
@@ -98,7 +113,6 @@ int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds,
 	sceHttp2SetRecvTimeOut(request, phase);
 	sceHttp2SetTimeOut(request, seconds * 1000 * 1000);
 	sceHttp2SetAutoRedirect(request, 1);
-	int status = -1;
 	const int sent = sceHttp2SendRequest(request, nullptr, 0);
 	const int got = sent == 0 ? sceHttp2GetStatusCode(request, &status) : -1;
 	if (sent != 0 || got != 0)
@@ -107,34 +121,118 @@ int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds,
 			*error = sent != 0 ? sent : got;
 		if (reported++ < 6)
 			diag::mark("http: request failed: send %#x, status %#x (%s)", (unsigned)sent, (unsigned)got,
-					url.substr(0, 60).c_str());
+					shown(url).c_str());
+		sceHttp2DeleteRequest(request);
 		status = -1;
+		return -1;
 	}
-	else if (status >= 200 && status < 300)
+	return request;
+}
+}
+
+int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, int *error)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	out.clear();
+	int status = -1;
+	const int request = begin(url, seconds, status, error);
+	if (request < 0)
+		return -1;
+	// An error's body is read too: it is the server's reason. Only so much of it.
+	const size_t limit = status >= 200 && status < 300 ? (size_t)(8u << 20) : (size_t)(64u << 10);
+	std::vector<uint8_t> chunk(64 * 1024);
+	for (;;)
 	{
-		std::vector<uint8_t> chunk(64 * 1024);
-		for (;;)
+		const int n = sceHttp2ReadData(request, chunk.data(), chunk.size());
+		if (n < 0)
 		{
-			const int n = sceHttp2ReadData(request, chunk.data(), chunk.size());
-			if (n < 0)
-			{
-				if (reported++ < 6)
-					diag::mark("http: reading the answer failed: %#x", (unsigned)n);
+			if (reported++ < 6)
+				diag::mark("http: reading the answer failed: %#x", (unsigned)n);
+			if (status >= 200 && status < 300)
 				status = -1;
-				break;
-			}
-			if (n == 0)
-				break;
-			out.insert(out.end(), chunk.begin(), chunk.begin() + n);
-			if (out.size() > (8u << 20))
-			{
+			break;
+		}
+		if (n == 0)
+			break;
+		out.insert(out.end(), chunk.begin(), chunk.begin() + n);
+		if (out.size() > limit)
+		{
+			if (status >= 200 && status < 300)
 				status = -1;
-				break;
-			}
+			break;
 		}
 	}
 	sceHttp2DeleteRequest(request);
 	return status;
+}
+
+int httpDownload(const std::string& url, const std::string& path, uint64_t limit,
+		const std::function<bool(uint64_t done, uint64_t total)>& progress)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	int status = -1;
+	// The whole of it may take minutes: the time limit is on each read.
+	const int request = begin(url, 3600, status, nullptr);
+	if (request < 0)
+		return -1;
+	if (status != 200)
+	{
+		sceHttp2DeleteRequest(request);
+		return status;
+	}
+	// How much is coming is not asked of the client (its call for that has not
+	// been used on a console by anything this title follows): the caller knows
+	// the size from elsewhere, or shows what has arrived.
+	const uint64_t total = 0;
+	FILE *file = fopen(path.c_str(), "wb");
+	if (file == nullptr)
+	{
+		sceHttp2DeleteRequest(request);
+		return -1;
+	}
+	// Written in pieces of a megabyte: a small write costs the console's
+	// storage as much as a large one.
+	std::vector<uint8_t> chunk(1 << 20);
+	uint64_t done = 0;
+	size_t held = 0;
+	bool ok = true;
+	for (;;)
+	{
+		const int n = sceHttp2ReadData(request, chunk.data() + held, chunk.size() - held);
+		if (n < 0)
+		{
+			diag::mark("http: the download broke off: %#x after %llu bytes", (unsigned)n, (unsigned long long)done);
+			ok = false;
+			break;
+		}
+		held += (size_t)n;
+		done += (uint64_t)n;
+		if (held == chunk.size() || n == 0)
+		{
+			if (held != 0 && fwrite(chunk.data(), 1, held, file) != held)
+			{
+				ok = false;
+				break;
+			}
+			held = 0;
+		}
+		if (n == 0)
+			break;
+		if (done > limit || (progress && !progress(done, total)))
+		{
+			ok = false;
+			break;
+		}
+	}
+	ok = fclose(file) == 0 && ok && (total == 0 || done == total);
+	sceHttp2DeleteRequest(request);
+	if (!ok)
+	{
+		unlink(path.c_str());
+		return -1;
+	}
+	chmod(path.c_str(), 0666);
+	return 200;
 }
 
 }

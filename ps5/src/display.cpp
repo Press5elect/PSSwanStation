@@ -8,8 +8,12 @@
 	command (dep/vulkan-loader), and the picture goes to a VK_KHR_display plane
 	surface on the console's one display, as PS5_Vulkan's own titles and
 	PSFlyCast drive it: the display's 4K mode with the highest refresh rate the
-	driver offers (59.94 Hz here: param.json does not ask for 119.88), a FIFO
-	swapchain, B8G8R8A8.
+	driver offers, a FIFO swapchain, B8G8R8A8. The rate is 59.94 Hz unless
+	sce_sys/param.json declares the 120 Hz output (the "Display output"
+	setting writes that, storage.cpp) and the display takes it: the driver
+	then runs the output at 119.88 Hz for the whole run and offers that mode
+	first. Should the output be at 119.88 Hz while the setting asks for 60 (the
+	file was changed by hand), each picture is shown for two refreshes.
 
 	The device is the emulator's own Vulkan context (src/common/vulkan/context),
 	made here once and kept for the whole run: the interface draws with it, and
@@ -18,6 +22,12 @@
 	the emulator's commands, submitted by the emulator, then one render pass of
 	ImGui into the swapchain image: the game's picture is an ImGui image under
 	the menus.
+
+	Besides the screen there are two small pictures the title draws into
+	itself, with the same ImGui pipeline: the game's picture alone, read back
+	for screenshots and for the pictures kept with save states (capture), and
+	a few pixels of it blended over time, which stretched over the screen is
+	the light a 4:3 picture throws on the bars beside it (ambient).
 
 	On a PC (the host build) the surface is VK_EXT_headless_surface and frames
 	can be saved as PNGs: that is how the interface is checked without a console.
@@ -79,15 +89,28 @@ size_t semaphoreIndex = 0;
 uint32_t imageIndex = 0;
 bool frameOpen = false;
 uint64_t frames = 0;
-VkSampler linearSampler = VK_NULL_HANDLE, nearestSampler = VK_NULL_HANDLE;
-bool gameLinear = true;
 std::string gpuName;
+// What the output really refreshes at, when that is not the mode's rate.
+float outputRate = 0;
 
 // The emulator's picture, wrapped for ImGui.
 VkImageView wrappedView = VK_NULL_HANDLE;
 VkDescriptorSet wrappedSet = VK_NULL_HANDLE;
-bool wrappedLinear = true;
 int wrappedLayout = 0;
+
+// A picture the title draws into: the capture's and the ambient light's.
+struct Target
+{
+	Vulkan::Texture texture;
+	VkFramebuffer framebuffer = VK_NULL_HANDLE;
+	VkDescriptorSet set = VK_NULL_HANDLE;
+	int width = 0, height = 0;
+	bool drawn = false;
+};
+Target captureTarget, ambientTarget;
+// The swapchain's render pass again, for those: one that clears first and one
+// that draws over what is there; both leave the picture readable by a shader.
+VkRenderPass targetClearPass = VK_NULL_HANDLE, targetBlendPass = VK_NULL_HANDLE;
 // Descriptor sets ImGui must not lose before the frames that used them are
 // drawn: freed two frames later.
 struct Retired
@@ -190,6 +213,12 @@ bool pickGpu()
 }
 
 #if defined(SWANSTATION_PS5)
+}
+// The graphics driver's own (PS5_Mesa, wsi_common_videoout.c): each picture is
+// shown for rate + 1 refreshes.
+extern "C" int wsi_videoout_set_flip_rate(int rate);
+namespace
+{
 // The console's one display, as a plane surface: the mode with the most
 // pixels, then the highest refresh rate (PSFlyCast's choice).
 bool createSurface()
@@ -212,6 +241,8 @@ bool createSurface()
 	}
 	std::vector<VkDisplayModePropertiesKHR> modes(modeCount);
 	vkGetDisplayModePropertiesKHR(gpu, displays[0].display, &modeCount, modes.data());
+	// The largest size, and of its modes the fastest: when the driver offers
+	// 119.88 Hz the output is running at it, whichever mode is taken.
 	auto score = [](const VkDisplayModePropertiesKHR& mode) {
 		const auto& p = mode.parameters;
 		return (long long)p.visibleRegion.width * p.visibleRegion.height * 1000000 + (long long)p.refreshRate;
@@ -226,6 +257,15 @@ bool createSurface()
 	}
 	extent = best->parameters.visibleRegion;
 	refresh = best->parameters.refreshRate / 1000.f;
+	outputRate = refresh;
+	if (refresh > 100.f && options::frontend().displayMode == 0)
+	{
+		// 119.88 Hz that was not asked for: each picture stays for two refreshes.
+		const int result = wsi_videoout_set_flip_rate(1);
+		diag::mark("display: the output is at %.2f Hz and 60 is set: two refreshes a picture (%d)", refresh, result);
+		if (result >= 0)
+			refresh *= 0.5f;
+	}
 	VkDisplaySurfaceCreateInfoKHR info{ VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR };
 	info.displayMode = best->displayMode;
 	info.planeIndex = 0;
@@ -275,6 +315,10 @@ bool createSurface()
 		}
 	}
 	refresh = 59.94f;
+	// A test can stand in for a 120 Hz display.
+	if (const char *rate = getenv("SWANSTATION_REFRESH"))
+		refresh = std::clamp((float)atof(rate), 24.f, 240.f);
+	outputRate = refresh;
 	return true;
 }
 #endif
@@ -371,6 +415,17 @@ bool createSwapchain()
 	result = vkCreateRenderPass(device, &passInfo, nullptr, &renderPass);
 	if (result != VK_SUCCESS)
 		return fail("vkCreateRenderPass", result);
+	// The same pass for the title's own pictures (ImGui's pipeline fits any
+	// pass with this attachment).
+	attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	result = vkCreateRenderPass(device, &passInfo, nullptr, &targetClearPass);
+	if (result != VK_SUCCESS)
+		return fail("vkCreateRenderPass", result);
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	attachment.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	result = vkCreateRenderPass(device, &passInfo, nullptr, &targetBlendPass);
+	if (result != VK_SUCCESS)
+		return fail("vkCreateRenderPass", result);
 
 	views.resize(count);
 	framebuffers.resize(count);
@@ -407,20 +462,6 @@ bool createSwapchain()
 	return true;
 }
 
-VkSampler makeSampler(VkFilter filter)
-{
-	VkSamplerCreateInfo info{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
-	info.magFilter = filter;
-	info.minFilter = filter;
-	info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-	info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	info.maxLod = 1.0f;
-	info.maxAnisotropy = 1.0f;
-	VkSampler sampler = VK_NULL_HANDLE;
-	vkCreateSampler(g_vulkan_context->GetDevice(), &info, nullptr, &sampler);
-	return sampler;
-}
-
 void checkResult(VkResult result)
 {
 	if (result != VK_SUCCESS)
@@ -452,10 +493,13 @@ bool initImGui()
 	info.Device = g_vulkan_context->GetDevice();
 	info.QueueFamily = g_vulkan_context->GetGraphicsQueueFamilyIndex();
 	info.Queue = g_vulkan_context->GetGraphicsQueue();
-	info.RenderPass = renderPass;
+	info.PipelineInfoMain.RenderPass = renderPass;
 	info.MinImageCount = (uint32_t)images.size();
-	info.ImageCount = (uint32_t)images.size();
-	info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	// How many sets of vertex buffers the backend goes round: a frame draws
+	// up to three times (the screen, the ambient light, a capture), and a set
+	// must not come round again while the graphics processor may still read it.
+	info.ImageCount = (uint32_t)images.size() * 3 + 1;
+	info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 	// Covers are one descriptor set each.
 	info.DescriptorPoolSize = 4096;
 	info.CheckVkResultFn = checkResult;
@@ -481,8 +525,6 @@ bool init()
 	}
 	if (!createSwapchain())
 		return false;
-	linearSampler = makeSampler(VK_FILTER_LINEAR);
-	nearestSampler = makeSampler(VK_FILTER_NEAREST);
 	if (!initImGui())
 		return false;
 	diag::mark("vulkan: ready");
@@ -496,6 +538,14 @@ void shutdown()
 	VkDevice device = g_vulkan_context->GetDevice();
 	g_vulkan_context->WaitForGPUIdle();
 	releaseWrapped();
+	for (Target *target : { &captureTarget, &ambientTarget })
+	{
+		retire(target->set);
+		if (target->framebuffer != VK_NULL_HANDLE)
+			vkDestroyFramebuffer(device, target->framebuffer, nullptr);
+		target->texture.Destroy(false);
+		*target = Target();
+	}
 	freeRetired(true);
 	ImGui_ImplVulkan_Shutdown();
 	ImGui::DestroyContext();
@@ -507,9 +557,9 @@ void shutdown()
 		vkDestroyFramebuffer(device, framebuffer, nullptr);
 	for (VkImageView view : views)
 		vkDestroyImageView(device, view, nullptr);
-	vkDestroySampler(device, linearSampler, nullptr);
-	vkDestroySampler(device, nearestSampler, nullptr);
 	vkDestroyRenderPass(device, renderPass, nullptr);
+	vkDestroyRenderPass(device, targetClearPass, nullptr);
+	vkDestroyRenderPass(device, targetBlendPass, nullptr);
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 	Vulkan::Context::Destroy();
 	vkDestroyDevice(device, nullptr);
@@ -531,6 +581,11 @@ int height()
 float refreshRate()
 {
 	return refresh;
+}
+
+float outputRefreshRate()
+{
+	return outputRate;
 }
 
 float scale()
@@ -635,8 +690,7 @@ Texture *createTexture(int w, int h, const uint8_t *rgba)
 	texture->staging.CopyToTexture(cmd, 0, 0, texture->texture, 0, 0, 0, 0, w, h);
 	texture->texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	texture->staging.Destroy(true);
-	texture->set = ImGui_ImplVulkan_AddTexture(linearSampler, texture->texture.GetView(),
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	texture->set = ImGui_ImplVulkan_AddTexture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	return texture;
 }
 
@@ -661,8 +715,7 @@ Texture *createDynamicTexture(int w, int h)
 	static const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	vkCmdClearColorImage(cmd, texture->texture.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
 	texture->texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	texture->set = ImGui_ImplVulkan_AddTexture(gameLinear ? linearSampler : nearestSampler, texture->texture.GetView(),
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	texture->set = ImGui_ImplVulkan_AddTexture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	return texture;
 }
 
@@ -750,13 +803,11 @@ void *wrapView(void *imageView, int layout)
 	const VkImageView view = static_cast<VkImageView>(imageView);
 	if (view == VK_NULL_HANDLE)
 		return nullptr;
-	if (view != wrappedView || wrappedLinear != gameLinear || wrappedLayout != layout)
+	if (view != wrappedView || wrappedLayout != layout)
 	{
 		retire(wrappedSet);
-		wrappedSet = ImGui_ImplVulkan_AddTexture(gameLinear ? linearSampler : nearestSampler, view,
-				(VkImageLayout)layout);
+		wrappedSet = ImGui_ImplVulkan_AddTexture(view, (VkImageLayout)layout);
 		wrappedView = view;
-		wrappedLinear = gameLinear;
 		wrappedLayout = layout;
 	}
 	return (void *)wrappedSet;
@@ -769,9 +820,178 @@ void releaseWrapped()
 	wrappedView = VK_NULL_HANDLE;
 }
 
-void setLinear(bool linear)
+void sampling(void *drawList, bool nearest)
 {
-	gameLinear = linear;
+	// The backend's two samplers, chosen by a command in the draw list.
+	const ImGuiPlatformIO& io = ImGui::GetPlatformIO();
+	const ImDrawCallback callback = nearest ? io.DrawCallback_SetSamplerNearest : io.DrawCallback_SetSamplerLinear;
+	if (callback != nullptr)
+		static_cast<ImDrawList *>(drawList)->AddCallback(callback, nullptr);
+}
+
+namespace
+{
+bool ensureTarget(Target& target, int width, int height)
+{
+	if (target.framebuffer != VK_NULL_HANDLE && target.width == width && target.height == height)
+		return true;
+	VkDevice device = g_vulkan_context->GetDevice();
+	if (target.framebuffer != VK_NULL_HANDLE)
+	{
+		// What may still be in a frame under way is let go of later.
+		retire(target.set);
+		g_vulkan_context->DeferFramebufferDestruction(target.framebuffer);
+		target.texture.Destroy(true);
+		target = Target();
+	}
+	if (!target.texture.Create((uint32_t)width, (uint32_t)height, 1, 1, swapFormat, VK_SAMPLE_COUNT_1_BIT,
+			VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
+		return false;
+	const VkImageView view = target.texture.GetView();
+	VkFramebufferCreateInfo info{ VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
+	info.renderPass = targetClearPass;
+	info.attachmentCount = 1;
+	info.pAttachments = &view;
+	info.width = (uint32_t)width;
+	info.height = (uint32_t)height;
+	info.layers = 1;
+	if (vkCreateFramebuffer(device, &info, nullptr, &target.framebuffer) != VK_SUCCESS)
+	{
+		target.texture.Destroy(false);
+		target = Target();
+		return false;
+	}
+	target.set = ImGui_ImplVulkan_AddTexture(view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	target.width = width;
+	target.height = height;
+	target.drawn = false;
+	return true;
+}
+
+// Draws `texture` (its part up to u, v) over the whole of a target, with
+// ImGui's pipeline: `alpha` below 1 blends it over what the target holds.
+// `shiftU`, `shiftV` move where it is sampled, in parts of the texture.
+void drawInto(Target& target, void *texture, float u, float v, float alpha, float shiftU, float shiftV)
+{
+	const bool blend = alpha < 1.f && target.drawn;
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	VkClearValue clear{};
+	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
+	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+	begin.renderPass = blend ? targetBlendPass : targetClearPass;
+	begin.framebuffer = target.framebuffer;
+	begin.renderArea = { { 0, 0 }, { (uint32_t)target.width, (uint32_t)target.height } };
+	begin.clearValueCount = 1;
+	begin.pClearValues = &clear;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	const ImVec2 size((float)target.width, (float)target.height);
+	static ImDrawList list(ImGui::GetDrawListSharedData());
+	list._ResetForNewFrame();
+	list.PushClipRect(ImVec2(0, 0), size);
+	list.PushTexture(ImTextureRef((ImTextureID)(size_t)texture));
+	list.AddImage(ImTextureRef((ImTextureID)(size_t)texture), ImVec2(0, 0), size, ImVec2(shiftU, shiftV), ImVec2(u + shiftU, v + shiftV),
+			IM_COL32(255, 255, 255, blend ? (int)(alpha * 255.f) : 255));
+	ImDrawData data;
+	data.Clear();
+	data.Valid = true;
+	data.DisplayPos = ImVec2(0, 0);
+	data.DisplaySize = size;
+	data.FramebufferScale = ImVec2(1, 1);
+	data.AddDrawList(&list);
+	ImGui_ImplVulkan_RenderDrawData(&data, cmd);
+	vkCmdEndRenderPass(cmd);
+	target.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	target.drawn = true;
+}
+}
+
+bool capture(void *texture, float u, float v, int width, int height, std::vector<uint8_t>& rgba)
+{
+	rgba.clear();
+	if (texture == nullptr || !frameOpen || width < 8 || height < 8 || width > 8192 || height > 8192
+			|| !ensureTarget(captureTarget, width, height))
+		return false;
+	drawInto(captureTarget, texture, u, v, 1.f, 0, 0);
+	VkDevice device = g_vulkan_context->GetDevice();
+	const VkDeviceSize bytes = (VkDeviceSize)width * height * 4;
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	bool coherent = false;
+	if (!Vulkan::StagingBuffer::AllocateBuffer(Vulkan::StagingBuffer::Type::Readback, bytes,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT, &buffer, &memory, &coherent))
+		return false;
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	captureTarget.texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	VkBufferImageCopy region{};
+	region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	region.imageExtent = { (uint32_t)width, (uint32_t)height, 1 };
+	vkCmdCopyImageToBuffer(cmd, captureTarget.texture.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &region);
+	captureTarget.texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	// Everything so far is done, and waited for: the copy is in the buffer.
+	g_vulkan_context->ExecuteCommandBuffer(true);
+	bool ok = false;
+	void *mapped = nullptr;
+	if (vkMapMemory(device, memory, 0, bytes, 0, &mapped) == VK_SUCCESS)
+	{
+		rgba.resize((size_t)bytes);
+		const uint8_t *in = static_cast<const uint8_t *>(mapped);
+		const bool bgr = swapFormat == VK_FORMAT_B8G8R8A8_UNORM || swapFormat == VK_FORMAT_B8G8R8A8_SRGB;
+		for (size_t i = 0; i < (size_t)width * height; i++)
+		{
+			rgba[i * 4 + 0] = in[i * 4 + (bgr ? 2 : 0)];
+			rgba[i * 4 + 1] = in[i * 4 + 1];
+			rgba[i * 4 + 2] = in[i * 4 + (bgr ? 0 : 2)];
+			rgba[i * 4 + 3] = 255;
+		}
+		vkUnmapMemory(device, memory);
+		ok = true;
+	}
+	vkDestroyBuffer(device, buffer, nullptr);
+	vkFreeMemory(device, memory, nullptr);
+	return ok;
+}
+
+void *ambient(void *texture, float u, float v)
+{
+	// A few pixels: stretched over the screen they are only colours.
+	constexpr int Width = 32, Height = 24;
+	if (texture == nullptr || !frameOpen || !ensureTarget(ambientTarget, Width, Height))
+		return nullptr;
+	// Each frame a little of the picture is blended in, sampled a little
+	// elsewhere each time: over half a second that is its average, which a
+	// single sample of a large picture is not.
+	static unsigned turn;
+	turn++;
+	const float shiftU = (((turn * 7u) % 16u) / 16.f - 0.5f) * u / Width;
+	const float shiftV = (((turn * 11u) % 16u) / 16.f - 0.5f) * v / Height;
+	drawInto(ambientTarget, texture, u, v, 0.10f, shiftU, shiftV);
+	return (void *)ambientTarget.set;
+}
+
+void forgetAmbient()
+{
+	ambientTarget.drawn = false;
+}
+
+bool writePng(const std::string& path, const uint8_t *rgba, int width, int height)
+{
+	if (rgba == nullptr || width <= 0 || height <= 0)
+		return false;
+	std::vector<uint8_t> rgb((size_t)width * height * 3);
+	for (size_t i = 0; i < (size_t)width * height; i++)
+	{
+		rgb[i * 3 + 0] = rgba[i * 4 + 0];
+		rgb[i * 3 + 1] = rgba[i * 4 + 1];
+		rgb[i * 3 + 2] = rgba[i * 4 + 2];
+	}
+	size_t pngBytes = 0;
+	void *png = tdefl_write_image_to_png_file_in_memory_ex(rgb.data(), width, height, 3, &pngBytes, 3, MZ_FALSE);
+	if (png == nullptr)
+		return false;
+	const bool ok = writeFile(path, png, pngBytes);
+	mz_free(png);
+	return ok;
 }
 
 // The image presented last, read back and written as a PNG.

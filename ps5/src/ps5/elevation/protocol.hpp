@@ -1,5 +1,5 @@
 /*
- * ps5-native-app-boilerplate - Versioned elfldr elevation messages.
+ * ps5-native-app-boilerplate - Upstream Lapy one-shot helper protocol.
  * Copyright (C) 2026 BlackBearReloaded
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -9,31 +9,10 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace elevation
-{
-enum class Capability : std::uint32_t
-{
-    filesystem = 1,
-};
+#include "elevation.hpp"
 
-enum class Status : std::uint32_t
+namespace elevation::wire
 {
-    ok = 0,
-    invalid_request = 1,
-    unsupported_version = 2,
-    unsupported_capability = 3,
-    target_mismatch = 4,
-    unavailable = 5,
-    prepare_failed = 6,
-    apply_failed = 7,
-    rollback_failed = 8,
-    transport_error = 9,
-    protocol_error = 10,
-};
-
-namespace wire
-{
-// Build-time tuning for slower consoles; both endpoints use the same timeout.
 inline constexpr int io_timeout_us = 5'000'000;
 
 enum class Kind : std::uint32_t
@@ -44,10 +23,9 @@ enum class Kind : std::uint32_t
     response = 4,
 };
 
-// Fixed-width little-endian ABI. No pointers, offsets, or privilege masks cross the socket.
 struct Message
 {
-    std::uint32_t magic = 0x31564c45; // "ELV1"
+    std::uint32_t magic = 0x31564c45;
     std::uint16_t version = 1;
     std::uint16_t size = 24;
     Kind kind = Kind::request;
@@ -64,7 +42,7 @@ constexpr Status validate(const Message &message) noexcept
         return Status::invalid_request;
     if (message.version != Message{}.version)
         return Status::unsupported_version;
-    if (message.kind < Kind::request || message.kind > Kind::response || message.pid == 0 ||
+    if (message.kind < Kind::request || message.kind > Kind::response || message.pid <= 1 ||
         message.pid > INT32_MAX || message.status > Status::protocol_error)
         return Status::invalid_request;
     if (message.capability != Capability::filesystem)
@@ -78,8 +56,6 @@ constexpr bool matches(const Message &message, const Message &request, Kind kind
            message.capability == request.capability;
 }
 
-// Both transports use this loop: TCP can split even a 24-byte frame. A timeout,
-// interruption, EOF, or failed operation ends this attempt; there is no retry loop.
 template <typename Byte, typename Operation>
 bool transfer(Byte *bytes, std::size_t size, Operation operation) noexcept
 {
@@ -93,5 +69,4 @@ bool transfer(Byte *bytes, std::size_t size, Operation operation) noexcept
     }
     return true;
 }
-} // namespace wire
-} // namespace elevation
+} // namespace elevation::wire

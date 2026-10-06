@@ -165,6 +165,39 @@ Image image(const std::string& path)
 	return {};
 }
 
+void forgetImage(const std::string& path)
+{
+	const auto it = entries.find(path);
+	if (it == entries.end())
+		return;
+	display::destroyTexture(it->second.texture);
+	display::destroyTexture(it->second.soft);
+	entries.erase(it);
+}
+
+Image imageFromPixels(const std::string& key, const uint32_t *pixels, int width, int height, int enlarge)
+{
+	if (key.empty() || pixels == nullptr || width <= 0 || height <= 0)
+		return {};
+	Entry& entry = entries["pixels:" + key];
+	entry.used = display::frameCount();
+	if (entry.texture == nullptr)
+	{
+		// Enlarged by whole pixels first: the display's sampling then leaves
+		// the picture's squares as squares.
+		enlarge = std::clamp(enlarge, 1, 16);
+		std::vector<uint32_t> large((size_t)width * enlarge * height * enlarge);
+		for (int y = 0; y < height * enlarge; y++)
+			for (int x = 0; x < width * enlarge; x++)
+				large[(size_t)y * width * enlarge + x] = pixels[(size_t)(y / enlarge) * width + x / enlarge];
+		entry.texture = display::createTexture(width * enlarge, height * enlarge,
+				reinterpret_cast<const uint8_t *>(large.data()));
+		entry.width = width * enlarge;
+		entry.height = height * enlarge;
+	}
+	return { display::textureId(entry.texture), entry.width, entry.height, nullptr };
+}
+
 Image imageFromMemory(const uint8_t *data, size_t size)
 {
 	Decoded decoded;
@@ -199,6 +232,10 @@ void imagesFrame()
 			entry.width = entry.height = -1;
 			continue;
 		}
+		// A file asked for again while its first reading was under way.
+		display::destroyTexture(entry.texture);
+		display::destroyTexture(entry.soft);
+		entry.soft = nullptr;
 		entry.texture = display::createTexture(decoded.width, decoded.height, decoded.pixels.data());
 		if (!decoded.soft.empty())
 			entry.soft = display::createTexture(SoftSide, SoftSide, decoded.soft.data());
