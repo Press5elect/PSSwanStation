@@ -214,13 +214,14 @@ std::vector<Field> fields()
 {
 	Frontend& c = current;
 	std::vector<Field> list = {
-		{ "view", &c.view, nullptr, 0, 1 },
+		{ "view", &c.view, nullptr, 0, 61 },
 		{ "source", &c.source, nullptr, 0, 2 },
 		{ "covers", nullptr, &c.covers, 0, 1 },
 		{ "usb", nullptr, &c.usb, 0, 1 },
 		{ "ram_cache", nullptr, &c.ramCache, 0, 1 },
 		{ "notifications", nullptr, &c.notifications, 0, 1 },
-		{ "scaling", &c.scaling, nullptr, 0, 2 },
+		{ "scaling", &c.scaling, nullptr, 0, 3 },
+		{ "fsr_sharpness", &c.fsrSharpness, nullptr, 0, 2 },
 		{ "linear_filter", nullptr, &c.linearFilter, 0, 1 },
 		{ "volume", &c.volume, nullptr, 0, 100 },
 		{ "show_fps", nullptr, &c.showFps, 0, 1 },
@@ -264,7 +265,6 @@ std::vector<Field> fields()
 		{ "outside", nullptr, &c.outside, 0, 1 },
 		{ "card_backups", &c.cardBackups, nullptr, 0, 50 },
 		{ "update_check", nullptr, &c.updateCheck, 0, 1 },
-		{ "speed_up", &c.speedUp, nullptr, 0, 2 },
 		{ "achievements", nullptr, &c.achievements, 0, 1 },
 		{ "hardcore", nullptr, &c.hardcore, 0, 1 },
 		{ "unofficial", nullptr, &c.unofficial, 0, 1 },

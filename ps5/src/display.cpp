@@ -25,9 +25,17 @@
 
 	Besides the screen there are two small pictures the title draws into
 	itself, with the same ImGui pipeline: the game's picture alone, read back
-	for screenshots and for the pictures kept with save states (capture), and
+	for the pictures kept with save states (capture), and
 	a few pixels of it blended over time, which stretched over the screen is
 	the light a 4:3 picture throws on the bars beside it (ambient).
+
+	With "Scaling" on FSR 1 the game's picture is not stretched by ImGui's
+	bilinear filter but by AMD's FidelityFX Super Resolution 1.0 (upscale): two
+	draws of one triangle with pipelines of their own, EASU into a picture the
+	size the game has on the screen and RCAS from that into a second, which
+	ImGui then draws pixel for pixel. The shaders are AMD's headers
+	(ps5/third_party/fsr, MIT) compiled ahead of time (fsr_spirv.inc). Should
+	any of it fail, that is a line in the log and the usual stretch.
 
 	On a PC (the host build) the surface is VK_EXT_headless_surface and frames
 	can be saved as PNGs: that is how the interface is checked without a console.
@@ -97,6 +105,9 @@ float outputRate = 0;
 VkImageView wrappedView = VK_NULL_HANDLE;
 VkDescriptorSet wrappedSet = VK_NULL_HANDLE;
 int wrappedLayout = 0;
+// The software renderer's pictures, by what ImGui knows them as: FSR reads
+// the image itself.
+std::map<void *, VkImageView> dynamicViews;
 
 // A picture the title draws into: the capture's and the ambient light's.
 struct Target
@@ -111,6 +122,7 @@ Target captureTarget, ambientTarget;
 // The swapchain's render pass again, for those: one that clears first and one
 // that draws over what is there; both leave the picture readable by a shader.
 VkRenderPass targetClearPass = VK_NULL_HANDLE, targetBlendPass = VK_NULL_HANDLE;
+void fsrShutdown();
 // Descriptor sets ImGui must not lose before the frames that used them are
 // drawn: freed two frames later.
 struct Retired
@@ -538,6 +550,7 @@ void shutdown()
 	VkDevice device = g_vulkan_context->GetDevice();
 	g_vulkan_context->WaitForGPUIdle();
 	releaseWrapped();
+	fsrShutdown();
 	for (Target *target : { &captureTarget, &ambientTarget })
 	{
 		retire(target->set);
@@ -716,6 +729,7 @@ Texture *createDynamicTexture(int w, int h)
 	vkCmdClearColorImage(cmd, texture->texture.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
 	texture->texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	texture->set = ImGui_ImplVulkan_AddTexture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	dynamicViews[(void *)texture->set] = texture->texture.GetView();
 	return texture;
 }
 
@@ -777,6 +791,7 @@ void destroyTexture(Texture *texture)
 {
 	if (texture == nullptr)
 		return;
+	dynamicViews.erase((void *)texture->set);
 	retire(texture->set);
 	texture->staging.Destroy(true);
 	texture->texture.Destroy(true);
@@ -904,6 +919,311 @@ void drawInto(Target& target, void *texture, float u, float v, float alpha, floa
 	target.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	target.drawn = true;
 }
+}
+
+// ---------------------------------------------------------------------- FSR
+
+namespace
+{
+#include "fsr_spirv.inc"
+
+struct Fsr
+{
+	bool tried = false, ready = false;
+	VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
+	VkPipelineLayout easuLayout = VK_NULL_HANDLE, rcasLayout = VK_NULL_HANDLE;
+	VkPipeline easu = VK_NULL_HANDLE, rcas = VK_NULL_HANDLE;
+	// A set is written each time it is used, and must not be written again
+	// while a frame under way reads it: they go round.
+	static constexpr unsigned Sets = 16;
+	VkDescriptorSet sets[Sets] = {};
+	unsigned next = 0;
+	Target easuTarget, rcasTarget;
+	int saidW = 0, saidH = 0, saidOutW = 0, saidOutH = 0;
+} fsr;
+
+// What FsrEasuCon() of ffx_fsr1.h computes: floats, passed as their bits.
+struct EasuConstants
+{
+	uint32_t con0[4], con1[4], con2[4], con3[4];
+	float limit[4];
+};
+
+uint32_t floatBits(float v)
+{
+	uint32_t u;
+	memcpy(&u, &v, 4);
+	return u;
+}
+
+// viewW x viewH: the picture; texW x texH: the texture it is a part of.
+EasuConstants easuConstants(float viewW, float viewH, float texW, float texH, float outW, float outH)
+{
+	EasuConstants c{};
+	c.con0[0] = floatBits(viewW / outW);
+	c.con0[1] = floatBits(viewH / outH);
+	c.con0[2] = floatBits(0.5f * viewW / outW - 0.5f);
+	c.con0[3] = floatBits(0.5f * viewH / outH - 0.5f);
+	c.con1[0] = floatBits(1.f / texW);
+	c.con1[1] = floatBits(1.f / texH);
+	c.con1[2] = floatBits(1.f / texW);
+	c.con1[3] = floatBits(-1.f / texH);
+	c.con2[0] = floatBits(-1.f / texW);
+	c.con2[1] = floatBits(2.f / texH);
+	c.con2[2] = floatBits(1.f / texW);
+	c.con2[3] = floatBits(2.f / texH);
+	c.con3[0] = floatBits(0.f);
+	c.con3[1] = floatBits(4.f / texH);
+	// A gather centred here reads the picture's last texels and none beyond.
+	c.limit[0] = (viewW - 1.f) / texW;
+	c.limit[1] = (viewH - 1.f) / texH;
+	return c;
+}
+
+VkShaderModule shaderModule(const uint32_t *words, size_t bytes)
+{
+	VkShaderModuleCreateInfo info{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+	info.codeSize = bytes;
+	info.pCode = words;
+	VkShaderModule module = VK_NULL_HANDLE;
+	if (vkCreateShaderModule(g_vulkan_context->GetDevice(), &info, nullptr, &module) != VK_SUCCESS)
+		return VK_NULL_HANDLE;
+	return module;
+}
+
+VkPipeline fsrPipeline(VkShaderModule vertex, VkShaderModule fragment, VkPipelineLayout layout)
+{
+	VkPipelineShaderStageCreateInfo stages[2] = {};
+	stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vertex;
+	stages[0].pName = "main";
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = fragment;
+	stages[1].pName = "main";
+	VkPipelineVertexInputStateCreateInfo vertexInput{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+	VkPipelineInputAssemblyStateCreateInfo assembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+	assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPipelineViewportStateCreateInfo viewport{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+	viewport.viewportCount = 1;
+	viewport.scissorCount = 1;
+	VkPipelineRasterizationStateCreateInfo raster{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_CULL_MODE_NONE;
+	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	raster.lineWidth = 1.f;
+	VkPipelineMultisampleStateCreateInfo multisample{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	VkPipelineColorBlendAttachmentState attachment{};
+	attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT
+			| VK_COLOR_COMPONENT_A_BIT;
+	VkPipelineColorBlendStateCreateInfo blend{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+	blend.attachmentCount = 1;
+	blend.pAttachments = &attachment;
+	const VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamic{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+	dynamic.dynamicStateCount = 2;
+	dynamic.pDynamicStates = dynamicStates;
+	VkGraphicsPipelineCreateInfo info{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+	info.stageCount = 2;
+	info.pStages = stages;
+	info.pVertexInputState = &vertexInput;
+	info.pInputAssemblyState = &assembly;
+	info.pViewportState = &viewport;
+	info.pRasterizationState = &raster;
+	info.pMultisampleState = &multisample;
+	info.pColorBlendState = &blend;
+	info.pDynamicState = &dynamic;
+	info.layout = layout;
+	// The pass the title's own pictures are drawn in: one colour attachment,
+	// left readable by a shader.
+	info.renderPass = targetClearPass;
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	if (vkCreateGraphicsPipelines(g_vulkan_context->GetDevice(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline) != VK_SUCCESS)
+		return VK_NULL_HANDLE;
+	return pipeline;
+}
+
+// What does not depend on the picture's size, made when FSR is first asked for.
+bool fsrInit()
+{
+	if (fsr.tried)
+		return fsr.ready;
+	fsr.tried = true;
+	VkDevice device = g_vulkan_context->GetDevice();
+	VkDescriptorSetLayoutBinding binding{};
+	binding.binding = 0;
+	binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	binding.descriptorCount = 1;
+	binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 1;
+	layoutInfo.pBindings = &binding;
+	VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Fsr::Sets };
+	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	poolInfo.maxSets = Fsr::Sets;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &poolSize;
+	VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerInfo.magFilter = samplerInfo.minFilter = VK_FILTER_LINEAR;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.maxAnisotropy = 1.f;
+	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &fsr.setLayout) != VK_SUCCESS
+			|| vkCreateDescriptorPool(device, &poolInfo, nullptr, &fsr.pool) != VK_SUCCESS
+			|| vkCreateSampler(device, &samplerInfo, nullptr, &fsr.sampler) != VK_SUCCESS)
+	{
+		diag::mark("fsr: the driver refused a layout, a pool or a sampler: the picture is stretched the usual way");
+		return false;
+	}
+	VkDescriptorSetLayout layouts[Fsr::Sets];
+	for (VkDescriptorSetLayout& layout : layouts)
+		layout = fsr.setLayout;
+	VkDescriptorSetAllocateInfo allocate{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = fsr.pool;
+	allocate.descriptorSetCount = Fsr::Sets;
+	allocate.pSetLayouts = layouts;
+	VkPushConstantRange range{ VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(EasuConstants) };
+	VkPipelineLayoutCreateInfo pipelineLayout{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayout.setLayoutCount = 1;
+	pipelineLayout.pSetLayouts = &fsr.setLayout;
+	pipelineLayout.pushConstantRangeCount = 1;
+	pipelineLayout.pPushConstantRanges = &range;
+	if (vkAllocateDescriptorSets(device, &allocate, fsr.sets) != VK_SUCCESS
+			|| vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &fsr.easuLayout) != VK_SUCCESS)
+	{
+		diag::mark("fsr: the driver refused the sets or a layout: the picture is stretched the usual way");
+		return false;
+	}
+	range.size = 16;
+	if (vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &fsr.rcasLayout) != VK_SUCCESS)
+		return false;
+	const VkShaderModule vertex = shaderModule(fsr_vertex_spirv, sizeof(fsr_vertex_spirv));
+	const VkShaderModule easu = shaderModule(fsr_easu_spirv, sizeof(fsr_easu_spirv));
+	const VkShaderModule rcas = shaderModule(fsr_rcas_spirv, sizeof(fsr_rcas_spirv));
+	if (vertex != VK_NULL_HANDLE && easu != VK_NULL_HANDLE && rcas != VK_NULL_HANDLE)
+	{
+		fsr.easu = fsrPipeline(vertex, easu, fsr.easuLayout);
+		fsr.rcas = fsrPipeline(vertex, rcas, fsr.rcasLayout);
+	}
+	for (VkShaderModule module : { vertex, easu, rcas })
+		if (module != VK_NULL_HANDLE)
+			vkDestroyShaderModule(device, module, nullptr);
+	fsr.ready = fsr.easu != VK_NULL_HANDLE && fsr.rcas != VK_NULL_HANDLE;
+	diag::mark(fsr.ready ? "fsr: ready" : "fsr: the driver refused a shader or a pipeline: the picture is stretched the usual way");
+	return fsr.ready;
+}
+
+// One of the two passes: `view` through a pipeline, over the whole of a target.
+void fsrPass(Target& target, VkPipeline pipeline, VkPipelineLayout layout, VkImageView view, VkImageLayout viewLayout,
+		const void *constants, uint32_t constantsSize)
+{
+	VkDevice device = g_vulkan_context->GetDevice();
+	const VkDescriptorSet set = fsr.sets[fsr.next++ % Fsr::Sets];
+	VkDescriptorImageInfo image{ fsr.sampler, view, viewLayout };
+	VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+	write.dstSet = set;
+	write.dstBinding = 0;
+	write.descriptorCount = 1;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write.pImageInfo = &image;
+	vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	VkClearValue clear{};
+	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
+	const VkExtent2D size{ (uint32_t)target.width, (uint32_t)target.height };
+	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+	begin.renderPass = targetClearPass;
+	begin.framebuffer = target.framebuffer;
+	begin.renderArea = { { 0, 0 }, size };
+	begin.clearValueCount = 1;
+	begin.pClearValues = &clear;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	const VkViewport viewport{ 0.f, 0.f, (float)size.width, (float)size.height, 0.f, 1.f };
+	const VkRect2D scissor{ { 0, 0 }, size };
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
+	vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, constantsSize, constants);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdEndRenderPass(cmd);
+	target.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	target.drawn = true;
+}
+
+void fsrShutdown()
+{
+	VkDevice device = g_vulkan_context->GetDevice();
+	for (Target *target : { &fsr.easuTarget, &fsr.rcasTarget })
+	{
+		retire(target->set);
+		if (target->framebuffer != VK_NULL_HANDLE)
+			vkDestroyFramebuffer(device, target->framebuffer, nullptr);
+		target->texture.Destroy(false);
+	}
+	if (fsr.easu != VK_NULL_HANDLE)
+		vkDestroyPipeline(device, fsr.easu, nullptr);
+	if (fsr.rcas != VK_NULL_HANDLE)
+		vkDestroyPipeline(device, fsr.rcas, nullptr);
+	if (fsr.easuLayout != VK_NULL_HANDLE)
+		vkDestroyPipelineLayout(device, fsr.easuLayout, nullptr);
+	if (fsr.rcasLayout != VK_NULL_HANDLE)
+		vkDestroyPipelineLayout(device, fsr.rcasLayout, nullptr);
+	if (fsr.sampler != VK_NULL_HANDLE)
+		vkDestroySampler(device, fsr.sampler, nullptr);
+	if (fsr.pool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(device, fsr.pool, nullptr);
+	if (fsr.setLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(device, fsr.setLayout, nullptr);
+	fsr = Fsr();
+}
+}
+
+void *upscale(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, int sharpness)
+{
+	// For a picture that grows: one that is as large as the screen's already
+	// is left to the usual filter.
+	if (texture == nullptr || !frameOpen || width < 16 || height < 16 || u <= 0 || v <= 0 || outWidth > 8192
+			|| outHeight > 8192 || width > outWidth || height > outHeight || (width == outWidth && height == outHeight))
+		return nullptr;
+	// The image behind what ImGui draws.
+	VkImageView view = VK_NULL_HANDLE;
+	VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	if (texture == (void *)wrappedSet && wrappedView != VK_NULL_HANDLE)
+	{
+		view = wrappedView;
+		layout = (VkImageLayout)wrappedLayout;
+	}
+	else
+	{
+		const auto it = dynamicViews.find(texture);
+		if (it != dynamicViews.end())
+			view = it->second;
+	}
+	if (view == VK_NULL_HANDLE || !fsrInit() || !ensureTarget(fsr.easuTarget, outWidth, outHeight)
+			|| !ensureTarget(fsr.rcasTarget, outWidth, outHeight))
+		return nullptr;
+	const EasuConstants easu = easuConstants((float)width, (float)height, (float)width / u, (float)height / v,
+			(float)outWidth, (float)outHeight);
+	fsrPass(fsr.easuTarget, fsr.easu, fsr.easuLayout, view, layout, &easu, sizeof(easu));
+	// The sharpening, in stops less than the most: 0 is the sharpest.
+	static const float stops[3] = { 1.f, 0.25f, 0.f };
+	const uint32_t rcas[4] = { floatBits(std::exp2(-stops[std::clamp(sharpness, 0, 2)])), 0, 0, 0 };
+	fsrPass(fsr.rcasTarget, fsr.rcas, fsr.rcasLayout, fsr.easuTarget.texture.GetView(),
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, rcas, sizeof(rcas));
+	if (fsr.saidW != width || fsr.saidH != height || fsr.saidOutW != outWidth || fsr.saidOutH != outHeight)
+	{
+		diag::mark("fsr: %d x %d to %d x %d", width, height, outWidth, outHeight);
+		fsr.saidW = width;
+		fsr.saidH = height;
+		fsr.saidOutW = outWidth;
+		fsr.saidOutH = outHeight;
+	}
+	return (void *)fsr.rcasTarget.set;
 }
 
 bool capture(void *texture, float u, float v, int width, int height, std::vector<uint8_t>& rgba)

@@ -28,8 +28,8 @@ Where things go (all inside /data/homebrew/PPSA99248/)
   bios/         optional BIOS files of an original console
   covers/       cover pictures, named as the game's file: <name>.png or .jpg
   cheats/       your own cheat files, <serial>.cht (SLUS-00594.cht)
-  screenshots/  the screenshots you take
   textures/     texture packs, one folder for each game: textures/<serial>/
+  layouts/      Aurora cover layouts (.cfljson), offered as library views
   borders/      pictures for the sides of a 4:3 picture: <serial>.png or
                 default.png
   music/        your own menu music: menu.ogg, menu.mp3 or menu.wav
@@ -79,12 +79,11 @@ In a game
   Touch pad, left half   SELECT   (press the pad down)
   Touch pad, right half  START
   OPTIONS, tapped        PSSwanStation's menu: save and load states, change
-                         disc, cheats and patches, a screenshot, netplay,
-                         achievements, settings, reset, close
+                         disc, cheats and patches, netplay, achievements,
+                         settings, reset, close
   OPTIONS held, and      R2 fast forward        L2 rewind
                          R1 save a state        L1 load it
                          Left, Right another slot
-                         Triangle a screenshot
   ("Shortcuts", in Settings under Shortcuts and rewind, switches these off;
   the menu then opens the moment OPTIONS is pressed.)
 
@@ -100,9 +99,33 @@ each place's games go.
 
 Square opens "Sort and filter": the order (by name, last played, most played,
 year, size), what is shown (everything, favourites, games not played yet,
-hidden games), one region alone, covers or a list, and "Scan for games",
-which looks through all three places, so a drive plugged in or a share filled
-since gets its tab. The header shows the time (Settings, Interface, "Clock").
+hidden games), one region alone, the view, and "Scan for games", which looks
+through all three places, so a drive plugged in or a share filled since gets
+its tab. The header shows the time (Settings, Interface, "Clock").
+
+The views: Covers (a grid, with what was played lately on a shelf above it),
+List (names, with the cover and the description beside them), and five that
+stand the covers in space as cases, the way Aurora, the Xbox 360's homebrew
+dashboard, shows games:
+
+  Flow      the case under the cursor faces you, the others lean towards it
+            from both sides, on a floor that mirrors them
+  Row       a flat row, the one under the cursor nearer
+  Wall      three rows across the screen that bend away at the ends
+  Cascade   the one under the cursor at the left, the next ones behind one
+            another away to the right, with its description
+  Wheel     a wheel at the right turning past the one under the cursor (Up
+            and Down turn it), with its description at the left
+
+Left and Right move through them (Up and Down too, in the Wall and the
+Wheel); L2, R2, the search and everything else work as in the grid.
+
+Aurora's own layouts work too, as an experiment: copy a layout file
+(.cfljson, from Aurora's Media/Layouts folder or one of the collections of
+them) to layouts/ and it is in the list of views by its name. Aurora's code
+is not public, so I worked out what a layout's numbers mean from the layouts
+themselves: one may look somewhat different here, and a layout made for the
+Xbox's tall cases stands PlayStation covers a little smaller.
 
 Finding a game: L2 and R2 jump to the letter before and the letter after
 (the letters stand down the right edge for a moment). Pressing the touch pad
@@ -128,8 +151,7 @@ five things to do:
                 whether it has a texture pack
 
 Another cover: its box, its title screen or a moment of the game, fetched from
-the libretro thumbnails collection by the game's file name, or one of your own
-screenshots of it.
+the libretro thumbnails collection by the game's file name.
 
 A game's settings and cheats are kept by its disc's serial number. For a game
 on the network that has not been played yet, that number is read from the
@@ -217,6 +239,8 @@ Internal Resolution Scale) if a game does not hold its speed; "Show frame
 rate" (Interface) tells.
 
 Picture (Settings):
+  Scaling            fit the screen, whole multiples, stretch, or fit the
+                     screen with FSR 1 (below).
   Picture preset     Original (the PlayStation's own resolution, with a picture
                      tube's lines), Sharp (8x, full colour, PGXP) or Enhanced
                      (Sharp with xBR textures and 4x MSAA), set for every game
@@ -243,6 +267,18 @@ too; the first start after it writes the setting again and the one after that
 has it. 120 Hz and the variable refresh rate have not run on a console from
 this title yet.
 
+FSR 1 ("Scaling", "Fit the screen, FSR 1") enlarges the game's picture to the
+screen with AMD's FidelityFX Super Resolution 1 instead of a plain filter:
+edges stay clean, and the picture is sharpened ("FSR sharpening": soft,
+normal, sharp). It is worth most with a lower Internal Resolution Scale
+(Enhancement): 3x or 4x with FSR looks close to a higher scale and leaves the
+console more time for everything else. A picture already as large as the
+screen is left alone. This is FSR 1, the kind that works on one finished
+picture. FSR 2, 3 and 4 rebuild a picture from several frames and need each
+pixel's depth and movement, which an emulated PlayStation does not give, and
+the FSR 4 that exists for PS5 homebrew runs on another Vulkan driver than
+this title's. Tested on a PC; not yet seen on a console in this title.
+
 Sound: "Menu music" plays in the library and the menus: the title's own quiet
 piece, or your file (music/menu.ogg, .mp3 or .wav).
 
@@ -253,9 +289,6 @@ and by turning the pad; R2 or Cross shoots, L2 or Circle reloads). "Tilt
 steering" leans the first pad like a steering wheel. "Player lights" gives
 each pad's light bar its player's colour. A pad's charge is not shown: I know
 of no call a title can make that gives it.
-
-Games and network: "Faster loading" speeds up the emulated disc drive (4x, or
-8x with instant seeks); a few games need the drive's real speed.
 
 Interface: "The swan takes the screen" when nothing was pressed for a while in
 the menus (never while a game is on the screen), to spare the display.
@@ -298,8 +331,7 @@ play so that OPTIONS and L2 go back through it. It is kept in memory only,
 when the game closes. Fast forward (OPTIONS and R2) runs at 2x to 8x, or as
 fast as the console manages.
 
-Screenshots (OPTIONS and Triangle, or the menu) are the game's picture without
-the interface, as PNG files in screenshots/.
+Screenshots and video are the console's own (the Create button).
 
 
 Memory cards
@@ -326,6 +358,11 @@ vram-write-<number>.png), go in textures/<serial>/ and are used when "Enable
 VRAM Write Texture Replacement" is on (Enhancement). This emulator knows that
 one kind of pack, not the newer kind that replaces a 3D game's textures.
 
+They can stay on a USB drive: a folder named textures inside the drive's games
+folder, as psx/textures/<serial>/ (with "USB drives" on). A game's pack in the
+title's own textures/ comes first; a game's details, under More, say where
+the one in use is.
+
 
 RetroAchievements
 -----------------
@@ -336,9 +373,7 @@ gives back is kept, in data/). A game's achievements are then in its menu, and
 earning one is shown as it happens. Hardcore mode earns more and switches off
 loading states, cheats and rewind.
 
-This is an experiment. I have run it on a PC against a stand-in for the
-server, the real emulator earning an achievement through it; it has not yet
-talked to retroachievements.org and has not run on a console.
+It works on the console against retroachievements.org (build 10).
 
 
 Netplay
@@ -373,7 +408,7 @@ Keeping your files outside the title folder
 -------------------------------------------
 
 Settings, Games and network, "Keep my files outside the title folder": BIOS
-files, covers, cheats, memory cards, states, screenshots and settings then
+files, covers, cheats, memory cards, states, layouts and settings then
 live in /data/psswanstation/, where replacing or deleting
 /data/homebrew/PPSA99248 cannot take them along. From the next start, what
 the title's folder holds is copied over once (and left where it is). The

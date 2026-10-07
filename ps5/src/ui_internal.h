@@ -169,6 +169,27 @@ std::string agoText(int64_t when);
 // The library's lists are made anew (sorting, filters, favourites changed).
 void libraryChanged();
 
+// ----------------------------------------------------------- ui_flow.cpp
+
+// The games a view in space shows, as the library has them.
+struct FlowGames
+{
+	int count = 0;
+	std::function<Image(int)> cover;
+	std::function<const library::Game&(int)> game;
+	// One line about a game (its region, year, kind), and what is known of it.
+	std::function<std::string(int)> facts, about;
+};
+// The views in space: this title's own, then the Aurora layout files of
+// <root>layouts. The library's "View" setting is 2 and up for these.
+std::vector<std::string> flowNames();
+bool flowIsOwn(int index);
+// The layouts folder is read again when the names are next asked for.
+void flowRescan();
+// Draws view `index` between `top` and `bottom` (in units) and, when `active`,
+// moves the cursor with the pad. False when there is no such view.
+bool flowView(int index, const FlowGames& games, int& cursor, bool active, bool fresh, float top, float bottom);
+
 // ----------------------------------------------------------- ui_more.cpp
 
 void libraryOptionsPage(Frame& f);

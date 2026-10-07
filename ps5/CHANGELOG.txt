@@ -1,6 +1,19 @@
 PSSwanStation - what changed
 ============================
 
+Build 11
+  - Library: five new views that stand the covers in space, in the manner of
+    the Xbox 360's Aurora: Flow, Row, Wall, Cascade, Wheel (Square, View).
+    Aurora layout files (.cfljson) in layouts/ are offered too.
+  - Scaling: "Fit the screen, FSR 1" enlarges the picture with AMD's FSR 1.
+  - Texture packs can stay on a USB drive (psx/textures/<serial>/).
+  - Removed: the screenshot shortcut, menu entry and folder (the console's
+    Create button does screenshots and video), and "Faster loading" (the
+    CD-ROM speedup settings under Console do the same).
+  - RetroAchievements is no longer marked as an experiment: it works.
+  - The release zip stores every file open to all users, as the console
+    wants an app's files.
+
 Build 10
   New. None of it has run on a console yet; the README says what each is.
   - While playing, OPTIONS held with another button: fast forward (R2),

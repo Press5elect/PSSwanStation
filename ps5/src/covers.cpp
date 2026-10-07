@@ -336,19 +336,6 @@ ChooseState chooseState()
 	return (ChooseState)chooseNow.load();
 }
 
-bool setFrom(const library::Game& game, const std::string& pictureFile)
-{
-	std::vector<uint8_t> data;
-	if (!readFile(pictureFile, data) || !isImage(data))
-		return false;
-	removeCoverFiles(game.fileTitle);
-	const bool jpeg = data[0] == 0xff;
-	if (!writeFile(coversDir() + game.fileTitle + (jpeg ? ".jpg" : ".png"), data.data(), data.size()))
-		return false;
-	currentGeneration++;
-	return true;
-}
-
 void remove(const library::Game& game)
 {
 	removeCoverFiles(game.fileTitle);

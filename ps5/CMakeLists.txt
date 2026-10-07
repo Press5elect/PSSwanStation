@@ -138,6 +138,7 @@ set(frontend_sources
 	src/achievements.cpp
 	src/update.cpp
 	src/ui_more.cpp
+	src/ui_flow.cpp
 	src/display.cpp
 	src/host.cpp
 	src/options.cpp

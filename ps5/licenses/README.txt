@@ -30,6 +30,8 @@ stb_image, stb_image_resize  MIT / public     MIT.txt                  github.co
                              domain
 libretro-common              MIT              MIT.txt                  github.com/libretro/libretro-common
 rcheevos (RetroAchievements) MIT              rcheevos-LICENSE.txt     github.com/RetroAchievements/rcheevos
+FidelityFX Super Resolution  MIT              FSR-LICENSE.txt          github.com/GPUOpen-Effects/FidelityFX-FSR
+1.0 (the FSR 1 scaling)                                                (AMD), its two shader headers unmodified
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,
                              domain                                    github.com/mackron/dr_libs
 Roboto (font)                Apache-2.0       Apache-2.0.txt           Google
