@@ -241,6 +241,8 @@ bool idleSwan(bool allowed);
 void startNotices();
 // The settings rows of the frontend's later pages.
 void moreSettings(int kind, std::vector<Item>& items);
+// The Picture page's rows: for every game, or the loaded game's own.
+void pictureItems(bool forGame, std::vector<Item>& items);
 // Rows for a game's details ("More"): favourite, hidden, cover, texture pack.
 void detailsMoreItems(std::vector<Item>& items);
 // Rows the pause menu gains.

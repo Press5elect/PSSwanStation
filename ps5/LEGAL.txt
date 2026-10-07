@@ -1,0 +1,27 @@
+PSSwanStation - legal use
+=========================
+
+PIRACY IS NOT CONDONED. This title contains no games, no BIOS files of an
+original console, no console firmware and no decryption keys, and none will
+ever be provided or linked to. Use only games you own, from your own discs,
+and BIOS files dumped from hardware you own. Downloading or sharing games,
+BIOS files, firmware or keys you do not own is piracy: do not do it, and do
+not ask for help with it.
+
+Licences: PSSwanStation is SwanStation, the libretro fork of DuckStation as
+it was under the GNU General Public License, with a PS5 frontend of its own.
+The title as distributed is under the GNU General Public License, version 3,
+as a whole, WITHOUT ANY WARRANTY, and its complete source is offered with
+it. Every part, its licence and where its source is are listed in
+licenses/README.txt; the revisions it was built from are in BUILD.txt and
+licenses/components.json.
+
+The cheat and patch database of the chtdb project is not part of this title:
+its entries belong to their authors. The title can fetch it from that
+project's own releases (Settings, Games and network).
+
+Not affiliated with or endorsed by Sony Interactive Entertainment, the
+libretro team or the DuckStation project. "PlayStation" and "PS5" are
+trademarks of Sony Interactive Entertainment Inc. Vulkan is a registered
+trademark of the Khronos Group Inc.; the RADV port in this title is not a
+conformant product (its conformanceVersion is 0.0.0.0).

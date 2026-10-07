@@ -1,6 +1,16 @@
 PSSwanStation - what changed
 ============================
 
+Build 14
+  - Picture settings can be a game's own: scaling (FSR 1 too), sharpening,
+    smooth scaling, picture preset, picture tube, beside the picture, frame
+    pacing, black frame insertion, frame generation. Set them in the game's
+    details (Options) or, while it runs, in the menu under Game settings,
+    Picture; they are remembered for that game. Display output stays one
+    setting for every game.
+  - Circle in the library asks whether to close PSSwanStation.
+  Run on a PC only so far.
+
 Build 13
   - Frame generation smears far less. The title now counts the pictures the
     game really draws (30, 20, 60 a second) and fills only the gaps between

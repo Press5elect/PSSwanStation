@@ -377,6 +377,15 @@ void clearGameValue(const std::string& key);
 bool hasGameValue(const std::string& key);
 void loadGlobal();
 void loadGame(const std::string& serial);	// empty: no game
+// The frontend's picture settings (scaling, fsr_sharpness, linear_filter,
+// pacing, black_frames, frame_generation, crt, border, preset: their names in
+// frontend.cfg) can be the loaded game's own as well. frontend() has what is
+// in force, the game's where it has one. picture(name, false) is the value
+// for every game, picture(name, true) the one in force.
+int picture(const std::string& name, bool forGame);
+void setPicture(const std::string& name, int value, bool forGame);
+bool hasGamePicture(const std::string& name);
+void clearGamePicture(const std::string& name);
 const std::string& gameSerial();
 // True once after a value changed (RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE).
 bool takeChanged();

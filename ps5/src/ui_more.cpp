@@ -1585,22 +1585,194 @@ const Preset presetOptions[] = {
 	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled" } },
 };
 
-void applyPreset(int preset)
+// For every game, or for the loaded one alone.
+void applyPreset(int preset, bool forGame)
 {
-	options::Frontend& o = options::frontend();
-	o.preset = preset;
+	options::setPicture("preset", preset, forGame);
 	if (preset >= 1 && preset <= 3)
 	{
 		for (const Preset& option : presetOptions)
 			if (options::find(option.key) != nullptr)
-				options::set(option.key, option.values[preset - 1], false);
+				options::set(option.key, option.values[preset - 1], forGame);
 		// The original picture is what a picture tube showed: its lines too.
-		o.crt = preset == 1 ? 2 : 0;
-		o.linearFilter = true;
+		options::setPicture("crt", preset == 1 ? 2 : 0, forGame);
+		options::setPicture("linear_filter", 1, forGame);
 	}
-	options::saveFrontend();
 }
 
+// The game goes back to the picture settings every game has.
+void clearGamePreset()
+{
+	for (const Preset& option : presetOptions)
+		options::clearGameValue(option.key);
+	for (const char *name : { "preset", "crt", "linear_filter" })
+		options::clearGamePicture(name);
+}
+
+// A row for one of the picture settings a game can have of its own
+// (options::setPicture): in Settings it shows and sets the value for every
+// game, in Game settings the loaded game's.
+Item pictureChoice(bool forGame, const char *name, const std::string& label, std::vector<std::string> names,
+		const std::string& info, std::function<void()> changed = {})
+{
+	Item item;
+	item.label = label;
+	item.info = info;
+	item.choices = std::move(names);
+	item.current = std::clamp(options::picture(name, forGame), 0, (int)item.choices.size() - 1);
+	item.value = item.choices[item.current];
+	const bool own = options::hasGamePicture(name);
+	const std::string key = name;
+	item.choose = [key, forGame, changed](int index) {
+		options::setPicture(key, index, forGame);
+		if (changed)
+			changed();
+	};
+	if (forGame)
+	{
+		if (own)
+		{
+			item.mark = 1;
+			item.alt = [key, changed] {
+				options::clearGamePicture(key);
+				if (changed)
+					changed();
+			};
+			item.altHint = "Use the general value";
+		}
+	}
+	else if (own)
+		item.info += "\n\nThe running game has a value of its own for this (Game settings).";
+	return item;
+}
+
+}
+
+void pictureItems(bool forGame, std::vector<Item>& items)
+{
+	const auto now_ = [forGame](const char *name) { return options::picture(name, forGame); };
+	const int scaling = now_("scaling");
+	items.push_back(pictureChoice(forGame, "scaling", "Scaling",
+			{ "Fit the screen", "Whole multiples", "Stretch", "Fit the screen, FSR 1" },
+			"Fit keeps the picture's shape and makes it as large as the screen allows. Whole multiples only "
+			"enlarges by 2x, 3x and so on, which keeps the software renderer's pixels even. Stretch fills the "
+			"screen and distorts. FSR 1 fits the screen too, and enlarges with AMD's FidelityFX Super Resolution 1 "
+			"instead of a plain filter: edges stay clean and the picture is sharpened, so a lower Internal "
+			"Resolution Scale (Enhancement) looks closer to a high one and costs less. It is the kind of FSR that "
+			"works on one finished picture; the later kinds need things an emulated PlayStation does not give. "
+			"A picture already as large as the screen is left as it is."));
+	{
+		Item item = pictureChoice(forGame, "fsr_sharpness", "FSR sharpening", { "Soft", "Normal", "Sharp" },
+				"How strongly FSR 1 sharpens the enlarged picture.");
+		item.enabled = scaling == 3;
+		items.push_back(item);
+	}
+	{
+		Item item = pictureChoice(forGame, "linear_filter", "Smooth scaling", { "Off", "On" },
+				"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares.");
+		if (scaling == 3)
+		{
+			item.enabled = false;
+			item.value = "FSR 1";
+		}
+		items.push_back(item);
+	}
+	{
+		Item item = pictureChoice(forGame, "preset", "Picture preset", { "As set", "Original", "Sharp", "Enhanced" },
+				std::string(forGame ? "Sets the emulator's picture settings for this game alone, at once."
+				: "Sets the emulator's picture settings for every game at once.") + " Original: the PlayStation's own "
+				"resolution and colours, with the lines of a picture tube. Sharp: eight times the resolution, full "
+				"colour, steadier polygons (PGXP), nothing smoothed. Enhanced: as Sharp, with smoothed textures (xBR) "
+				"and smoothed edges (4x MSAA), which costs speed. Each setting can still be changed by itself (Display, "
+				"Enhancement)" + (forGame ? "." : "; a game's own settings stay above these."));
+		item.choose = [forGame](int i) { applyPreset(i, forGame); };
+		if (forGame && item.alt)
+		{
+			item.alt = [] { clearGamePreset(); };
+			item.altHint = "Use the general values";
+		}
+		items.push_back(item);
+	}
+	items.push_back(pictureChoice(forGame, "crt", "Picture tube",
+			{ "Off", "Soft scanlines", "Scanlines", "Scanlines and mask" },
+			"Draws the dark between the lines a television's picture tube left, over the game's picture: the "
+			"look these games were made for. The mask adds the tube's fine vertical stripes. Darkens the picture "
+			"somewhat."));
+	items.push_back(pictureChoice(forGame, "border", "Beside the picture",
+			{ "Black", "The picture's light", "A gradient", "A picture file" },
+			"What fills the screen left and right of a 4:3 picture. The picture's light: its own colours, soft and "
+			"dim, as a lit screen throws them on a wall. A picture file: " + shownRoot() + "borders/<serial>.png "
+			"for one game (SLUS-12345.png), or default.png for all; .jpg works too.",
+			[] { display::forgetAmbient(); }));
+	items.push_back(pictureChoice(forGame, "pacing", "Frame pacing",
+			{ "By the display", "The game's own speed", "The game's own speed, by the clock" },
+			"By the display: one frame of the game for each refresh when their rates are within one percent, and "
+			"the sound stretched to match; no stutter and no tearing, and the usual choice. The game's own speed: "
+			"its exact rate, with a frame dropped or shown twice now and then. By the clock: its exact rate, each "
+			"frame handed to the display the moment it is due, which is right for a display with a variable "
+			"refresh rate (and for PAL games on one); on other displays it behaves as the second."));
+	if (forGame)
+		items.push_back(fact("Display output", "For every game",
+				"60 Hz or 120 Hz is one setting for every game: the console reads it when PSSwanStation starts, before "
+				"any game is chosen. It is in Settings, Picture."));
+	else
+	{
+		options::Frontend& f = options::frontend();
+		Item item = choice("Display output", f.displayMode, { "60 Hz", "120 Hz", "120 Hz, variable refresh rate" },
+				format("What the console is asked for, from the next start. It is at %.2f Hz now. 120 Hz: menus "
+				"move at twice the rate, a PAL game's frames fall more evenly, and black frame insertion "
+				"becomes possible; a display that cannot do 120 Hz stays at 60. The third declares, as games "
+				"that support it do, that a variable refresh rate may stay on: use it with \"by the clock\" "
+				"above. An experiment, not yet run on a console: if the screen stays dark afterwards, hold "
+				"L1 and R1 while PSSwanStation starts. This one is for every game: the console reads it when "
+				"PSSwanStation starts, before any game is chosen.", display::outputRefreshRate()),
+				[](int i) {
+					options::frontend().displayMode = i;
+					storage::syncDisplayMode(appDir + "sce_sys/param.json", i);
+				});
+		items.push_back(item);
+	}
+	const int generation = now_("frame_generation");
+	{
+		Item item = pictureChoice(forGame, "black_frames", "Black frame insertion", { "Off", "On" },
+				"At 120 Hz, every second refresh shows black instead of the same frame again, as a picture tube "
+				"went dark between frames: movement is clearer, the picture darker, and some see it flicker. Only "
+				"for games at the display's half rate (60 fps games at 119.88 Hz) with pacing by the display.");
+		if (display::refreshRate() < 100.f)
+		{
+			item.enabled = false;
+			item.value = "Needs 120 Hz";
+		}
+		else if (generation != 0)
+		{
+			item.enabled = false;
+			item.value = "Frame generation is on";
+		}
+		items.push_back(item);
+	}
+	{
+		// What the running game gets of it, in words.
+		std::string running;
+		if (host::running() && options::frontend().frameGeneration != 0)
+		{
+			const double pictures = host::picturesPerSecond(), shows = display::refreshRate();
+			running = pictures > 0 ? format("\n\nThis game is drawing about %.0f pictures a second now, and the screen shows "
+					"%.0f: %s.", pictures, shows, pictures + 1.0 < shows ? "pictures are made between them"
+					: "none needs making")
+					: format("\n\nThis game does not let its pictures be counted (it draws straight to the screen): each "
+					"of its frames is taken for a new one, and the screen shows %.0f.", shows);
+		}
+		items.push_back(pictureChoice(forGame, "frame_generation", "Frame generation", { "Off", "On", "On, lighter" },
+				"Draws pictures of its own between the game's, from how the picture moved, so that movement is "
+				"smoother than the game makes it. The title counts how many pictures a second the game really "
+				"draws: most PlayStation games draw 30, 20 or fewer, and those are filled up to the screen's 60 "
+				"(or 120). A game that already draws as many as the screen shows is left alone; at 120 Hz every "
+				"game gains. The made pictures are guesses: where the title cannot tell how something moved it "
+				"shows the game's own picture there, a moment's stutter in that place. The game answers the pad "
+				"a refresh or two of the screen later. \"Lighter\" asks less of the graphics processor and decides more "
+				"coarsely: for when the frame rate drops with it on. Not while fast forwarding or rewinding." + running,
+				[] { display::forgetGenerated(); }));
+	}
 }
 
 void moreSettings(int kind, std::vector<Item>& items)
@@ -1627,92 +1799,6 @@ void moreSettings(int kind, std::vector<Item>& items)
 		items.push_back(toggle("Ask for updates at start", &f.updateCheck, "Asks the releases page, when PSSwanStation "
 				"starts, whether a newer build is out, and says so in the library's header. Nothing is fetched until "
 				"you say so (Menu, Update)."));
-		break;
-	case 1:
-		items.push_back(choice("Picture preset", f.preset, { "As set", "Original", "Sharp", "Enhanced" },
-				"Sets the emulator's picture settings for every game at once. Original: the PlayStation's own "
-				"resolution and colours, with the lines of a picture tube. Sharp: eight times the resolution, full "
-				"colour, steadier polygons (PGXP), nothing smoothed. Enhanced: as Sharp, with smoothed textures (xBR) "
-				"and smoothed edges (4x MSAA), which costs speed. Each setting can still be changed by itself (Display, "
-				"Enhancement); a game's own settings stay above these.",
-				[](int i) { applyPreset(i); }));
-		items.push_back(choice("Picture tube", f.crt, { "Off", "Soft scanlines", "Scanlines", "Scanlines and mask" },
-				"Draws the dark between the lines a television's picture tube left, over the game's picture: the "
-				"look these games were made for. The mask adds the tube's fine vertical stripes. Darkens the picture "
-				"somewhat.",
-				[](int i) { options::frontend().crt = i; }));
-		items.push_back(choice("Beside the picture", f.border, { "Black", "The picture's light", "A gradient", "A picture file" },
-				"What fills the screen left and right of a 4:3 picture. The picture's light: its own colours, soft and "
-				"dim, as a lit screen throws them on a wall. A picture file: " + shownRoot() + "borders/<serial>.png "
-				"for one game (SLUS-00594.png), or default.png for all; .jpg works too.",
-				[](int i) {
-					options::frontend().border = i;
-					display::forgetAmbient();
-				}));
-		items.push_back(choice("Frame pacing", f.pacing, { "By the display", "The game's own speed", "The game's own speed, by the clock" },
-				"By the display: one frame of the game for each refresh when their rates are within one percent, and "
-				"the sound stretched to match; no stutter and no tearing, and the usual choice. The game's own speed: "
-				"its exact rate, with a frame dropped or shown twice now and then. By the clock: its exact rate, each "
-				"frame handed to the display the moment it is due, which is right for a display with a variable "
-				"refresh rate (and for PAL games on one); on other displays it behaves as the second.",
-				[](int i) { options::frontend().pacing = i; }));
-		{
-			Item item = choice("Display output", f.displayMode, { "60 Hz", "120 Hz", "120 Hz, variable refresh rate" },
-					format("What the console is asked for, from the next start. It is at %.2f Hz now. 120 Hz: menus "
-					"move at twice the rate, a PAL game's frames fall more evenly, and black frame insertion "
-					"becomes possible; a display that cannot do 120 Hz stays at 60. The third declares, as games "
-					"that support it do, that a variable refresh rate may stay on: use it with \"by the clock\" "
-					"above. An experiment, not yet run on a console: if the screen stays dark afterwards, hold "
-					"L1 and R1 while PSSwanStation starts.", display::outputRefreshRate()),
-					[](int i) {
-						options::frontend().displayMode = i;
-						storage::syncDisplayMode(appDir + "sce_sys/param.json", i);
-					});
-			items.push_back(item);
-		}
-		{
-			Item item = toggle("Black frame insertion", &f.blackFrames,
-					"At 120 Hz, every second refresh shows black instead of the same frame again, as a picture tube "
-					"went dark between frames: movement is clearer, the picture darker, and some see it flicker. Only "
-					"for games at the display's half rate (60 fps games at 119.88 Hz) with pacing by the display.");
-			if (display::refreshRate() < 100.f)
-			{
-				item.enabled = false;
-				item.value = "Needs 120 Hz";
-			}
-			else if (f.frameGeneration != 0)
-			{
-				item.enabled = false;
-				item.value = "Frame generation is on";
-			}
-			items.push_back(item);
-		}
-		{
-			// What the running game gets of it, in words.
-			std::string now_;
-			if (host::running() && f.frameGeneration != 0)
-			{
-				const double pictures = host::picturesPerSecond(), shows = display::refreshRate();
-				now_ = pictures > 0 ? format("\n\nThis game is drawing about %.0f pictures a second now, and the screen shows "
-						"%.0f: %s.", pictures, shows, pictures + 1.0 < shows ? "pictures are made between them"
-						: "none needs making")
-						: format("\n\nThis game does not let its pictures be counted (it draws straight to the screen): each "
-						"of its frames is taken for a new one, and the screen shows %.0f.", shows);
-			}
-			items.push_back(choice("Frame generation", f.frameGeneration, { "Off", "On", "On, lighter" },
-					"Draws pictures of its own between the game's, from how the picture moved, so that movement is "
-					"smoother than the game makes it. The title counts how many pictures a second the game really "
-					"draws: most PlayStation games draw 30, 20 or fewer, and those are filled up to the screen's 60 "
-					"(or 120). A game that already draws as many as the screen shows is left alone; at 120 Hz every "
-					"game gains. The made pictures are guesses: where the title cannot tell how something moved it "
-					"shows the game's own picture there, a moment's stutter in that place. The game answers the pad "
-					"a refresh or two of the screen later. \"Lighter\" asks less of the graphics processor and decides more "
-					"coarsely: for when the frame rate drops with it on. Not while fast forwarding or rewinding." + now_,
-					[](int i) {
-						options::frontend().frameGeneration = i;
-						display::forgetGenerated();
-					}));
-		}
 		break;
 	case 2:
 		items.push_back(choice("Menu music", f.music, { "None", "The title's own", "My file" },
@@ -1789,8 +1875,10 @@ void moreSettings(int kind, std::vector<Item>& items)
 		}
 		{
 			Item item = action(icon::Download, "Fetch the newest cheat database", "The cheats and patches come from the "
-					"DuckStation project's chtdb, which grows. This fetches its newest release and uses it from then on "
-					"(it is kept in " + shownRoot() + "data).\n\n" + cheats::refreshStatus(),
+					"DuckStation project's chtdb, which grows. A release of PSSwanStation does not carry it (its entries "
+					"belong to their authors): this fetches the project's newest release from its own page and uses it "
+					"from then on (it is kept in " + shownRoot() + "data). Now: " + cheats::summary() + ".\n\n"
+					+ cheats::refreshStatus(),
 					[] { cheats::refresh(); }, !cheats::refreshing() && httpAvailable());
 			item.value = cheats::refreshing() ? "Fetching\xe2\x80\xa6" : !httpAvailable() ? "No network" : "";
 			items.push_back(item);
@@ -1816,8 +1904,8 @@ void moreSettings(int kind, std::vector<Item>& items)
 					: std::string("None for this game")) : std::string("By game"),
 					"Replacement pictures for a game's backgrounds and other 2D art, as made for DuckStation (files "
 					"named vram-write-<number>.png). They go in " + shownRoot() + "textures/<serial>/ (for one game: "
-					"textures/SLUS-00594/) or, on a USB drive, in a folder named textures inside its games folder "
-					"(psx/textures/SLUS-00594/), and are used when \"Enable VRAM Write Texture Replacement\" is on "
+					"textures/SLUS-12345/) or, on a USB drive, in a folder named textures inside its games folder "
+					"(psx/textures/SLUS-12345/), and are used when \"Enable VRAM Write Texture Replacement\" is on "
 					"(Enhancement). This emulator knows that one kind of pack, not the newer kind that replaces a 3D "
 					"game's textures." + (files > 0 ? "\n\nThis game's is " + where + "." : std::string())));
 		}

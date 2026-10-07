@@ -32,6 +32,11 @@
 #                     the title has no descriptions
 #   NETWORK_PATH      server/share/folder, written into the staged network.cfg
 #                     (a build for one's own console; never in the repository)
+#   RELEASE=1         a title folder that may be published: built from
+#                     committed source only, with no network.cfg and without
+#                     the chtdb files (their entries belong to their authors;
+#                     the title fetches them from that project when asked).
+#                     ps5/tools/release.py packs it with its source.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
@@ -46,6 +51,12 @@ libsmb2=${LIBSMB2_DIR:-$src/../deps-src/libsmb2}
 rcheevos=${RCHEEVOS_DIR:-$src/../deps-src/rcheevos}
 lapy=${LAPY_HELPER_DIR:-$src/../deps-src/lapy}
 chtdb=${CHTDB_DIR:-$src/../deps-src}
+release=${RELEASE:-0}
+if [[ $release == 1 ]]; then
+    [[ -z ${NETWORK_PATH:-} ]] || { echo "build.sh: a release carries no network.cfg (NETWORK_PATH is set)" >&2; exit 2; }
+    [[ -z $(git -C "$src" status --porcelain --untracked-files=no) ]] \
+        || { echo "build.sh: a release is built from committed source; commit first" >&2; exit 2; }
+fi
 build="$src/build-ps5"
 out=${1:-$build/dist}
 title=$(sed -n 's/.*"titleId": "\(PPSA[0-9]\{5\}\)".*/\1/p' "$ps5/sce_sys/param.json")
@@ -102,12 +113,16 @@ cp -- "$lapy/lapy.elf" "$lapy/lapy-manifest.json" "$app/"
 # The cheat and patch database (DuckStation's chtdb), as its release ships it.
 staged_db=0
 for archive in cheats.zip patches.zip; do
-    if [[ -f $chtdb/$archive ]]; then
+    if [[ $release != 1 && -f $chtdb/$archive ]]; then
         cp -- "$chtdb/$archive" "$app/assets/$archive"
         staged_db=1
     fi
 done
-(( staged_db )) || echo "No cheat database staged: $chtdb has no cheats.zip or patches.zip" >&2
+if [[ $release == 1 ]]; then
+    echo "A release: the cheat database is not staged (the title fetches it when asked)"
+else
+    (( staged_db )) || echo "No cheat database staged: $chtdb has no cheats.zip or patches.zip" >&2
+fi
 # The game database: descriptions and the serials of discs by their names.
 database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
 if [[ -f "$database/metadat/developer/Sony - PlayStation.dat" ]]; then
@@ -133,6 +148,7 @@ if [[ -n ${NETWORK_PATH:-} ]]; then
 fi
 cp -- "$ps5/README.txt" "$app/README.txt"
 cp -- "$ps5/CHANGELOG.txt" "$app/CHANGELOG.txt"
+cp -- "$ps5/LEGAL.txt" "$app/LEGAL.txt"
 cp -- "$src/LICENSE" "$app/licenses/GPL-3.0.txt"
 cp -- "$ps5/licenses/"* "$app/licenses/"
 {
@@ -147,6 +163,9 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     echo "Lapy helper: $(sed -n 's/.*"elf_sha256": "\([0-9a-f]*\)".*/\1/p' "$lapy/lapy-manifest.json") (sha256)"
     echo "eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)"
 } > "$app/BUILD.txt"
+# Every part as data, with the revision it was built from.
+python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$imgui" "$libsmb2" "$rcheevos" "$lapy" \
+    "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}"
 # Everything is readable and writable over FTP; the program's own files as the
 # console wants a title's (and as the updater leaves them).
 find "$app" -type d -exec chmod 0777 {} +
