@@ -51,8 +51,11 @@ const Item *panelList(Frame& f, const std::string& title, std::vector<Item>& ite
 	panel(at(x0, y0), at(x0 + panelW, y0 + panelH), IM_COL32(24, 30, 48, 252), 20);
 	outline(at(x0, y0), at(x0 + panelW, y0 + panelH), IM_COL32(255, 255, 255, 24), 20, 1.5f);
 	textFit(at(x0 + 36, y0 + 28), px(panelW - 72), t.text, title, Bold, 32);
+	// (A row's list of choices, while it is open, is over this panel: the note
+	// is not drawn across it.)
+	const bool choosing = f.picker >= 0;
 	const Item *focused = runList(f, items, x0 + 14, y0 + 84, x0 + panelW - 22, y0 + 84 + rowsHigh);
-	if (!note.empty())
+	if (!note.empty() && !choosing)
 		textWrapped(at(x0 + 40, y0 + 96 + rowsHigh), px(panelW - 80), t.faint, note, Body, 21);
 	return focused;
 }
@@ -298,74 +301,37 @@ void libraryOptionsPage(Frame& f)
 				options::frontend().regionFilter = i;
 				libraryChanged();
 			}));
-	items.push_back(choice("View", o.view, { "Covers", "List" }, "", [](int i) { options::frontend().view = i; }));
+	{
+		// The grid, the list, and the views in space: this title's own and
+		// any Aurora layout files in the layouts folder.
+		if (f.fresh)
+			flowRescan();
+		std::vector<std::string> names = { "Covers", "List" };
+		for (const std::string& name : flowNames())
+			names.push_back(name);
+		Item item = choice("View", std::min(o.view, (int)names.size() - 1), names, "",
+				[](int i) { options::frontend().view = i; });
+		items.push_back(item);
+	}
 	items.push_back(action(icon::Sync, "Scan for games", "", [] {
 		scanEverything();
 		pop();
 	}));
 	const Item *focused = panelList(f, "Sort and filter", items, 760, 5 * 60 + 10,
 			"A game becomes a favourite, or is hidden, in its details (Triangle), under More. Hidden games are out of "
-			"the library and the search until \"Hidden games\" is shown here.");
+			"the library and the search until \"Hidden games\" is shown here. The views after the list stand the "
+			"covers in space, as the Xbox 360's Aurora does; an Aurora layout file (.cfljson) put in " + shownRoot()
+			+ "layouts is offered here too.");
 	standardHints(focused);
 }
 
 // --------------------------------------------------------- choosing a cover
-
-namespace
-{
-// The screenshots taken of a game, the newest first.
-std::vector<std::string> screenshotsOf(const library::Game& game)
-{
-	std::vector<std::string> found;
-	const std::string prefix = fileTitle(game.path) + " ";
-	for (const std::string& name : filesIn(rootDir + "screenshots"))
-		if (name.rfind(prefix, 0) == 0 && extension(name) == ".png")
-			found.push_back(name);
-	std::reverse(found.begin(), found.end());
-	return found;
-}
-}
 
 void coverPage(Frame& f)
 {
 	const library::Game game = detailsGame();
 	std::vector<Item> items;
 	std::string note;
-	if (f.a == 1)
-	{
-		// One of the screenshots, with the one under the cursor shown.
-		const std::vector<std::string> shots = screenshotsOf(game);
-		for (const std::string& name : shots)
-		{
-			Item item;
-			item.icon = icon::Camera;
-			item.label = name.substr(fileTitle(game.path).size() + 1, name.size() - fileTitle(game.path).size() - 5);
-			item.confirmHint = "Use";
-			item.activate = [game, name] {
-				const bool ok = covers::setFrom(game, rootDir + "screenshots/" + name);
-				pop();
-				pop();
-				if (!ok)
-					message("The cover was not changed", "The screenshot could not be read.");
-			};
-			items.push_back(item);
-		}
-		const Theme& t = theme();
-		const Item *focused = panelList(f, "A screenshot as the cover", items, 760, 7 * 60 + 10);
-		if (f.cursor >= 0 && f.cursor < (int)shots.size())
-		{
-			const float W = unitsWide(), H = unitsHigh();
-			const float x = (W + 760) * 0.5f + 24, side = std::min(W - x - 40, 420.f);
-			const Image shot = image(rootDir + "screenshots/" + shots[(size_t)f.cursor]);
-			if (shot.id != nullptr && side > 160)
-			{
-				panel(at(x - 8, H * 0.5f - side * 0.5f - 8), at(x + side + 8, H * 0.5f + side * 0.5f + 8), t.panel, 14);
-				imageFit(shot, at(x, H * 0.5f - side * 0.5f), at(x + side, H * 0.5f + side * 0.5f), 10);
-			}
-		}
-		standardHints(focused);
-		return;
-	}
 	static const char *const kinds[covers::KindCount] = { "The box", "The title screen", "A moment of the game" };
 	const covers::ChooseState state = covers::chooseState();
 	for (int kind = 0; kind < covers::KindCount; kind++)
@@ -375,8 +341,6 @@ void coverPage(Frame& f)
 		item.confirmHint = "Fetch";
 		items.push_back(item);
 	}
-	const bool shots = !screenshotsOf(game).empty();
-	items.push_back(action(icon::Camera, "One of my screenshots", "", [] { push(Page::Cover, 1); }, shots));
 	items.push_back(action(icon::Undo, "Back to the automatic cover", "", [game] {
 		covers::remove(game);
 		pop();
@@ -394,9 +358,7 @@ void coverPage(Frame& f)
 			: state == covers::ChooseDone ? "The picture is the game's cover now."
 			: state == covers::ChooseNotFound ? "The collection has no such picture for this game."
 			: "The collection did not answer.";
-	if (!shots)
-		note += " Screenshots of this game, taken while playing, can be its cover too.";
-	const Item *focused = panelList(f, "Cover", items, 760, 5 * 60 + 10, note);
+	const Item *focused = panelList(f, "Cover", items, 760, 4 * 60 + 10, note);
 	standardHints(focused);
 }
 
@@ -1244,8 +1206,6 @@ void shortcutsPage(Frame& f)
 	row(icon::Backward, "L2", "Rewind", "While both are held the game goes backwards through the last while of play. It "
 			"must be switched on first (Settings, Shortcuts and rewind): the states it steps through are kept in "
 			"memory only while it is on.");
-	row(icon::Camera, "Triangle", "Screenshot", "The game's picture, without anything of the interface, as a PNG file in "
-			+ shownRoot() + "screenshots.");
 	row(icon::Save, "R1", "Save a state", "To the slot the shortcuts use: the one saved to last, or chosen with OPTIONS and "
 			"Left or Right.");
 	row(icon::Upload, "L1", "Load that state", "");
@@ -1302,14 +1262,7 @@ bool gameShortcuts()
 		host::addMessage("Rewind is off: it is switched on under Settings, Shortcuts and rewind.", 4.0);
 	host::setRewinding(back);
 	host::setFastForward(forward && !back);
-	if (hit(Triangle))
-	{
-		usedAsKey = true;
-		const std::string path = host::screenshot();
-		host::addMessage(path.empty() ? std::string("The screenshot could not be taken.") : "Screenshot saved: " + baseName(path),
-				3.0);
-	}
-	else if (hit(R1))
+	if (hit(R1))
 	{
 		usedAsKey = true;
 		const int slot = host::quickSlot();
@@ -1650,15 +1603,6 @@ void applyPreset(int preset)
 	options::saveFrontend();
 }
 
-void applySpeedUp(int level)
-{
-	static const char *const read[3] = { "1", "4", "8" };
-	static const char *const seek[3] = { "1", "4", "0" };
-	options::frontend().speedUp = level;
-	options::set("swanstation_CDROM_ReadSpeedup", read[std::clamp(level, 0, 2)], false);
-	options::set("swanstation_CDROM_SeekSpeedup", seek[std::clamp(level, 0, 2)], false);
-	options::saveFrontend();
-}
 }
 
 void moreSettings(int kind, std::vector<Item>& items)
@@ -1779,13 +1723,6 @@ void moreSettings(int kind, std::vector<Item>& items)
 				"can call, none that this title knows of gives it. The console's own control centre (the PS button) shows it."));
 		break;
 	case 4:
-		items.push_back(choice("Faster loading", f.speedUp, { "Off", "Fast", "Fastest" },
-				"Makes the emulated disc drive read and seek faster than a PlayStation's, which shortens loading in "
-				"most games. Fast: four times. Fastest: eight times, with seeks that take no time. A few games "
-				"depend on the drive's real speed (music that runs ahead, a video that stutters, a game that hangs "
-				"while loading): switch it off for those, here or in the game's own settings (CD-ROM Read Speedup, "
-				"CD-ROM Seek Speedup).",
-				[](int i) { applySpeedUp(i); }));
 		{
 			Item item = action(icon::Card, "Memory cards", "What is saved on each card: copy, delete, bring in, put out, "
 					"and go back to an earlier copy.", [] { push(Page::Cards); }, !host::running());
@@ -1831,7 +1768,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 		}
 		{
 			Item item = toggle("Keep my files outside the title folder", &f.outside,
-					std::string("Keeps BIOS files, covers, cheats, memory cards, states, screenshots and settings in ")
+					std::string("Keeps BIOS files, covers, cheats, memory cards, states and settings in ")
 					+ storage::OutsideDir + " instead of the title's folder, so that replacing or deleting that "
 					"folder cannot take them with it. Games may be in either folder's games. From the next start: "
 					"what the title's folder holds is copied over once (and left where it is), and PSSwanStation has "
@@ -1844,20 +1781,22 @@ void moreSettings(int kind, std::vector<Item>& items)
 		}
 		{
 			const std::string serial = host::game().serial;
-			const int files = host::texturePackFiles(serial);
+			std::string where;
+			const int files = host::texturePackFiles(serial, &where);
 			items.push_back(fact("Texture packs", host::running() ? (files > 0 ? format("%d files for this game", files)
 					: std::string("None for this game")) : std::string("By game"),
 					"Replacement pictures for a game's backgrounds and other 2D art, as made for DuckStation (files "
 					"named vram-write-<number>.png). They go in " + shownRoot() + "textures/<serial>/ (for one game: "
-					"textures/SLUS-00594/) and are used when \"Enable VRAM Write Texture Replacement\" is on "
+					"textures/SLUS-00594/) or, on a USB drive, in a folder named textures inside its games folder "
+					"(psx/textures/SLUS-00594/), and are used when \"Enable VRAM Write Texture Replacement\" is on "
 					"(Enhancement). This emulator knows that one kind of pack, not the newer kind that replaces a 3D "
-					"game's textures."));
+					"game's textures." + (files > 0 ? "\n\nThis game's is " + where + "." : std::string())));
 		}
 		break;
 	case 5:
 		items.push_back(toggle("Shortcuts", &f.hotkeys,
 				"While a game runs, OPTIONS held with another button does something at once: R2 fast forward, L2 "
-				"rewind, Triangle a screenshot, R1 and L1 save and load a state. With this on, the menu opens when "
+				"rewind, R1 and L1 save and load a state. With this on, the menu opens when "
 				"OPTIONS is let go; with it off, the moment it is pressed."));
 		items.push_back(action(icon::List, "What the shortcuts are", "", [] { push(Page::Shortcuts); }));
 		items.push_back(choice("Fast forward speed", f.fastForward, { "2x", "3x", "4x", "8x", "As fast as it goes" },
@@ -1912,9 +1851,6 @@ void moreSettings(int kind, std::vector<Item>& items)
 			unofficial.enabled = f.achievements;
 			items.push_back(unofficial);
 		}
-		items.push_back(fact("How far this is", "An experiment", "Tried against a stand-in for the server on a PC: signing "
-				"in, telling the disc, earning, leaderboards. It has not yet been run against retroachievements.org "
-				"or on a console."));
 		break;
 	}
 	}
@@ -1945,17 +1881,20 @@ void detailsMoreItems(std::vector<Item>& items)
 		item.choose = [path = game.path](int i) { library::setHidden(path, i != 0); };
 		items.push_back(item);
 	}
-	items.push_back(action(icon::Picture, "Cover", "Another picture as this game's cover: its box, its title screen, a "
-			"moment of the game, or one of your screenshots.", [] { push(Page::Cover); }));
+	items.push_back(action(icon::Picture, "Cover", "Another picture as this game's cover: its box, its title screen or a "
+			"moment of the game.", [] { push(Page::Cover); }));
 	{
 		const std::string serial = detailsSerial_();
-		const int files = host::texturePackFiles(serial);
+		std::string where;
+		const int files = host::texturePackFiles(serial, &where);
 		items.push_back(fact("Texture pack", serial.empty() ? std::string("Needs the serial") : files > 0
 				? format("%d files", files) : std::string("None"),
 				serial.empty() ? std::string("The pack's folder is named by the disc's serial number, which is read when "
 				"Options or Cheats is opened, or when the game starts.")
-				: "Replacement pictures for this game go in " + shownRoot() + "textures/" + serial + "/ and are used "
-				"when \"Enable VRAM Write Texture Replacement\" is on (Options)."));
+				: files > 0 ? "In " + where + ". Used when \"Enable VRAM Write Texture Replacement\" is on (Options)."
+				: "Replacement pictures for this game go in " + shownRoot() + "textures/" + serial + "/ or, on a USB "
+				"drive, in its games folder's textures/" + serial + "/, and are used when \"Enable VRAM Write Texture "
+				"Replacement\" is on (Options)."));
 	}
 }
 
@@ -1970,12 +1909,6 @@ void pauseMoreItems(std::vector<Item>& items)
 				: summary.gameLoading ? "Asking\xe2\x80\xa6" : !summary.loggedIn ? "Not signed in" : "None";
 		items.push_back(item);
 	}
-	items.push_back(action(icon::Camera, "Take a screenshot", "The game's picture as it is now, without the menu, as a "
-			"PNG file in " + shownRoot() + "screenshots. While playing: OPTIONS and Triangle.", [] {
-				const std::string path = host::screenshot();
-				host::addMessage(path.empty() ? std::string("The screenshot could not be taken.")
-						: "Screenshot saved: " + baseName(path), 3.0);
-			}));
 	{
 		Item item = action(icon::Users, "Netplay", "Play this game with someone on another console, over the network: "
 				"one console hosts, the other joins it.", [] { push(Page::Netplay, netplay::active() ? 1 : 0); });
@@ -1984,7 +1917,7 @@ void pauseMoreItems(std::vector<Item>& items)
 		items.push_back(item);
 	}
 	if (options::frontend().hotkeys)
-		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind, screenshots and states without the "
+		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
 				"menu: what to hold.", [] { push(Page::Shortcuts); }));
 }
 

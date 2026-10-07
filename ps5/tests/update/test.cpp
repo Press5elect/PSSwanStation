@@ -1320,7 +1320,8 @@ void testRealRelease()
 	CHECK(status.total > 10000000 && status.done == status.total);
 	CHECK(update::install());
 	checkInstalled("real", before);
-	CHECK_TEXT(contentOf(title + "BUILD.txt"), "PSSwanStation, build 9");
+	// (Any release will do: the test is given build 9, or a later one.)
+	CHECK(contentOf(title + "BUILD.txt").compare(0, 21, "PSSwanStation, build ") == 0);
 	CHECK_TEXT(contentOf(title + "sce_sys/param.json"), "\"titleId\": \"PPSA99248\"");
 	std::vector<uint8_t> eboot;
 	readFile(title + "eboot.bin", eboot);

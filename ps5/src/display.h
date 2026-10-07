@@ -64,6 +64,13 @@ bool capture(void *texture, float u, float v, int width, int height, std::vector
 void *ambient(void *texture, float u, float v);
 // The next one starts anew (another game).
 void forgetAmbient();
+// The picture `texture` (its part up to u, v, which is `width` x `height`
+// pixels) made `outWidth` x `outHeight` with FSR 1: AMD's edge-adaptive
+// upscale, then its sharpening (`sharpness`: 0 soft, 1 normal, 2 sharp). The
+// result, for ImGui to draw pixel for pixel; null when the picture is not
+// smaller than that, or it cannot be done: the picture is then drawn the
+// usual way. Only between a frame's begin and its end.
+void *upscale(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, int sharpness);
 // RGBA8 pixels as a PNG file. May be called on any thread.
 bool writePng(const std::string& path, const uint8_t *rgba, int width, int height);
 

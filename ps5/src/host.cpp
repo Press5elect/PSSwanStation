@@ -70,6 +70,7 @@ void discClose(void *disc);
 uint8_t *coreRam(uint32_t& size);
 uint8_t *coreScratchpad();
 const uint8_t *coreBios(uint32_t& size);
+void nameTextureFolders();
 
 namespace
 {
@@ -1153,8 +1154,7 @@ bool init()
 	saveDir = rootDir + "data/saves";
 	systemDir = rootDir + "bios";
 	cacheDir = rootDir + "data/cache";
-	// Texture packs are with the user's files (src/core/texture_replacements.cpp).
-	setenv("SWANSTATION_TEXTURES_DIR", (rootDir + "textures").c_str(), 1);
+	nameTextureFolders();
 	options::loadGlobal();
 	retro_set_environment(environment);
 	retro_set_video_refresh(videoRefresh);
@@ -1269,6 +1269,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	hwRenderSet = false;
 	hwImageValid = false;
 	frameWidth = frameHeight = 0;
+	nameTextureFolders();
 	retro_game_info info{};
 	info.path = path.c_str();
 	bool loaded = retro_load_game(path.empty() ? nullptr : &info);
@@ -1763,31 +1764,6 @@ bool capture(int maxHeight, std::vector<uint8_t>& rgba, int& width, int& height)
 	return display::capture(texture, u, v, width, height, rgba);
 }
 
-std::string screenshot()
-{
-	std::vector<uint8_t> rgba;
-	int width = 0, height = 0;
-	if (!isRunning || !capture(2160, rgba, width, height))
-		return "";
-	std::string name = current.title;
-	for (char& c : name)
-		if (c == '/' || c == '\\' || c == ':' || c == '?' || c == '*' || c == '"' || c == '<' || c == '>' || c == '|')
-			c = '_';
-	char stamp[40];
-	const time_t t = time(nullptr) + platform::localTimeOffset();
-	struct tm tm;
-	gmtime_r(&t, &tm);
-	strftime(stamp, sizeof(stamp), "%Y-%m-%d %H-%M-%S", &tm);
-	makeDir(rootDir + "screenshots");
-	const std::string path = rootDir + "screenshots/" + name + " " + stamp + ".png";
-	// Packing a large picture takes a moment the game need not wait for.
-	std::thread([path, width, height, pixels = std::move(rgba)] {
-		const bool ok = display::writePng(path, pixels.data(), width, height);
-		diag::mark("screenshot: %s %s", path.c_str(), ok ? "saved" : "could not be written");
-	}).detach();
-	return path;
-}
-
 std::string clockText()
 {
 	const time_t t = time(nullptr);
@@ -1800,19 +1776,46 @@ std::string clockText()
 	return format("%02d:%02d", tm.tm_hour, tm.tm_min);
 }
 
-int texturePackFiles(const std::string& serial)
+// Texture packs are with the user's files, or on a USB drive: the emulator
+// (src/core/texture_replacements.cpp) takes the first folder that has the
+// game's.
+void nameTextureFolders()
+{
+	std::string folders;
+	for (const std::string& folder : textureFolders())
+		folders += (folders.empty() ? "" : ";") + folder;
+	setenv("SWANSTATION_TEXTURES_DIR", folders.c_str(), 1);
+}
+
+std::vector<std::string> textureFolders()
+{
+	std::vector<std::string> folders = { rootDir + "textures" };
+	// On a USB drive: a folder named textures in its games folder.
+	for (const std::string& games : platform::usbGameDirs())
+		folders.push_back(games + "/textures");
+	return folders;
+}
+
+int texturePackFiles(const std::string& serial, std::string *where)
 {
 	if (serial.empty())
 		return 0;
-	DIR *dir = opendir((rootDir + "textures/" + serial).c_str());
-	if (dir == nullptr)
-		return 0;
-	int files = 0;
-	while (const dirent *entry = readdir(dir))
-		if (extension(entry->d_name) == ".png")
-			files++;
-	closedir(dir);
-	return files;
+	// As the emulator chooses: the first folder that has this game's.
+	for (const std::string& folder : textureFolders())
+	{
+		DIR *dir = opendir((folder + "/" + serial).c_str());
+		if (dir == nullptr)
+			continue;
+		int files = 0;
+		while (const dirent *entry = readdir(dir))
+			if (extension(entry->d_name) == ".png")
+				files++;
+		closedir(dir);
+		if (where != nullptr)
+			*where = folder + "/" + serial;
+		return files;
+	}
+	return 0;
 }
 
 bool gunAim(int port, float& x, float& y)

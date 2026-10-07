@@ -9,6 +9,9 @@
 #include "settings.h"
 #include "xxhash.h"
 #include <cstdlib>
+#ifdef SWANSTATION_STANDALONE
+#include <sys/stat.h>
+#endif
 // PS5: one CPU, compiled for (-march=znver2): no run-time dispatch.
 #if (defined(CPU_X86) || defined(CPU_X64)) && !defined(__PROSPERO__)
 #include "xxh_x86dispatch.h"
@@ -89,10 +92,33 @@ void TextureReplacements::Shutdown()
 std::string TextureReplacements::GetSourceDirectory() const
 {
 #ifdef SWANSTATION_STANDALONE
-  // The PS5 title keeps texture packs with the user's other files
-  // (<root>textures/<serial>/, ps5/src/host.cpp names the folder).
-  if (const char* textures_directory = getenv("SWANSTATION_TEXTURES_DIR"))
-    return StringUtil::StdStringFromFormat("%s" FS_OSPATH_SEPARATOR_STR "%s", textures_directory, m_game_id.c_str());
+  // The PS5 title keeps texture packs with the user's other files, or on a
+  // USB drive (<folder>/<serial>/; ps5/src/host.cpp names the folders, with
+  // ';' between them). The first that has this game's folder is the one.
+  if (const char* textures_directories = getenv("SWANSTATION_TEXTURES_DIR"))
+  {
+    const std::string all(textures_directories);
+    std::string first;
+    size_t start = 0;
+    while (start <= all.size())
+    {
+      size_t end = all.find(';', start);
+      if (end == std::string::npos)
+        end = all.size();
+      if (end > start)
+      {
+        const std::string candidate = all.substr(start, end - start) + FS_OSPATH_SEPARATOR_STR + m_game_id;
+        if (first.empty())
+          first = candidate;
+        struct stat st;
+        if (stat(candidate.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+          return candidate;
+      }
+      start = end + 1;
+    }
+    if (!first.empty())
+      return first;
+  }
 #endif
   // Use the shader cache path as base for the textures folder
   std::string cache_folder = g_host_interface_storage.GetShaderCacheBasePath();

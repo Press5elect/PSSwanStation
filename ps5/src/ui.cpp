@@ -589,7 +589,9 @@ void drawGame(float dim)
 		float u = 1, v = 1;
 		host::frameUv(u, v);
 		float dw = W, dh = H;
-		const int scaling = options::frontend().scaling;
+		// FSR is a way of stretching: the picture is where "fit" has it.
+		const bool fsr = options::frontend().scaling == 3;
+		const int scaling = fsr ? 0 : options::frontend().scaling;
 		if (scaling != 2)
 		{
 			dh = H;
@@ -609,10 +611,18 @@ void drawGame(float dim)
 		// What is beside the picture, then the picture, then the lines of a
 		// picture tube over it.
 		drawBorder(list, texture, u, v, p0, p1);
-		const bool squares = !options::frontend().linearFilter;
+		// With FSR the picture arrives the size it has here, and is drawn pixel
+		// for pixel; when it cannot be made, the usual way.
+		const int outW = (int)std::lround(dw), outH = (int)std::lround(dh);
+		void *upscaled = fsr ? display::upscale(texture, w, h, u, v, outW, outH, options::frontend().fsrSharpness)
+				: nullptr;
+		const bool squares = upscaled != nullptr || !options::frontend().linearFilter;
 		if (squares)
 			display::sampling(list, true);
-		list->AddImage((ImTextureID)texture, p0, p1, ImVec2(0, 0), ImVec2(u, v));
+		if (upscaled != nullptr)
+			list->AddImage((ImTextureID)upscaled, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH));
+		else
+			list->AddImage((ImTextureID)texture, p0, p1, ImVec2(0, 0), ImVec2(u, v));
 		if (squares)
 			display::sampling(list, false);
 		drawScanlines(list, p0, p1);
@@ -1313,7 +1323,11 @@ void libraryPage(bool active)
 
 	LibraryView& view = views[source];
 	const int count = (int)view.games.size();
-	const bool grid = options::frontend().view == 0;
+	// 0 the grid, 1 the list, 2 and up a view in space (ui_flow.cpp); one that
+	// is no longer there (its file was taken away) is the grid.
+	const int viewMode = options::frontend().view;
+	const bool flow = viewMode >= 2 && viewMode - 2 < (int)flowNames().size();
+	const bool grid = viewMode == 0 || (viewMode >= 2 && !flow);
 	const float top = 128, bottom = H - 64;
 	coverLookups = 0;
 	int focus = -1;		// the game under the cursor
@@ -1352,6 +1366,37 @@ void libraryPage(bool active)
 			hint += library::sourceHint(library::Network);
 		}
 		emptyLibrary(hint, busy);
+	}
+	else if (flow)
+	{
+		view.inShelf = false;
+		if (active && (nav(R2) || nav(L2)))
+		{
+			view.cursor = letterJump(view.games, view.cursor, nav(R2));
+			letterShownAt = clock();
+		}
+		FlowGames games;
+		games.count = count;
+		games.cover = [&view](int i) { return coverOf(view, i); };
+		games.game = [&view](int i) -> const library::Game& { return view.games[(size_t)i]; };
+		games.facts = [&view](int i) {
+			const library::Game& game = view.games[(size_t)i];
+			const Meta& meta = metaOf(view, i);
+			std::string line = game.region;
+			if (meta.known)
+				line += (line.empty() ? "" : "  \xc2\xb7  ") + factsLine(meta.info, false);
+			if (game.discs.size() > 1)
+				line += (line.empty() ? "" : "  \xc2\xb7  ") + format("%d discs", (int)game.discs.size());
+			return line;
+		};
+		games.about = [&view](int i) {
+			const Meta& meta = metaOf(view, i);
+			return meta.known ? meta.info.description : std::string();
+		};
+		flowView(viewMode - 2, games, view.cursor, active, view.fresh, top, bottom);
+		view.fresh = false;
+		focus = view.cursor;
+		libraryWash(view.cover[focus]);
 	}
 	else if (grid)
 	{
@@ -1753,13 +1798,32 @@ void frontendItems(int kind, std::vector<Item>& items)
 				[] { diag::setNotifications(options::frontend().notifications); }));
 		break;
 	case 1:
-		items.push_back(choice("Scaling", f.scaling, { "Fit the screen", "Whole multiples", "Stretch" },
+		items.push_back(choice("Scaling", f.scaling, { "Fit the screen", "Whole multiples", "Stretch", "Fit the screen, FSR 1" },
 				"Fit keeps the picture's shape and makes it as large as the screen allows. Whole multiples only "
 				"enlarges by 2x, 3x and so on, which keeps the software renderer's pixels even. Stretch fills the "
-				"screen and distorts.",
+				"screen and distorts. FSR 1 fits the screen too, and enlarges with AMD's FidelityFX Super Resolution 1 "
+				"instead of a plain filter: edges stay clean and the picture is sharpened, so a lower Internal "
+				"Resolution Scale (Enhancement) looks closer to a high one and costs less. It is the kind of FSR that "
+				"works on one finished picture; the later kinds need things an emulated PlayStation does not give. "
+				"A picture already as large as the screen is left as it is.",
 				[](int i) { options::frontend().scaling = i; }));
-		items.push_back(toggle("Smooth scaling", &f.linearFilter,
-				"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares."));
+		{
+			Item item = choice("FSR sharpening", f.fsrSharpness, { "Soft", "Normal", "Sharp" },
+					"How strongly FSR 1 sharpens the enlarged picture.",
+					[](int i) { options::frontend().fsrSharpness = i; });
+			item.enabled = f.scaling == 3;
+			items.push_back(item);
+		}
+		{
+			Item item = toggle("Smooth scaling", &f.linearFilter,
+					"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares.");
+			if (f.scaling == 3)
+			{
+				item.enabled = false;
+				item.value = "FSR 1";
+			}
+			items.push_back(item);
+		}
 		break;
 	case 2:
 		items.push_back(choice("Volume", f.volume / 5,

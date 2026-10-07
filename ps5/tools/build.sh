@@ -83,7 +83,7 @@ cp -- "$ps5/sce_sys/param.json" "$ps5/sce_sys/icon0.png" "$ps5/sce_sys/pic0.dds"
     "$app/sce_sys/"
 cp -- "$vk/runtime/libc.prx" "$app/sce_module/libc.prx"
 # The folders the title keeps its files in (README.txt says what goes where).
-for dir in games bios covers cheats screenshots textures music borders memcards/import memcards/export; do
+for dir in games bios covers cheats textures music borders layouts memcards/import memcards/export; do
     mkdir -p "$app/$dir"
 done
 # The Lapy helper the ELF loader runs when the title has to leave its sandbox

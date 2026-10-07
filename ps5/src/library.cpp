@@ -94,7 +94,9 @@ void walkLocal(const std::string& dir, int depth, std::vector<Found>& out)
 			continue;
 		if (S_ISDIR(st.st_mode))
 		{
-			if (depth < 4)
+			// A games folder's "textures" holds texture packs, thousands of
+			// pictures and no game.
+			if (depth < 4 && !(depth == 0 && lowercase(name) == "textures"))
 				walkLocal(path, depth + 1, out);
 		}
 		else if (isGameExtension(extension(name)))

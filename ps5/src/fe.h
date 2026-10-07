@@ -280,7 +280,8 @@ struct Frontend
 	bool usb = false;			// leave the sandbox at start to read USB drives
 	bool ramCache = true;		// read a network game whole into memory before it starts
 	bool notifications = false;	// the console's pop-up notices
-	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch
+	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch, 3 fit with FSR 1
+	int fsrSharpness = 1;		// 0 soft, 1 normal, 2 sharp
 	bool linearFilter = true;	// how the picture is stretched to the screen
 	int volume = 100;
 	bool showFps = false;
@@ -310,7 +311,7 @@ struct Frontend
 	int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 	unsigned turbo = 0;			// the PlayStation buttons that fire repeatedly while held, as bits
 	int turboRate = 1;			// 0 slow (7 a second), 1 normal (10), 2 fast (15)
-	bool hotkeys = true;		// OPTIONS held with another button: fast forward, rewind, screenshot, quick save and load
+	bool hotkeys = true;		// OPTIONS held with another button: fast forward, rewind, quick save and load
 	int fastForward = 1;		// its speed: 0 2x, 1 3x, 2 4x, 3 8x, 4 as fast as it goes
 	bool rewind = false;		// keep the last while of play in memory, to go back
 	int rewindDetail = 1;		// a state every 0: 3 frames, 1: 6, 2: 12
@@ -335,7 +336,6 @@ struct Frontend
 	bool outside = false;		// keep the user's files in /data/psswanstation (needs the sandbox left)
 	int cardBackups = 10;		// copies kept of each memory card that changed; 0 none
 	bool updateCheck = true;	// ask the releases page at start-up
-	int speedUp = 0;			// "faster loading": 0 off, 1 fast, 2 fastest
 	bool achievements = false;	// RetroAchievements
 	bool hardcore = false;
 	bool unofficial = false;
@@ -439,9 +439,6 @@ int nativeLines();
 // The game's picture as it is now, without the interface: RGBA8, at most
 // `maxHeight` lines. Only between a frame's begin and its end.
 bool capture(int maxHeight, std::vector<uint8_t>& rgba, int& width, int& height);
-// Saves it as <root>screenshots/<game> <date> <time>.png; the file's path, or
-// empty. The PNG is written on a thread of its own.
-std::string screenshot();
 // The time of the screen's clock ("21:07"), or empty when the console's is not set.
 std::string clockText();
 
@@ -520,9 +517,12 @@ bool restricted();
 bool netplayHost();
 bool netplayJoin(const std::string& address);
 void netplayStop();
-// Texture replacements for the running game: how many files its folder
-// (<root>textures/<serial>/) holds.
-int texturePackFiles(const std::string& serial);
+// Where texture packs are looked for: <root>textures, then a folder named
+// textures in each USB drive's games folder. A game's pack is <folder>/<serial>/.
+std::vector<std::string> textureFolders();
+// How many files a game's pack holds, in the first of those folders that has
+// one (`where`: which).
+int texturePackFiles(const std::string& serial, std::string *where = nullptr);
 // Which BIOS files are in <root>bios/, for the About page.
 std::string biosSummary();
 // Memory card 1 as libretro save RAM, when that card type is chosen.
@@ -679,8 +679,6 @@ enum ChooseState { ChooseIdle, ChooseWorking, ChooseDone, ChooseNotFound, Choose
 // Fetches that picture for the game and makes it its cover (on a thread).
 void choose(const library::Game& game, int kind);
 ChooseState chooseState();
-// Makes a picture file (a screenshot) the game's cover.
-bool setFrom(const library::Game& game, const std::string& pictureFile);
 // Removes the game's cover: the automatic one comes back when downloads are on.
 void remove(const library::Game& game);
 }
