@@ -1,4 +1,4 @@
-// Made by ps5/tools/make-fsr-shaders.sh from ps5/shaders/fsr_*: do not edit.
+// Made by ps5/tools/make-shaders.sh from ps5/shaders: do not edit.
 // SPIR-V of the FSR 1 passes (AMD's ffx_fsr1.h, MIT: ps5/third_party/fsr).
 static const uint32_t fsr_vertex_spirv[] = {
 	0x07230203, 0x00010000, 0x0008000b, 0x0000002b, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,

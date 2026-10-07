@@ -619,10 +619,27 @@ void drawGame(float dim)
 		const bool squares = upscaled != nullptr || !options::frontend().linearFilter;
 		if (squares)
 			display::sampling(list, true);
+		// With frame generation the picture drawn is one kept by the display,
+		// or one made between the last two (display::generated).
+		void *shown = upscaled != nullptr ? upscaled : texture;
+		float shownU = upscaled != nullptr ? 1.f : u, shownV = upscaled != nullptr ? 1.f : v;
+		float phase = 1.f;
+		bool fresh = false;
+		if (host::generationPhase(phase, fresh))
+		{
+			void *made = display::generated(shown, upscaled != nullptr ? outW : w, upscaled != nullptr ? outH : h, shownU,
+					shownV, fresh, phase);
+			if (made != nullptr)
+			{
+				shown = made;
+				shownU = shownV = 1.f;
+			}
+		}
 		if (upscaled != nullptr)
-			list->AddImage((ImTextureID)upscaled, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH));
+			list->AddImage((ImTextureID)shown, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH), ImVec2(0, 0),
+					ImVec2(shownU, shownV));
 		else
-			list->AddImage((ImTextureID)texture, p0, p1, ImVec2(0, 0), ImVec2(u, v));
+			list->AddImage((ImTextureID)shown, p0, p1, ImVec2(0, 0), ImVec2(shownU, shownV));
 		if (squares)
 			display::sampling(list, false);
 		drawScanlines(list, p0, p1);
@@ -1733,9 +1750,19 @@ void frontendItems(int kind, std::vector<Item>& items)
 	switch (kind)
 	{
 	case 0:
-		items.push_back(choice("Library view", f.view, { "Covers", "List" },
-				"How the library shows your games: a wall of covers, or a list of names with the cover beside it.",
-				[](int i) { options::frontend().view = i; }));
+		{
+			// The same list as the library's own (Square, View).
+			const std::vector<std::string> names = libraryViewNames();
+			items.push_back(choice("Library view", std::min(f.view, (int)names.size() - 1), names,
+					"How the library shows your games. Covers: a grid, with what was played lately on a shelf above "
+					"it. List: names, with the cover and the description beside them. Flow, Row, Wall, Cascade and "
+					"Wheel stand the covers in space as cases, in the manner of Aurora on the Xbox 360: a flow that "
+					"leans towards the one under the cursor, a flat row, three rows across the screen, a line going "
+					"away to the right, a wheel at the right. Aurora layout files (.cfljson) put in " + shownRoot()
+					+ "layouts are in the list too, after those. The same choice is in the library itself, under "
+					"Square.",
+					[](int i) { options::frontend().view = i; }));
+		}
 		items.push_back(toggle("Download covers", &f.covers,
 				"Box art for games that have none in the covers folder is fetched from the libretro thumbnails "
 				"collection, by the game's file name. Your own pictures (covers/<file name>.png or .jpg) are never "

@@ -115,6 +115,10 @@ int sinceKept;				// emulated frames since a state was kept for rewinding
 std::vector<uint8_t> stateBuffer;
 bool inputBlocked;
 bool blackNow;
+// Frame generation: whether a picture is to be made this refresh, where it
+// is between the game's last two, and whether the latest is new.
+bool genOn, genFresh;
+float genPhase = 1.f;
 uint64_t emulatedFrames;
 double clockNext;			// pacing by the clock: when the next frame is due
 int lastSlot = -1;			// the state slot used last, for the shortcuts
@@ -1337,6 +1341,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	for (Aim& aim : aims)
 		aim = Aim();
 	display::forgetAmbient();
+	display::forgetGenerated();
 	audio::setMuted(false);
 	audio::clear();
 	setPaused(false);
@@ -1482,6 +1487,10 @@ int runNetplay(int due)
 void runFrame()
 {
 	blackNow = false;
+	// A game that stands still shows its latest picture.
+	genFresh = false;
+	genPhase = 1.f;
+	genOn = isRunning && options::frontend().frameGeneration;
 	if (!isRunning || isPaused)
 		return;
 	const options::Frontend& settings = options::frontend();
@@ -1590,8 +1599,33 @@ void runFrame()
 			pacing = 0;
 		// Black frame insertion: at twice the game's rate, the refresh between
 		// two of its frames shows nothing, as a picture tube does.
-		blackNow = even && settings.blackFrames && ran == 0;
+		blackNow = even && settings.blackFrames && !settings.frameGeneration && ran == 0;
 	}
+	// Frame generation: which picture this refresh is to show. A game at the
+	// display's rate, or at half of it, gets the picture half way to each new
+	// frame the refresh that frame is made in (and, at half the rate, the
+	// frame itself the refresh after). At any other rate (a PAL game on a
+	// 60 Hz screen) the screen is a frame behind the game and shows where the
+	// game was at that moment, which is between two frames nearly always.
+	genFresh = ran > 0;
+	if (ffOn || rewindOn || ran > 1 || ratio > 1.0)
+	{
+		// (Or a game faster than the display: there is no room between its frames.)
+		// Run fast or backwards, or catching up: the frames as they are.
+		genOn = false;
+		if (settings.frameGeneration && ran > 0)
+			display::forgetGenerated();
+	}
+	else if (settings.pacing == 2 || ratio == 1.0 || even)
+		genPhase = ran > 0 ? 0.5f : 1.f;
+	else
+		genPhase = (float)std::clamp(pacing, 0.0, 1.0);
+#if defined(SWANSTATION_HOST)
+	// A test reads how the frames fell.
+	if (getenv("SWANSTATION_PACING_LOG") != nullptr)
+		diag::mark("pacing: display frame %llu ran %d ratio %.4f phase %.2f generation %d", (unsigned long long)display::frameCount(),
+				ran, ratio, genPhase, (int)genOn);
+#endif
 	ranThisSecond += ran;
 	const double t = now();
 	if (t - secondStarted >= 1.0)
@@ -1666,6 +1700,13 @@ void setInputBlocked(bool blocked)
 bool blackFrame()
 {
 	return blackNow;
+}
+
+bool generationPhase(float& phase, bool& fresh)
+{
+	phase = genPhase;
+	fresh = genFresh;
+	return genOn;
 }
 
 int nativeLines()

@@ -118,7 +118,8 @@ dashboard, shows games:
             and Down turn it), with its description at the left
 
 Left and Right move through them (Up and Down too, in the Wall and the
-Wheel); L2, R2, the search and everything else work as in the grid.
+Wheel); L2, R2, the search and everything else work as in the grid. The view
+is also chosen in Settings, Interface, "Library view".
 
 Aurora's own layouts work too, as an experiment: copy a layout file
 (.cfljson, from Aurora's Media/Layouts folder or one of the collections of
@@ -257,6 +258,8 @@ Picture (Settings):
                      left on; from the next start.
   Black frame insertion   at 120 Hz, a black refresh between a 60 fps game's
                      frames: clearer movement, a darker picture.
+  Frame generation   a picture of the title's own between each two of the
+                     game's (below).
 
 Display output is kept in the title's own sce_sys/param.json, which is where
 the console reads it when the title starts. If the screen stays dark after it
@@ -278,6 +281,27 @@ picture. FSR 2, 3 and 4 rebuild a picture from several frames and need each
 pixel's depth and movement, which an emulated PlayStation does not give, and
 the FSR 4 that exists for PS5 homebrew runs on another Vulkan driver than
 this title's. Tested on a PC; not yet seen on a console in this title.
+
+Frame generation draws a picture between each two of the game's, worked out
+from how the picture moved, so that movement is smoother than the game makes
+it. What it gives depends on the screen and the game:
+
+  at 120 Hz             every game gets twice its frames (60 become 120)
+  at 60 Hz              a game that draws 30 pictures a second or fewer,
+                        as most PlayStation games do, moves at 60; one
+                        that already draws 60 gains nothing
+  a PAL game at 60 Hz   50 frames are spread evenly over the 60 refreshes,
+                        without the stutter that has otherwise
+
+The made pictures are guesses. Where the title cannot tell how something
+moved (it is fast, small, or newly in view) it shows the game's own picture
+in that place instead, which stutters there for a moment; text over a moving
+background can wobble. The game answers the pad about half a frame later, a
+whole frame for a PAL game at 60 Hz. It is off while fast forwarding and
+rewinding, and black frame insertion is off while it is on. It works with FSR 1
+(the enlarged pictures are what it works on). This is the title's own way of
+doing it, not AMD's or Nvidia's, which need more than an emulated PlayStation
+gives. An experiment: tested on a PC, not yet seen on a console.
 
 Sound: "Menu music" plays in the library and the menus: the title's own quiet
 piece, or your file (music/menu.ogg, .mp3 or .wav).

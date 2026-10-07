@@ -37,6 +37,15 @@
 	(ps5/third_party/fsr, MIT) compiled ahead of time (fsr_spirv.inc). Should
 	any of it fail, that is a line in the log and the usual stretch.
 
+	Frame generation (generated) draws a picture between each two of the
+	game's. The picture is kept (two of them, the one before and this one); a
+	small picture of how bright each part is, and three smaller ones of that,
+	are made of each; how every part moved from the one frame to the other is
+	looked for from the smallest of those to the largest (fg_search.frag); and
+	the picture in between is drawn by taking each pixel from where it was and
+	where it is now (fg_blend.frag). The shaders are this title's own
+	(ps5/shaders/fg_*, compiled into fg_spirv.inc).
+
 	On a PC (the host build) the surface is VK_EXT_headless_surface and frames
 	can be saved as PNGs: that is how the interface is checked without a console.
 */
@@ -114,15 +123,22 @@ struct Target
 {
 	Vulkan::Texture texture;
 	VkFramebuffer framebuffer = VK_NULL_HANDLE;
-	VkDescriptorSet set = VK_NULL_HANDLE;
+	VkDescriptorSet set = VK_NULL_HANDLE;		// for ImGui; none for a picture only shaders read
 	int width = 0, height = 0;
+	VkFormat format = VK_FORMAT_UNDEFINED;
 	bool drawn = false;
 };
 Target captureTarget, ambientTarget;
 // The swapchain's render pass again, for those: one that clears first and one
 // that draws over what is there; both leave the picture readable by a shader.
 VkRenderPass targetClearPass = VK_NULL_HANDLE, targetBlendPass = VK_NULL_HANDLE;
+// The passes of the pictures the title's own shaders draw: one of the
+// swapchain's format, and one for pictures of numbers (how the game's picture
+// moved) in 16-bit floats. Both clear first and leave the picture readable.
+VkRenderPass shaderPass = VK_NULL_HANDLE, floatPass = VK_NULL_HANDLE;
+constexpr VkFormat FloatFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 void fsrShutdown();
+void generationShutdown();
 // Descriptor sets ImGui must not lose before the frames that used them are
 // drawn: freed two frames later.
 struct Retired
@@ -428,7 +444,7 @@ bool createSwapchain()
 	if (result != VK_SUCCESS)
 		return fail("vkCreateRenderPass", result);
 	// The same pass for the title's own pictures (ImGui's pipeline fits any
-	// pass with this attachment).
+	// pass that differs from the swapchain's in no more than this).
 	attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	result = vkCreateRenderPass(device, &passInfo, nullptr, &targetClearPass);
 	if (result != VK_SUCCESS)
@@ -436,6 +452,33 @@ bool createSwapchain()
 	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 	attachment.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	result = vkCreateRenderPass(device, &passInfo, nullptr, &targetBlendPass);
+	if (result != VK_SUCCESS)
+		return fail("vkCreateRenderPass", result);
+	// And the passes of the pictures the title's own shaders draw (FSR, frame
+	// generation): such a picture was read by a shader before it is drawn
+	// into again, and is read by one straight after, which these say.
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkSubpassDependency around[2] = {};
+	around[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	around[0].dstSubpass = 0;
+	around[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	around[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	around[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	around[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	around[1].srcSubpass = 0;
+	around[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	around[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	around[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	around[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	around[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	passInfo.dependencyCount = 2;
+	passInfo.pDependencies = around;
+	result = vkCreateRenderPass(device, &passInfo, nullptr, &shaderPass);
+	if (result != VK_SUCCESS)
+		return fail("vkCreateRenderPass", result);
+	attachment.format = FloatFormat;
+	result = vkCreateRenderPass(device, &passInfo, nullptr, &floatPass);
 	if (result != VK_SUCCESS)
 		return fail("vkCreateRenderPass", result);
 
@@ -550,6 +593,7 @@ void shutdown()
 	VkDevice device = g_vulkan_context->GetDevice();
 	g_vulkan_context->WaitForGPUIdle();
 	releaseWrapped();
+	generationShutdown();
 	fsrShutdown();
 	for (Target *target : { &captureTarget, &ambientTarget })
 	{
@@ -572,6 +616,8 @@ void shutdown()
 		vkDestroyImageView(device, view, nullptr);
 	vkDestroyRenderPass(device, renderPass, nullptr);
 	vkDestroyRenderPass(device, targetClearPass, nullptr);
+	vkDestroyRenderPass(device, shaderPass, nullptr);
+	vkDestroyRenderPass(device, floatPass, nullptr);
 	vkDestroyRenderPass(device, targetBlendPass, nullptr);
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 	Vulkan::Context::Destroy();
@@ -846,9 +892,16 @@ void sampling(void *drawList, bool nearest)
 
 namespace
 {
-bool ensureTarget(Target& target, int width, int height)
+// `format` and `pass`: the swapchain's and the pass for the title's own
+// pictures, or 16-bit floats and theirs. `forImGui`: ImGui is to draw it.
+bool ensureTarget(Target& target, int width, int height, VkFormat format = VK_FORMAT_UNDEFINED,
+		VkRenderPass pass = VK_NULL_HANDLE, bool forImGui = true)
 {
-	if (target.framebuffer != VK_NULL_HANDLE && target.width == width && target.height == height)
+	if (format == VK_FORMAT_UNDEFINED)
+		format = swapFormat;
+	if (pass == VK_NULL_HANDLE)
+		pass = targetClearPass;
+	if (target.framebuffer != VK_NULL_HANDLE && target.width == width && target.height == height && target.format == format)
 		return true;
 	VkDevice device = g_vulkan_context->GetDevice();
 	if (target.framebuffer != VK_NULL_HANDLE)
@@ -859,13 +912,13 @@ bool ensureTarget(Target& target, int width, int height)
 		target.texture.Destroy(true);
 		target = Target();
 	}
-	if (!target.texture.Create((uint32_t)width, (uint32_t)height, 1, 1, swapFormat, VK_SAMPLE_COUNT_1_BIT,
+	if (!target.texture.Create((uint32_t)width, (uint32_t)height, 1, 1, format, VK_SAMPLE_COUNT_1_BIT,
 			VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
 		return false;
 	const VkImageView view = target.texture.GetView();
 	VkFramebufferCreateInfo info{ VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
-	info.renderPass = targetClearPass;
+	info.renderPass = pass;
 	info.attachmentCount = 1;
 	info.pAttachments = &view;
 	info.width = (uint32_t)width;
@@ -877,11 +930,22 @@ bool ensureTarget(Target& target, int width, int height)
 		target = Target();
 		return false;
 	}
-	target.set = ImGui_ImplVulkan_AddTexture(view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	if (forImGui)
+		target.set = ImGui_ImplVulkan_AddTexture(view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	target.width = width;
 	target.height = height;
+	target.format = format;
 	target.drawn = false;
 	return true;
+}
+
+void destroyTarget(Target& target)
+{
+	retire(target.set);
+	if (target.framebuffer != VK_NULL_HANDLE)
+		vkDestroyFramebuffer(g_vulkan_context->GetDevice(), target.framebuffer, nullptr);
+	target.texture.Destroy(false);
+	target = Target();
 }
 
 // Draws `texture` (its part up to u, v) over the whole of a target, with
@@ -993,7 +1057,8 @@ VkShaderModule shaderModule(const uint32_t *words, size_t bytes)
 	return module;
 }
 
-VkPipeline fsrPipeline(VkShaderModule vertex, VkShaderModule fragment, VkPipelineLayout layout)
+VkPipeline fsrPipeline(VkShaderModule vertex, VkShaderModule fragment, VkPipelineLayout layout,
+		VkRenderPass pass = VK_NULL_HANDLE)
 {
 	VkPipelineShaderStageCreateInfo stages[2] = {};
 	stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1037,9 +1102,9 @@ VkPipeline fsrPipeline(VkShaderModule vertex, VkShaderModule fragment, VkPipelin
 	info.pColorBlendState = &blend;
 	info.pDynamicState = &dynamic;
 	info.layout = layout;
-	// The pass the title's own pictures are drawn in: one colour attachment,
-	// left readable by a shader.
-	info.renderPass = targetClearPass;
+	// The pass such pictures are drawn in: one colour attachment, left
+	// readable by a shader.
+	info.renderPass = pass != VK_NULL_HANDLE ? pass : shaderPass;
 	VkPipeline pipeline = VK_NULL_HANDLE;
 	if (vkCreateGraphicsPipelines(g_vulkan_context->GetDevice(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline) != VK_SUCCESS)
 		return VK_NULL_HANDLE;
@@ -1136,7 +1201,7 @@ void fsrPass(Target& target, VkPipeline pipeline, VkPipelineLayout layout, VkIma
 	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
 	const VkExtent2D size{ (uint32_t)target.width, (uint32_t)target.height };
 	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-	begin.renderPass = targetClearPass;
+	begin.renderPass = shaderPass;
 	begin.framebuffer = target.framebuffer;
 	begin.renderArea = { { 0, 0 }, size };
 	begin.clearValueCount = 1;
@@ -1204,8 +1269,8 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 		if (it != dynamicViews.end())
 			view = it->second;
 	}
-	if (view == VK_NULL_HANDLE || !fsrInit() || !ensureTarget(fsr.easuTarget, outWidth, outHeight)
-			|| !ensureTarget(fsr.rcasTarget, outWidth, outHeight))
+	if (view == VK_NULL_HANDLE || !fsrInit() || !ensureTarget(fsr.easuTarget, outWidth, outHeight, swapFormat, shaderPass)
+			|| !ensureTarget(fsr.rcasTarget, outWidth, outHeight, swapFormat, shaderPass))
 		return nullptr;
 	const EasuConstants easu = easuConstants((float)width, (float)height, (float)width / u, (float)height / v,
 			(float)outWidth, (float)outHeight);
@@ -1224,6 +1289,334 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 		fsr.saidOutH = outHeight;
 	}
 	return (void *)fsr.rcasTarget.set;
+}
+
+// --------------------------------------------------------- frame generation
+
+namespace
+{
+#include "fg_spirv.inc"
+
+struct Generation
+{
+	bool tried = false, ready = false;
+	VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	VkPipeline copy = VK_NULL_HANDLE, luma = VK_NULL_HANDLE, search = VK_NULL_HANDLE, blend = VK_NULL_HANDLE;
+	// A set is written each time it is used: they go round, and none comes
+	// round again while a frame under way reads it.
+	static constexpr unsigned Sets = 64;
+	VkDescriptorSet sets[Sets] = {};
+	unsigned next = 0;
+	// The picture before and this one, as they are drawn; of each, how bright
+	// its parts are, at four sizes (the largest first).
+	static constexpr int Levels = 4;
+	Target kept[2], bright[2][Levels];
+	// How the picture moved, at each of the four sizes, and the picture between.
+	Target movement[Levels], between;
+	int now = 0;				// which of the two is this frame's
+	bool haveNow = false, haveBefore = false, haveMovement = false;
+	uint64_t keptAt = 0;		// the display frame this frame's was kept in
+	int saidW = 0, saidH = 0;
+} generation;
+
+struct GenerationConstants
+{
+	float size[4];
+	float more[4];
+};
+
+bool generationInit()
+{
+	Generation& g = generation;
+	if (g.tried)
+		return g.ready;
+	g.tried = true;
+	VkDevice device = g_vulkan_context->GetDevice();
+	VkDescriptorSetLayoutBinding bindings[3] = {};
+	for (uint32_t i = 0; i < 3; i++)
+	{
+		bindings[i].binding = i;
+		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 3;
+	layoutInfo.pBindings = bindings;
+	VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Generation::Sets * 3 };
+	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	poolInfo.maxSets = Generation::Sets;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &poolSize;
+	VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerInfo.magFilter = samplerInfo.minFilter = VK_FILTER_LINEAR;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.maxAnisotropy = 1.f;
+	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &g.setLayout) != VK_SUCCESS
+			|| vkCreateDescriptorPool(device, &poolInfo, nullptr, &g.pool) != VK_SUCCESS
+			|| vkCreateSampler(device, &samplerInfo, nullptr, &g.sampler) != VK_SUCCESS)
+	{
+		diag::mark("frame generation: the driver refused a layout, a pool or a sampler: it stays off");
+		return false;
+	}
+	VkDescriptorSetLayout layouts[Generation::Sets];
+	for (VkDescriptorSetLayout& layout : layouts)
+		layout = g.setLayout;
+	VkDescriptorSetAllocateInfo allocate{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = g.pool;
+	allocate.descriptorSetCount = Generation::Sets;
+	allocate.pSetLayouts = layouts;
+	VkPushConstantRange range{ VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GenerationConstants) };
+	VkPipelineLayoutCreateInfo pipelineLayout{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayout.setLayoutCount = 1;
+	pipelineLayout.pSetLayouts = &g.setLayout;
+	pipelineLayout.pushConstantRangeCount = 1;
+	pipelineLayout.pPushConstantRanges = &range;
+	if (vkAllocateDescriptorSets(device, &allocate, g.sets) != VK_SUCCESS
+			|| vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &g.layout) != VK_SUCCESS)
+	{
+		diag::mark("frame generation: the driver refused the sets or a layout: it stays off");
+		return false;
+	}
+	const VkShaderModule vertex = shaderModule(fsr_vertex_spirv, sizeof(fsr_vertex_spirv));
+	const VkShaderModule copy = shaderModule(fg_copy_spirv, sizeof(fg_copy_spirv));
+	const VkShaderModule luma = shaderModule(fg_luma_spirv, sizeof(fg_luma_spirv));
+	const VkShaderModule search = shaderModule(fg_search_spirv, sizeof(fg_search_spirv));
+	const VkShaderModule blend = shaderModule(fg_blend_spirv, sizeof(fg_blend_spirv));
+	if (vertex != VK_NULL_HANDLE && copy != VK_NULL_HANDLE && luma != VK_NULL_HANDLE && search != VK_NULL_HANDLE
+			&& blend != VK_NULL_HANDLE)
+	{
+		g.copy = fsrPipeline(vertex, copy, g.layout);
+		g.luma = fsrPipeline(vertex, luma, g.layout, floatPass);
+		g.search = fsrPipeline(vertex, search, g.layout, floatPass);
+		g.blend = fsrPipeline(vertex, blend, g.layout);
+	}
+	for (VkShaderModule module : { vertex, copy, luma, search, blend })
+		if (module != VK_NULL_HANDLE)
+			vkDestroyShaderModule(device, module, nullptr);
+	g.ready = g.copy != VK_NULL_HANDLE && g.luma != VK_NULL_HANDLE && g.search != VK_NULL_HANDLE && g.blend != VK_NULL_HANDLE;
+	diag::mark(g.ready ? "frame generation: ready" : "frame generation: the driver refused a shader or a pipeline: it stays off");
+	return g.ready;
+}
+
+// One pass: up to three pictures through a pipeline, over the whole of a target.
+void generationPass(Target& target, VkPipeline pipeline, VkImageView first, VkImageLayout firstLayout,
+		VkImageView second, VkImageView third, const GenerationConstants& constants)
+{
+	Generation& g = generation;
+	VkDevice device = g_vulkan_context->GetDevice();
+	const VkDescriptorSet set = g.sets[g.next++ % Generation::Sets];
+	// A pass that reads fewer than three is given the first again.
+	VkDescriptorImageInfo images[3] = {
+		{ g.sampler, first, firstLayout },
+		{ g.sampler, second != VK_NULL_HANDLE ? second : first,
+				second != VK_NULL_HANDLE ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : firstLayout },
+		{ g.sampler, third != VK_NULL_HANDLE ? third : first,
+				third != VK_NULL_HANDLE ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : firstLayout },
+	};
+	VkWriteDescriptorSet writes[3] = {};
+	for (uint32_t i = 0; i < 3; i++)
+	{
+		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[i].dstSet = set;
+		writes[i].dstBinding = i;
+		writes[i].descriptorCount = 1;
+		writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[i].pImageInfo = &images[i];
+	}
+	vkUpdateDescriptorSets(device, 3, writes, 0, nullptr);
+
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	VkClearValue clear{};
+	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
+	const VkExtent2D size{ (uint32_t)target.width, (uint32_t)target.height };
+	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+	begin.renderPass = target.format == FloatFormat ? floatPass : shaderPass;
+	begin.framebuffer = target.framebuffer;
+	begin.renderArea = { { 0, 0 }, size };
+	begin.clearValueCount = 1;
+	begin.pClearValues = &clear;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	const VkViewport viewport{ 0.f, 0.f, (float)size.width, (float)size.height, 0.f, 1.f };
+	const VkRect2D scissor{ { 0, 0 }, size };
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.layout, 0, 1, &set, 0, nullptr);
+	vkCmdPushConstants(cmd, g.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdEndRenderPass(cmd);
+	target.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	target.drawn = true;
+}
+
+void generationShutdown()
+{
+	Generation& g = generation;
+	VkDevice device = g_vulkan_context->GetDevice();
+	for (Target& target : g.kept)
+		destroyTarget(target);
+	for (auto& levels : g.bright)
+		for (Target& target : levels)
+			destroyTarget(target);
+	for (Target& target : g.movement)
+		destroyTarget(target);
+	destroyTarget(g.between);
+	for (VkPipeline pipeline : { g.copy, g.luma, g.search, g.blend })
+		if (pipeline != VK_NULL_HANDLE)
+			vkDestroyPipeline(device, pipeline, nullptr);
+	if (g.layout != VK_NULL_HANDLE)
+		vkDestroyPipelineLayout(device, g.layout, nullptr);
+	if (g.sampler != VK_NULL_HANDLE)
+		vkDestroySampler(device, g.sampler, nullptr);
+	if (g.pool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(device, g.pool, nullptr);
+	if (g.setLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(device, g.setLayout, nullptr);
+	g = Generation();
+}
+
+// The image behind a picture ImGui draws: the emulator's, the software
+// renderer's, or FSR's result.
+bool viewBehind(void *texture, VkImageView& view, VkImageLayout& layout)
+{
+	layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	if (texture == nullptr)
+		return false;
+	if (texture == (void *)wrappedSet && wrappedView != VK_NULL_HANDLE)
+	{
+		view = wrappedView;
+		layout = (VkImageLayout)wrappedLayout;
+		return true;
+	}
+	if (texture == (void *)fsr.rcasTarget.set && fsr.rcasTarget.framebuffer != VK_NULL_HANDLE)
+	{
+		view = fsr.rcasTarget.texture.GetView();
+		return true;
+	}
+	const auto it = dynamicViews.find(texture);
+	if (it == dynamicViews.end())
+		return false;
+	view = it->second;
+	return true;
+}
+}
+
+void forgetGenerated()
+{
+	generation.haveNow = generation.haveBefore = generation.haveMovement = false;
+}
+
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase)
+{
+	Generation& g = generation;
+	if (texture == nullptr || !frameOpen || width < 64 || height < 64 || width > 8192 || height > 8192 || u <= 0 || v <= 0)
+		return nullptr;
+	if (!generationInit())
+		return nullptr;
+	// Another size is another picture: what was kept is not its past.
+	if (g.kept[g.now].width != width || g.kept[g.now].height != height)
+		forgetGenerated();
+	// The sizes movement is looked for at: the largest about 360 lines, each
+	// of the others half the one before.
+	int levelW[Generation::Levels], levelH[Generation::Levels];
+	levelH[0] = std::clamp(height, 64, 360) / 8 * 8;
+	levelW[0] = std::clamp((int)std::lround((double)levelH[0] * width / height / 8.0) * 8, 64, 1024);
+	for (int i = 1; i < Generation::Levels; i++)
+	{
+		levelW[i] = levelW[i - 1] / 2;
+		levelH[i] = levelH[i - 1] / 2;
+	}
+	if (fresh)
+	{
+		VkImageView view = VK_NULL_HANDLE;
+		VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		if (!viewBehind(texture, view, layout))
+			return nullptr;
+		// A picture kept more than a few refreshes ago is not the one before
+		// this (the game was paused, or a menu was over it).
+		const bool follows = g.haveNow && frames - g.keptAt <= 4;
+		const int now = g.now ^ 1;
+		if (!ensureTarget(g.kept[now], width, height, swapFormat, shaderPass)
+				|| !ensureTarget(g.between, width, height, swapFormat, shaderPass))
+			return nullptr;
+		for (int i = 0; i < Generation::Levels; i++)
+			if (!ensureTarget(g.bright[now][i], levelW[i], levelH[i], FloatFormat, floatPass, false)
+					|| !ensureTarget(g.movement[i], levelW[i], levelH[i], FloatFormat, floatPass, false))
+				return nullptr;
+		g.now = now;
+		g.haveBefore = follows;
+		g.haveNow = true;
+		g.haveMovement = false;
+		g.keptAt = frames;
+		// The picture, kept.
+		GenerationConstants c{};
+		c.size[0] = 1.f / (float)width;
+		c.size[1] = 1.f / (float)height;
+		c.more[0] = u;
+		c.more[1] = v;
+		generationPass(g.kept[now], g.copy, view, layout, VK_NULL_HANDLE, VK_NULL_HANDLE, c);
+		// How bright its parts are, smaller and smaller.
+		for (int i = 0; i < Generation::Levels; i++)
+		{
+			c = GenerationConstants();
+			c.size[0] = 1.f / (float)levelW[i];
+			c.size[1] = 1.f / (float)levelH[i];
+			c.more[0] = c.size[0] / 3.f;
+			c.more[1] = c.size[1] / 3.f;
+			c.more[2] = i == 0 ? 1.f : 0.f;
+			generationPass(g.bright[now][i], g.luma, i == 0 ? g.kept[now].texture.GetView() : g.bright[now][i - 1].texture.GetView(),
+					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_NULL_HANDLE, VK_NULL_HANDLE, c);
+		}
+		if (g.haveBefore && g.bright[now ^ 1][0].drawn && g.bright[now ^ 1][0].width == levelW[0]
+				&& g.bright[now ^ 1][0].height == levelH[0])
+		{
+			// How it moved since the picture before: from the smallest size,
+			// where a step is a long way, to the largest, in half steps.
+			for (int i = Generation::Levels - 1; i >= 0; i--)
+			{
+				const bool smallest = i == Generation::Levels - 1;
+				c = GenerationConstants();
+				c.size[0] = 1.f / (float)levelW[i];
+				c.size[1] = 1.f / (float)levelH[i];
+				c.more[0] = smallest ? 3.f : i == 0 ? 2.f : 1.f;
+				c.more[1] = i == 0 ? 0.5f : 1.f;
+				c.more[2] = smallest ? 0.f : 1.f;
+				c.more[3] = 0.004f;
+				generationPass(g.movement[i], g.search, g.bright[now ^ 1][i].texture.GetView(),
+						VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, g.bright[now][i].texture.GetView(),
+						smallest ? VK_NULL_HANDLE : g.movement[i + 1].texture.GetView(), c);
+			}
+			g.haveMovement = true;
+		}
+		else
+			g.haveBefore = false;
+		if (g.saidW != width || g.saidH != height)
+		{
+			diag::mark("frame generation: pictures of %d x %d, movement looked for at %d x %d", width, height, levelW[0], levelH[0]);
+			g.saidW = width;
+			g.saidH = height;
+		}
+	}
+	if (!g.haveNow || g.kept[g.now].width != width || g.kept[g.now].height != height)
+		return nullptr;
+	// This frame itself; or, with the one before to go by, the picture a part
+	// of the way from that one to this.
+	if (phase >= 0.999f || !g.haveBefore || !g.haveMovement)
+		return (void *)g.kept[g.now].set;
+	GenerationConstants c{};
+	c.size[0] = 1.f / (float)width;
+	c.size[1] = 1.f / (float)height;
+	c.size[2] = 1.f / (float)levelW[0];
+	c.size[3] = 1.f / (float)levelH[0];
+	c.more[0] = std::clamp(phase, 0.f, 1.f);
+	generationPass(g.between, g.blend, g.kept[g.now ^ 1].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			g.kept[g.now].texture.GetView(), g.movement[0].texture.GetView(), c);
+	return (void *)g.between.set;
 }
 
 bool capture(void *texture, float u, float v, int width, int height, std::vector<uint8_t>& rgba)

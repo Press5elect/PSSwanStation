@@ -183,6 +183,9 @@ struct FlowGames
 // The views in space: this title's own, then the Aurora layout files of
 // <root>layouts. The library's "View" setting is 2 and up for these.
 std::vector<std::string> flowNames();
+// Every view the library has, as the "view" setting counts them: the grid,
+// the list, then those.
+std::vector<std::string> libraryViewNames();
 bool flowIsOwn(int index);
 // The layouts folder is read again when the names are next asked for.
 void flowRescan();
