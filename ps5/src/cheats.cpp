@@ -418,7 +418,7 @@ void init()
 	const int patchFiles = countArchive(patchesArchive());
 	std::string text;
 	if (cheatFiles < 0 && patchFiles < 0)
-		text = "not installed (assets/cheats.zip, assets/patches.zip)";
+		text = "not fetched yet (Settings, Games and network, \"Fetch the newest cheat database\")";
 	else
 		text = format("cheats for %d games, patches for %d", std::max(cheatFiles, 0), std::max(patchFiles, 0));
 	if (fileExists(rootDir + "data/cheats.zip"))

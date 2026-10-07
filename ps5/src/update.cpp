@@ -80,8 +80,8 @@ constexpr unsigned AnswerSeconds = 20;
 // The program's files: these folders whole, and these files of the title's
 // folder itself. Nothing else is unpacked, replaced or put back.
 constexpr const char *ManagedFolders[] = { "sce_sys/", "sce_module/", "assets/", "licenses/" };
-constexpr const char *ManagedFiles[] = { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "lapy.elf",
-	"lapy-manifest.json" };
+constexpr const char *ManagedFiles[] = { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "LEGAL.txt",
+	"lapy.elf", "lapy-manifest.json" };
 
 // What check() found on the releases page.
 struct Release

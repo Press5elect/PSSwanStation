@@ -13,6 +13,12 @@
 	game, and <root>data/game-options/<serial>.cfg for the ones a game has of
 	its own, laid over the first while that game runs.
 
+	The frontend's picture settings (scaling, the picture tube, frame
+	generation and the rest: pictureFields below) can be a game's own too. They
+	are kept in the same file of the game, as "picture_<name>", and are laid
+	over the frontend's while that game is the one loaded: frontend() then
+	gives the game's, and frontend.cfg keeps the ones for every game.
+
 	A few lists are narrowed for the console, and a few defaults differ from
 	the core's; both are in `adapt` below, with the reason for each.
 */
@@ -280,13 +286,161 @@ std::vector<Field> fields()
 }
 }
 
+namespace
+{
+// The picture settings a game can have of its own, by their names in
+// frontend.cfg. `general` is each one's value for every game; `current` has
+// the loaded game's where it has one.
+struct PictureField
+{
+	const char *name;
+	int *number;
+	bool *flag;
+	int low, high;
+	int general;
+};
+
+std::vector<PictureField>& pictureFields()
+{
+	static std::vector<PictureField> list;
+	if (list.empty())
+	{
+		static const char *const names[] = { "scaling", "fsr_sharpness", "linear_filter", "pacing", "black_frames",
+				"frame_generation", "crt", "border", "preset" };
+		for (const Field& field : fields())
+			for (const char *name : names)
+				if (!strcmp(field.name, name))
+					list.push_back({ field.name, field.number, field.flag, field.low, field.high,
+							field.flag != nullptr ? (int)*field.flag : *field.number });
+	}
+	return list;
+}
+
+int valueOf(const PictureField& field)
+{
+	return field.flag != nullptr ? (int)*field.flag : *field.number;
+}
+
+void put(const PictureField& field, int value)
+{
+	if (field.flag != nullptr)
+		*field.flag = value != 0;
+	else
+		*field.number = std::clamp(value, field.low, field.high);
+}
+
+std::string pictureKey(const char *name)
+{
+	return std::string("picture_") + name;
+}
+
+// The loaded game's own value of a picture setting, if it has one. Called
+// with the mutex held.
+bool gamePicture(const PictureField& field, int& value)
+{
+	const auto it = gameValues.find(pictureKey(field.name));
+	if (it == gameValues.end() || it->second.empty()
+			|| it->second.find_first_not_of("0123456789") != std::string::npos || it->second.size() > 4)
+		return false;
+	value = std::clamp(atoi(it->second.c_str()), field.low, field.high);
+	return true;
+}
+
+// Whatever was written straight into frontend() is a value for every game,
+// unless the loaded game has its own there. Called with the mutex held.
+void takeGeneral()
+{
+	for (PictureField& field : pictureFields())
+	{
+		int own;
+		if (!gamePicture(field, own))
+			field.general = valueOf(field);
+	}
+}
+
+// frontend() as the loaded game wants it. Called with the mutex held.
+void layPicture()
+{
+	for (PictureField& field : pictureFields())
+	{
+		int own;
+		put(field, gamePicture(field, own) ? own : field.general);
+	}
+}
+
+PictureField *pictureField(const std::string& name)
+{
+	for (PictureField& field : pictureFields())
+		if (name == field.name)
+			return &field;
+	return nullptr;
+}
+}
+
+int picture(const std::string& name, bool forGame)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	const PictureField *field = pictureField(name);
+	if (field == nullptr)
+		return 0;
+	int own;
+	if (forGame)
+		return valueOf(*field);
+	return gamePicture(*field, own) ? field->general : valueOf(*field);
+}
+
+void setPicture(const std::string& name, int value, bool forGame)
+{
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		PictureField *field = pictureField(name);
+		if (field == nullptr)
+			return;
+		takeGeneral();
+		value = std::clamp(value, field->low, field->high);
+		if (forGame && !serial.empty())
+		{
+			gameValues[pictureKey(field->name)] = std::to_string(value);
+			writeValues(gameFile(serial), gameValues);
+		}
+		else
+			field->general = value;
+		layPicture();
+	}
+	saveFrontend();
+}
+
+bool hasGamePicture(const std::string& name)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	const PictureField *field = pictureField(name);
+	int own;
+	return field != nullptr && gamePicture(*field, own);
+}
+
+void clearGamePicture(const std::string& name)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	const PictureField *field = pictureField(name);
+	if (field == nullptr)
+		return;
+	takeGeneral();
+	if (gameValues.erase(pictureKey(field->name)) != 0 && !serial.empty())
+		writeValues(gameFile(serial), gameValues);
+	layPicture();
+}
+
 // frontend.cfg is the title folder's, wherever the user's other files are:
 // it is read before the sandbox is left, to know whether to leave it.
 void loadFrontend()
 {
 	FILE *f = fopen((appDir + "frontend.cfg").c_str(), "r");
 	if (f == nullptr)
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		takeGeneral();
 		return;
+	}
 	const std::vector<Field> known = fields();
 	char key[64];
 	float value;
@@ -312,13 +466,26 @@ void loadFrontend()
 				}
 	}
 	fclose(f);
+	std::lock_guard<std::mutex> lock(mutex);
+	takeGeneral();
 }
 
 void saveFrontend()
 {
 	std::string text;
-	for (const Field& field : fields())
-		text += format("%s = %d\n", field.name, field.flag != nullptr ? (int)*field.flag : *field.number);
+	{
+		// The picture settings are written as they are for every game, also
+		// while a game with its own is loaded.
+		std::lock_guard<std::mutex> lock(mutex);
+		takeGeneral();
+		for (const Field& field : fields())
+		{
+			int value = field.flag != nullptr ? (int)*field.flag : *field.number;
+			if (const PictureField *picture = pictureField(field.name))
+				value = picture->general;
+			text += format("%s = %d\n", field.name, value);
+		}
+	}
 	text += format("dead_zone = %.2f\nturbo = %u\n", current.deadZone, current.turbo);
 	writeFile(appDir + "frontend.cfg", text.data(), text.size());
 }
@@ -433,11 +600,13 @@ void loadGame(const std::string& id)
 	std::lock_guard<std::mutex> lock(mutex);
 	if (id == serial)
 		return;
+	takeGeneral();
 	serial = id;
 	if (id.empty())
 		gameValues.clear();
 	else
 		readValues(gameFile(id), gameValues);
+	layPicture();
 	changed = true;
 	changes++;
 }
@@ -499,6 +668,13 @@ void resetGlobal()
 void resetFrontend()
 {
 	current = Frontend();
+	{
+		// The games' own picture settings stay, as their other settings do.
+		std::lock_guard<std::mutex> lock(mutex);
+		for (PictureField& field : pictureFields())
+			field.general = valueOf(field);
+		layPicture();
+	}
 	saveFrontend();
 }
 

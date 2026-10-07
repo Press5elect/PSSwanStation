@@ -1639,6 +1639,7 @@ void libraryPage(bool active)
 	}
 	hints.push_back({ Square, "Sort and filter" });
 	hints.push_back({ Options, "Menu" });
+	hints.push_back({ cancelButton, "Close" });
 	if (!libraryBehind)
 	{
 		hintBar(hints, left);
@@ -1655,6 +1656,10 @@ void libraryPage(bool active)
 		deferred = [] { openSearch(); };
 	else if (hit(Square))
 		push(Page::LibraryOptions);
+	else if (hit(cancelButton))
+		// Back from the library is out of the title: asked first, as it is one
+		// press of the button that goes back everywhere else.
+		push(Page::Confirm, 0, 0, "Close PSSwanStation?", "Back to the console's home screen.", [] { quit = true; });
 	else if (focus >= 0 && hit(confirmButton))
 	{
 		const library::Game game = view.games[focus];
@@ -1690,6 +1695,9 @@ std::vector<SettingsCategory> settingsCategories(bool forGame)
 		list.push_back({ "Games and network", "", icon::Server, 4, "" });
 		list.push_back({ "RetroAchievements", "", icon::Trophy, 6, "" });
 	}
+	else
+		list.push_back({ "Picture", "", icon::Screen, 1, "How this game is put on the screen: scaling, the picture "
+				"tube, what is beside the picture, pacing and frame generation, for this game alone." });
 	bool uncategorised = false;
 	for (const options::Option& option : options::all())
 		if (option.category.empty())
@@ -1823,34 +1831,6 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"Lets PSSwanStation use the console's pop-up notices for things that matter outside its own screen "
 				"(a start-up problem, for one).",
 				[] { diag::setNotifications(options::frontend().notifications); }));
-		break;
-	case 1:
-		items.push_back(choice("Scaling", f.scaling, { "Fit the screen", "Whole multiples", "Stretch", "Fit the screen, FSR 1" },
-				"Fit keeps the picture's shape and makes it as large as the screen allows. Whole multiples only "
-				"enlarges by 2x, 3x and so on, which keeps the software renderer's pixels even. Stretch fills the "
-				"screen and distorts. FSR 1 fits the screen too, and enlarges with AMD's FidelityFX Super Resolution 1 "
-				"instead of a plain filter: edges stay clean and the picture is sharpened, so a lower Internal "
-				"Resolution Scale (Enhancement) looks closer to a high one and costs less. It is the kind of FSR that "
-				"works on one finished picture; the later kinds need things an emulated PlayStation does not give. "
-				"A picture already as large as the screen is left as it is.",
-				[](int i) { options::frontend().scaling = i; }));
-		{
-			Item item = choice("FSR sharpening", f.fsrSharpness, { "Soft", "Normal", "Sharp" },
-					"How strongly FSR 1 sharpens the enlarged picture.",
-					[](int i) { options::frontend().fsrSharpness = i; });
-			item.enabled = f.scaling == 3;
-			items.push_back(item);
-		}
-		{
-			Item item = toggle("Smooth scaling", &f.linearFilter,
-					"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares.");
-			if (f.scaling == 3)
-			{
-				item.enabled = false;
-				item.value = "FSR 1";
-			}
-			items.push_back(item);
-		}
 		break;
 	case 2:
 		items.push_back(choice("Volume", f.volume / 5,
@@ -2110,7 +2090,9 @@ void settingsPage(Frame& f)
 	}
 
 	std::vector<Item> items;
-	if (category.kind < 10)
+	if (category.kind == 1)
+		pictureItems(forGame, items);
+	else if (category.kind < 10)
 		frontendItems(category.kind, items);
 	else if (category.kind == 20)
 		aboutItems(items);
@@ -2259,8 +2241,8 @@ void pausePage(Frame& f)
 		items.push_back(item);
 	}
 	pauseMoreItems(items);
-	items.push_back(action(icon::Sliders, "Game settings", "The emulator's settings for this game alone: what is "
-			"set there is kept with the game and used whenever it runs.",
+	items.push_back(action(icon::Sliders, "Game settings", "The picture's and the emulator's settings for this game "
+			"alone: what is set there is kept with the game and used whenever it runs.",
 			[] { push(Page::Settings, 0, 1); }, !game.serial.empty()));
 	items.push_back(action(icon::Gear, "Settings", "The settings for every game.", [] { push(Page::Settings); }));
 	items.push_back(action(icon::Undo, "Reset", "Restarts the game, as the console's reset button does.", [] {
@@ -2932,6 +2914,9 @@ void detailsPage(Frame& f)
 				"not open). A game's own settings and its cheats are kept by that number.";
 	else if (f.a == TabOptions)
 	{
+		// How the game is put on the screen first, then the emulator's.
+		items.push_back(header("PICTURE"));
+		pictureItems(true, items);
 		for (const options::Category& category : options::categories())
 		{
 			std::string name = category.name;

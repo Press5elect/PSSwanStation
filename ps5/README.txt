@@ -27,7 +27,7 @@ Where things go (all inside /data/homebrew/PPSA99248/)
   games/        your games; folders inside it are scanned too
   bios/         optional BIOS files of an original console
   covers/       cover pictures, named as the game's file: <name>.png or .jpg
-  cheats/       your own cheat files, <serial>.cht (SLUS-00594.cht)
+  cheats/       your own cheat files, <serial>.cht (SLUS-12345.cht)
   textures/     texture packs, one folder for each game: textures/<serial>/
   layouts/      Aurora cover layouts (.cfljson), offered as library views
   borders/      pictures for the sides of a 4:3 picture: <serial>.png or
@@ -61,7 +61,8 @@ Controls
 
 In the menus
   D-pad, left stick     move
-  Cross / Circle        confirm / back (they can be swapped in Settings)
+  Cross / Circle        confirm / back (they can be swapped in Settings); back
+                        in the library asks whether to close PSSwanStation
   L1, R1                the library's tabs; a settings section
   L2, R2                in the library, the letter before and the letter after;
                         in other lists, a page up or down
@@ -206,7 +207,17 @@ network, RetroAchievements).
 A game's own settings are in its details (Options) and, while it runs, in
 the menu: "Settings" changes them for every game, "Game settings" for this
 game only. A dot marks a value that is the game's own; Square gives it back
-to the general value.
+to the general value. A game can have its own of every setting of the
+emulator and of the Picture page: scaling (FSR 1 too) and its sharpening,
+smooth scaling, the picture preset, the picture tube, what is beside the
+picture, frame pacing, black frame insertion and frame generation. They are
+kept with the game (data/game-options/<serial>.cfg) and in force whenever it
+runs; other games keep the general ones. Display output alone is for every
+game: the console reads it when PSSwanStation starts, before any game is
+chosen.
+
+Closing PSSwanStation: Circle in the library asks, and Cross answers yes; or
+OPTIONS, "Close PSSwanStation".
 
 More players: player 1 is whoever started PSSwanStation. A second person
 presses the PS button on their controller and chooses a user; they are
@@ -366,14 +377,18 @@ the menus (never while a game is on the screen), to spare the display.
 Cheats and patches
 ------------------
 
-The title carries the DuckStation cheat and patch database (assets/cheats.zip
-and assets/patches.zip): cheat codes for about 4500 games and patches
-(widescreen, 60 frames a second and others) for about 140. A game's entries
-are in its details (Triangle in the library) and in its menu while it runs,
-under "Cheats and patches", found by the disc's serial number. Cross switches one on or off; where a cheat has a value to choose
-(a character, a car), Left and Right choose it. What is switched on is kept
-for that game. A widescreen patch also sets the aspect ratio it needs while
-it is on.
+The cheats and patches are the DuckStation project's chtdb: cheat codes for
+about 4500 games and patches (widescreen, 60 frames a second and others) for
+about 140. A release of PSSwanStation does not carry the database, because
+its entries belong to their authors and the project gives no licence to pass
+them on: Settings, Games and network, "Fetch the newest cheat database" gets
+it once from the project's own releases (and again whenever you ask, as it
+grows); it is kept in data/ and used from then on. A game's entries are in
+its details (Triangle in the library) and in its menu while it runs, under
+"Cheats and patches", found by the disc's serial number. Cross switches one
+on or off; where a cheat has a value to choose (a character, a car), Left
+and Right choose it. What is switched on is kept for that game. A widescreen
+patch also sets the aspect ratio it needs while it is on.
 
 Your own codes: cheats/<serial>.cht in the same format, for example
 
@@ -382,8 +397,6 @@ Your own codes: cheats/<serial>.cht in the same format, for example
   Activation = EndFrame
   800B7526 03E7
 
-The database grows: Settings, Games and network, "Fetch the newest cheat
-database" fetches its newest release (kept in data/, used from then on).
 
 
 Save states

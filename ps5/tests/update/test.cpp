@@ -445,7 +445,7 @@ std::map<std::string, Listed> manifestOf(const std::string& release)
 // what an update may touch.
 bool programFile(const std::string& path)
 {
-	for (const char *file : { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "lapy.elf",
+	for (const char *file : { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "LEGAL.txt", "lapy.elf",
 			"lapy-manifest.json" })
 		if (path == file)
 			return true;
@@ -1325,12 +1325,12 @@ void testRealRelease()
 	CHECK_TEXT(contentOf(title + "sce_sys/param.json"), "\"titleId\": \"PPSA99248\"");
 	std::vector<uint8_t> eboot;
 	readFile(title + "eboot.bin", eboot);
-	printf("  the real build 9: eboot.bin is %zu bytes, mode %o\n", eboot.size(),
+	printf("  the real release: eboot.bin is %zu bytes, mode %o\n", eboot.size(),
 			(unsigned)modeOf(title + "eboot.bin"));
 	const std::map<std::string, Listed> manifest = manifestOf("real");
 	for (const auto& [path, listed] : manifest)
 		if (!programFile(path))
-			printf("  the real build 9: %s is in the ZIP and is not one of the program's files\n", path.c_str());
+			printf("  the real release: %s is in the ZIP and is not one of the program's files\n", path.c_str());
 }
 
 } // namespace
