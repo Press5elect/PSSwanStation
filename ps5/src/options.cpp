@@ -228,7 +228,7 @@ std::vector<Field> fields()
 		{ "pacing", &c.pacing, nullptr, 0, 2 },
 		{ "display_mode", &c.displayMode, nullptr, 0, 2 },
 		{ "black_frames", nullptr, &c.blackFrames, 0, 1 },
-		{ "frame_generation", nullptr, &c.frameGeneration, 0, 1 },
+		{ "frame_generation", &c.frameGeneration, nullptr, 0, 2 },
 		{ "crt", &c.crt, nullptr, 0, 3 },
 		{ "border", &c.border, nullptr, 0, 3 },
 		{ "preset", &c.preset, nullptr, 0, 3 },

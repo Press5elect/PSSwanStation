@@ -137,6 +137,13 @@ public:
   // Returns the video clock frequency.
   TickCount GetCRTCFrequency() const;
 
+#ifdef SWANSTATION_STANDALONE
+  // How often the game has changed where in video memory the display starts:
+  // a game that draws into a second buffer does that to show each new picture
+  // (the PS5 title's frame generation counts its pictures by it).
+  uint32_t GetDisplayStartChangeCount() const { return m_display_start_changes; }
+#endif
+
 protected:
   TickCount CRTCTicksToSystemTicks(TickCount crtc_ticks, TickCount fractional_ticks) const;
   TickCount SystemTicksToCRTCTicks(TickCount sysclk_ticks, TickCount* fractional_ticks) const;
@@ -496,6 +503,7 @@ protected:
 
   TickCount m_max_run_ahead = 128;
   uint32_t m_fifo_size = 128;
+  uint32_t m_display_start_changes = 0;
 
 private:
   using GP0CommandHandler = bool (GPU::*)();

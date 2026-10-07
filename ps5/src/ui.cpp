@@ -628,7 +628,7 @@ void drawGame(float dim)
 		if (host::generationPhase(phase, fresh))
 		{
 			void *made = display::generated(shown, upscaled != nullptr ? outW : w, upscaled != nullptr ? outH : h, shownU,
-					shownV, fresh, phase);
+					shownV, fresh, phase, options::frontend().frameGeneration == 2);
 			if (made != nullptr)
 			{
 				shown = made;
@@ -3864,10 +3864,73 @@ void menuSounds()
 		sound::play(sound::Move);
 }
 
+#if defined(SWANSTATION_HOST)
+// A test of frame generation with pictures of known movement: the files
+// f0.png, f1.png... of the folder SWANSTATION_FG_TEST names are a game's
+// pictures, each shown for SWANSTATION_FG_STEPS refreshes (2 when not said),
+// and the screen shows what frame generation makes of them, top left, pixel
+// for pixel. Every refresh is saved as a picture, and the log says which
+// showed which step.
+bool generationTest()
+{
+	const char *folder = getenv("SWANSTATION_FG_TEST");
+	if (folder == nullptr)
+		return false;
+	static std::vector<Image> pictures;
+	static bool ready;
+	static uint64_t started;
+	if (!ready)
+	{
+		pictures.clear();
+		ready = true;
+		for (int i = 0; i < 64; i++)
+		{
+			const std::string file = format("%s/f%d.png", folder, i);
+			if (!fileExists(file))
+				break;
+			pictures.push_back(image(file));
+			if (pictures.back().id == nullptr)
+				ready = false;		// still being read
+		}
+		started = display::frameCount();
+		return true;
+	}
+	const int steps = getenv("SWANSTATION_FG_STEPS") != nullptr ? std::clamp(atoi(getenv("SWANSTATION_FG_STEPS")), 1, 8) : 2;
+	const uint64_t tick = display::frameCount() - started;
+	const size_t index = (size_t)(tick / (uint64_t)steps);
+	// What the refresh before showed, kept as g<its number>.png.
+	if (tick >= 1 && index <= pictures.size())
+		display::saveScreenshot(format("%sg%03d.png", rootDir.c_str(), (int)tick - 1));
+	if (pictures.empty() || index >= pictures.size())
+	{
+		quit = true;
+		return true;
+	}
+	const int step = (int)(tick % (uint64_t)steps);
+	const float phase = (float)(step + 1) / (float)steps;
+	const Image& picture = pictures[index];
+	void *shown = display::generated(picture.id, picture.width, picture.height, 1.f, 1.f, step == 0, phase,
+			getenv("SWANSTATION_FG_LIGHTER") != nullptr);
+	ImDrawList *list = ImGui::GetBackgroundDrawList();
+	list->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, 255));
+	display::sampling(list, true);
+	list->AddImage((ImTextureID)(shown != nullptr ? shown : picture.id), ImVec2(0, 0),
+			ImVec2((float)picture.width, (float)picture.height));
+	display::sampling(list, false);
+	diag::mark("generation test: display frame %llu shows picture %d at phase %.2f%s", (unsigned long long)display::frameCount(),
+			(int)index, phase, shown == nullptr ? " (not made)" : "");
+	return true;
+}
+#endif
+
 void frame()
 {
 	widgetsFrame();
 	imagesFrame();
+#if defined(SWANSTATION_HOST)
+	if (generationTest())
+		return;
+#endif
 	readInput();
 	menuSounds();
 	if (closeGame)

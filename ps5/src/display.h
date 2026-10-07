@@ -80,7 +80,8 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 // (at phase 1, or with no picture before) this one as it was kept. Null when
 // it cannot be done: the picture is then drawn as it is. Only between a
 // frame's begin and its end.
-void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase);
+// `lighter`: with less work for the graphics processor, and less care.
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, bool lighter = false);
 // The next picture has no picture before it (another game, a state loaded).
 void forgetGenerated();
 // RGBA8 pixels as a PNG file. May be called on any thread.

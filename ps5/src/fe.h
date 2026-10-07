@@ -294,7 +294,7 @@ struct Frontend
 	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
 	int displayMode = 0;
 	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
-	bool frameGeneration = false;	// a picture made between each two of the game's (display::generated)
+	int frameGeneration = 0;	// pictures made between the game's (display::generated): 0 off, 1 on, 2 on, the lighter way
 	int crt = 0;				// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask
 	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
 	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced
@@ -440,6 +440,9 @@ bool blackFrame();
 // False when no picture is to be made (it is off, or the game is being run
 // fast or backwards).
 bool generationPhase(float& phase, bool& fresh);
+// How many new pictures a second the running game shows, when that can be
+// counted (it moves its display from one buffer to another); else 0.
+double picturesPerSecond();
 // The lines the PlayStation draws (240, 480...), for the scanlines.
 int nativeLines();
 // The game's picture as it is now, without the interface: RGBA8, at most

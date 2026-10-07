@@ -1068,6 +1068,7 @@ void GPU::WriteGP1(uint32_t value)
       {
         SynchronizeCRTC();
         m_crtc_state.regs.display_address_start = new_value;
+        m_display_start_changes++;
         UpdateCRTCDisplayParameters();
       }
     }

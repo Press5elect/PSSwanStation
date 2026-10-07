@@ -1,6 +1,18 @@
 PSSwanStation - what changed
 ============================
 
+Build 13
+  - Frame generation smears far less. The title now counts the pictures the
+    game really draws (30, 20, 60 a second) and fills only the gaps between
+    them; a game that draws 60 at 60 Hz is left alone. A made picture is
+    taken from the nearer of the two game pictures, not mixed from both.
+  - Frame generation is Off, On, or "On, lighter" (less work for the
+    graphics processor). Settings, Picture says what the running game is
+    counted at.
+  - The Lapy helper is the newer one that ProsperoEden carries (firmware
+    13.60 fix).
+  Run on a PC only so far.
+
 Build 12
   - Frame generation (Settings, Picture): a picture drawn between each two
     of the game's. Twice the frames at 120 Hz; at 60 Hz, 30 fps games move

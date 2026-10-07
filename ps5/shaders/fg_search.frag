@@ -25,7 +25,9 @@ float difference(vec2 uv, vec2 v)
 	for (int y = -1; y <= 1; y++)
 		for (int x = -1; x <= 1; x++)
 		{
-			vec2 at = uv + vec2(x, y) * 1.5 * pc.size.xy;
+			// Two pixels apart: each tap is a mix of four pixels, and the nine
+			// of them see a patch six across.
+			vec2 at = uv + vec2(x, y) * 2.0 * pc.size.xy;
 			sum += abs(texture(before, at - v * 0.5 * pc.size.xy).r - texture(now, at + v * 0.5 * pc.size.xy).r);
 		}
 	return sum;

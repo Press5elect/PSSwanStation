@@ -258,8 +258,8 @@ Picture (Settings):
                      left on; from the next start.
   Black frame insertion   at 120 Hz, a black refresh between a 60 fps game's
                      frames: clearer movement, a darker picture.
-  Frame generation   a picture of the title's own between each two of the
-                     game's (below).
+  Frame generation   pictures of the title's own between the game's: off,
+                     on, or on and lighter (below).
 
 Display output is kept in the title's own sce_sys/param.json, which is where
 the console reads it when the title starts. If the screen stays dark after it
@@ -282,26 +282,71 @@ pixel's depth and movement, which an emulated PlayStation does not give, and
 the FSR 4 that exists for PS5 homebrew runs on another Vulkan driver than
 this title's. Tested on a PC; not yet seen on a console in this title.
 
-Frame generation draws a picture between each two of the game's, worked out
-from how the picture moved, so that movement is smoother than the game makes
-it. What it gives depends on the screen and the game:
+Frame generation ("Off", "On", "On, lighter") draws pictures of the title's
+own between the game's, worked out from how the picture moved, so that
+movement is smoother than the game makes it. The title counts the pictures
+the game really draws, which is rarely as many as the PlayStation sends to
+the screen: most games draw 30 a second, many 20 or fewer, a few 60. What
+that gives:
 
-  at 120 Hz             every game gets twice its frames (60 become 120)
-  at 60 Hz              a game that draws 30 pictures a second or fewer,
-                        as most PlayStation games do, moves at 60; one
-                        that already draws 60 gains nothing
-  a PAL game at 60 Hz   50 frames are spread evenly over the 60 refreshes,
-                        without the stutter that has otherwise
+  a game that draws 30   at 60 Hz one picture is made between each two
+                         (60 shown); at 120 Hz three (120 shown)
+  a game that draws 20   two are made between each two at 60 Hz, five at
+                         120 Hz
+  a game that draws 60   left alone at 60 Hz: every refresh has a picture of
+                         the game's own. At 120 Hz one is made between each
+                         two.
+  a PAL game that draws  its pictures are spread evenly over the
+  50, at 60 Hz           refreshes, without the stutter that has otherwise
 
-The made pictures are guesses. Where the title cannot tell how something
-moved (it is fast, small, or newly in view) it shows the game's own picture
-in that place instead, which stutters there for a moment; text over a moving
-background can wobble. The game answers the pad about half a frame later, a
-whole frame for a PAL game at 60 Hz. It is off while fast forwarding and
-rewinding, and black frame insertion is off while it is on. It works with FSR 1
-(the enlarged pictures are what it works on). This is the title's own way of
-doing it, not AMD's or Nvidia's, which need more than an emulated PlayStation
-gives. An experiment: tested on a PC, not yet seen on a console.
+A game counts when it draws into one part of the PlayStation's picture memory
+while it shows another and then swaps them, as nearly all 3D games do. One
+that draws straight into what is shown cannot be counted: each of its frames
+is then taken for a new picture, which is right for a game that draws 60 and
+gains nothing for one that draws fewer. Settings, Picture, "Frame generation"
+says what the running game is counted at.
+
+How a picture is made: the two game pictures are compared at four sizes,
+from small to large, to find how each part moved; where two things meet, each
+place of the picture then tries its neighbours' movements, and standing still
+(which is what writing over the picture does), and keeps the one under which
+the two game pictures agree; and the made picture takes each place from the
+nearer of the two game pictures only, moved. Where no movement makes the two
+agree (something came into view, or the scene changed) the nearer game
+picture is shown in that place as it is: a moment's stutter there and no
+ghost.
+
+Build 12 smeared, for two reasons, both gone. It took each of the game's
+frames for a new picture, so that at 60 Hz a game was mostly shown in made
+pictures, its own left out; and it mixed the two game pictures in every made
+one, which shows the smallest error as a doubled, blurred edge. On my test
+scene (a street scrolling behind a walking figure, a turning crate and
+writing on top, where the true picture between is known) the made pictures
+are now 26.4 dB from the true ones, where build 12's were 21.5 and the nearer
+game picture shown twice is 15.9 (more is nearer the true picture).
+
+What is still wrong in a made picture: a thin fringe where something moves
+across a background that moves another way, a few pixels wide, on the side it
+moves towards; stripes and other even patterns can break when they move by
+about their own spacing; things entering at the picture's edge appear a
+picture late. Lossless Scaling's guide says of its own frame generation that
+it wants 40 pictures a second to go by at the least and 60 for good results,
+and that ghosting falls with more: a PlayStation game's 30 or 20 are under
+that, and no method makes them clean. At 20 the made pictures outnumber the
+game's two to one and the errors show most.
+
+"On, lighter" decides the movement on a smaller picture and skips the last
+refinement: less work for the graphics processor, coarser edges. It is for
+when the frame rate drops with "On" (the frame counter under Interface
+tells), which a high Internal Resolution Scale makes likelier.
+
+The game answers the pad a refresh of the screen later with one picture made
+between two, two refreshes later with two. Frame generation is off while fast
+forwarding and rewinding, and black frame insertion is off while it is on. It
+works with FSR 1 (the enlarged pictures are what it works on). This is the
+title's own way of doing it, not AMD's or Nvidia's, which need more than an
+emulated PlayStation gives. An experiment: build 12's ran on a console and
+smeared; this one has run on a PC only.
 
 Sound: "Menu music" plays in the library and the menus: the title's own quiet
 piece, or your file (music/menu.ogg, .mp3 or .wav).
