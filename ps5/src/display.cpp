@@ -37,14 +37,18 @@
 	(ps5/third_party/fsr, MIT) compiled ahead of time (fsr_spirv.inc). Should
 	any of it fail, that is a line in the log and the usual stretch.
 
-	Frame generation (generated) draws a picture between each two of the
+	Frame generation (generated) draws pictures between each two of the
 	game's. The picture is kept (two of them, the one before and this one); a
 	small picture of how bright each part is, and three smaller ones of that,
 	are made of each; how every part moved from the one frame to the other is
-	looked for from the smallest of those to the largest (fg_search.frag); and
-	the picture in between is drawn by taking each pixel from where it was and
-	where it is now (fg_blend.frag). The shaders are this title's own
-	(ps5/shaders/fg_*, compiled into fg_spirv.inc).
+	looked for from the smallest of those to the largest (fg_search.frag) and
+	put in order (fg_tidy.frag); for the moment being drawn, each place of the
+	picture then keeps the movement under which the two frames agree
+	(fg_choose.frag); and the picture in between takes each pixel from the
+	nearer of the two frames, moved (fg_blend.frag). Which moment is drawn is
+	host.cpp's business: it counts the pictures the game really draws. The
+	shaders are this title's own (ps5/shaders/fg_*, compiled into
+	fg_spirv.inc).
 
 	On a PC (the host build) the surface is VK_EXT_headless_surface and frames
 	can be saved as PNGs: that is how the interface is checked without a console.
@@ -750,6 +754,10 @@ Texture *createTexture(int w, int h, const uint8_t *rgba)
 	texture->texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	texture->staging.Destroy(true);
 	texture->set = ImGui_ImplVulkan_AddTexture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+#if defined(SWANSTATION_HOST)
+	// The frame generation test (ui.cpp) passes pictures from files as the game's.
+	dynamicViews[(void *)texture->set] = texture->texture.GetView();
+#endif
 	return texture;
 }
 
@@ -1304,7 +1312,8 @@ struct Generation
 	VkDescriptorPool pool = VK_NULL_HANDLE;
 	VkSampler sampler = VK_NULL_HANDLE;
 	VkPipelineLayout layout = VK_NULL_HANDLE;
-	VkPipeline copy = VK_NULL_HANDLE, luma = VK_NULL_HANDLE, search = VK_NULL_HANDLE, blend = VK_NULL_HANDLE;
+	VkPipeline copy = VK_NULL_HANDLE, luma = VK_NULL_HANDLE, search = VK_NULL_HANDLE, tidy = VK_NULL_HANDLE,
+			choose = VK_NULL_HANDLE, blend = VK_NULL_HANDLE;
 	// A set is written each time it is used: they go round, and none comes
 	// round again while a frame under way reads it.
 	static constexpr unsigned Sets = 64;
@@ -1314,8 +1323,10 @@ struct Generation
 	// its parts are, at four sizes (the largest first).
 	static constexpr int Levels = 4;
 	Target kept[2], bright[2][Levels];
-	// How the picture moved, at each of the four sizes, and the picture between.
-	Target movement[Levels], between;
+	// How the picture moved, at each of the four sizes; at the largest, put in
+	// order (fg_tidy.frag); decided for each part of the picture itself
+	// (fg_choose.frag); and the picture between.
+	Target movement[Levels], tidied, chosen, between;
 	int now = 0;				// which of the two is this frame's
 	bool haveNow = false, haveBefore = false, haveMovement = false;
 	uint64_t keptAt = 0;		// the display frame this frame's was kept in
@@ -1386,19 +1397,24 @@ bool generationInit()
 	const VkShaderModule copy = shaderModule(fg_copy_spirv, sizeof(fg_copy_spirv));
 	const VkShaderModule luma = shaderModule(fg_luma_spirv, sizeof(fg_luma_spirv));
 	const VkShaderModule search = shaderModule(fg_search_spirv, sizeof(fg_search_spirv));
+	const VkShaderModule tidy = shaderModule(fg_tidy_spirv, sizeof(fg_tidy_spirv));
+	const VkShaderModule choose = shaderModule(fg_choose_spirv, sizeof(fg_choose_spirv));
 	const VkShaderModule blend = shaderModule(fg_blend_spirv, sizeof(fg_blend_spirv));
 	if (vertex != VK_NULL_HANDLE && copy != VK_NULL_HANDLE && luma != VK_NULL_HANDLE && search != VK_NULL_HANDLE
-			&& blend != VK_NULL_HANDLE)
+			&& tidy != VK_NULL_HANDLE && choose != VK_NULL_HANDLE && blend != VK_NULL_HANDLE)
 	{
+		g.choose = fsrPipeline(vertex, choose, g.layout, floatPass);
 		g.copy = fsrPipeline(vertex, copy, g.layout);
 		g.luma = fsrPipeline(vertex, luma, g.layout, floatPass);
 		g.search = fsrPipeline(vertex, search, g.layout, floatPass);
+		g.tidy = fsrPipeline(vertex, tidy, g.layout, floatPass);
 		g.blend = fsrPipeline(vertex, blend, g.layout);
 	}
-	for (VkShaderModule module : { vertex, copy, luma, search, blend })
+	for (VkShaderModule module : { vertex, copy, luma, search, tidy, choose, blend })
 		if (module != VK_NULL_HANDLE)
 			vkDestroyShaderModule(device, module, nullptr);
-	g.ready = g.copy != VK_NULL_HANDLE && g.luma != VK_NULL_HANDLE && g.search != VK_NULL_HANDLE && g.blend != VK_NULL_HANDLE;
+	g.ready = g.copy != VK_NULL_HANDLE && g.luma != VK_NULL_HANDLE && g.search != VK_NULL_HANDLE && g.tidy != VK_NULL_HANDLE
+			&& g.choose != VK_NULL_HANDLE && g.blend != VK_NULL_HANDLE;
 	diag::mark(g.ready ? "frame generation: ready" : "frame generation: the driver refused a shader or a pipeline: it stays off");
 	return g.ready;
 }
@@ -1465,8 +1481,10 @@ void generationShutdown()
 			destroyTarget(target);
 	for (Target& target : g.movement)
 		destroyTarget(target);
+	destroyTarget(g.tidied);
+	destroyTarget(g.chosen);
 	destroyTarget(g.between);
-	for (VkPipeline pipeline : { g.copy, g.luma, g.search, g.blend })
+	for (VkPipeline pipeline : { g.copy, g.luma, g.search, g.tidy, g.choose, g.blend })
 		if (pipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(device, pipeline, nullptr);
 	if (g.layout != VK_NULL_HANDLE)
@@ -1511,7 +1529,7 @@ void forgetGenerated()
 	generation.haveNow = generation.haveBefore = generation.haveMovement = false;
 }
 
-void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase)
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, bool lighter)
 {
 	Generation& g = generation;
 	if (texture == nullptr || !frameOpen || width < 64 || height < 64 || width > 8192 || height > 8192 || u <= 0 || v <= 0)
@@ -1531,15 +1549,21 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 		levelW[i] = levelW[i - 1] / 2;
 		levelH[i] = levelH[i - 1] / 2;
 	}
+	// And the size the movement is decided at: half the picture's, but no
+	// less than a PlayStation's own lines when the picture has them, and (the
+	// lighter way) no more than 540.
+	const int chosenH = std::clamp(height / 2, std::min(height, 480), lighter ? 540 : 1080);
+	const int chosenW = std::max((int)std::lround((double)chosenH * width / height), 64);
 	if (fresh)
 	{
 		VkImageView view = VK_NULL_HANDLE;
 		VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		if (!viewBehind(texture, view, layout))
 			return nullptr;
-		// A picture kept more than a few refreshes ago is not the one before
-		// this (the game was paused, or a menu was over it).
-		const bool follows = g.haveNow && frames - g.keptAt <= 4;
+		// A picture kept long ago is not the one before this (the game was
+		// paused, or a menu was over it). A game that draws ten pictures a
+		// second has twelve refreshes between two of them at 120 Hz.
+		const bool follows = g.haveNow && frames - g.keptAt <= 16;
 		const int now = g.now ^ 1;
 		if (!ensureTarget(g.kept[now], width, height, swapFormat, shaderPass)
 				|| !ensureTarget(g.between, width, height, swapFormat, shaderPass))
@@ -1548,6 +1572,9 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 			if (!ensureTarget(g.bright[now][i], levelW[i], levelH[i], FloatFormat, floatPass, false)
 					|| !ensureTarget(g.movement[i], levelW[i], levelH[i], FloatFormat, floatPass, false))
 				return nullptr;
+		if (!ensureTarget(g.tidied, levelW[0], levelH[0], FloatFormat, floatPass, false)
+				|| !ensureTarget(g.chosen, chosenW, chosenH, FloatFormat, floatPass, false))
+			return nullptr;
 		g.now = now;
 		g.haveBefore = follows;
 		g.haveNow = true;
@@ -1583,7 +1610,7 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 				c = GenerationConstants();
 				c.size[0] = 1.f / (float)levelW[i];
 				c.size[1] = 1.f / (float)levelH[i];
-				c.more[0] = smallest ? 3.f : i == 0 ? 2.f : 1.f;
+				c.more[0] = smallest ? 4.f : 2.f;
 				c.more[1] = i == 0 ? 0.5f : 1.f;
 				c.more[2] = smallest ? 0.f : 1.f;
 				c.more[3] = 0.004f;
@@ -1591,6 +1618,13 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 						VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, g.bright[now][i].texture.GetView(),
 						smallest ? VK_NULL_HANDLE : g.movement[i + 1].texture.GetView(), c);
 			}
+			// And put in order: a patch alone in its movement gives way.
+			c = GenerationConstants();
+			c.size[0] = 1.f / (float)levelW[0];
+			c.size[1] = 1.f / (float)levelH[0];
+			c.more[0] = 0.02f;
+			generationPass(g.tidied, g.tidy, g.bright[now ^ 1][0].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+					g.bright[now][0].texture.GetView(), g.movement[0].texture.GetView(), c);
 			g.haveMovement = true;
 		}
 		else
@@ -1608,14 +1642,26 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 	// of the way from that one to this.
 	if (phase >= 0.999f || !g.haveBefore || !g.haveMovement)
 		return (void *)g.kept[g.now].set;
+	// The movement, decided for each part of the picture on the picture
+	// itself, and for this moment between the two: where things meet, which
+	// of them is in front depends on how far each has come.
 	GenerationConstants c{};
+	c.size[0] = 1.f / (float)g.chosen.width;
+	c.size[1] = 1.f / (float)g.chosen.height;
+	c.size[2] = 1.f / (float)g.tidied.width;
+	c.size[3] = 1.f / (float)g.tidied.height;
+	c.more[0] = 1.f / (float)width;
+	c.more[1] = 1.f / (float)height;
+	c.more[2] = lighter ? 0.f : 1.f;
+	c.more[3] = std::clamp(phase, 0.f, 1.f);
+	generationPass(g.chosen, g.choose, g.kept[g.now ^ 1].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			g.kept[g.now].texture.GetView(), g.tidied.texture.GetView(), c);
+	c = GenerationConstants();
 	c.size[0] = 1.f / (float)width;
 	c.size[1] = 1.f / (float)height;
-	c.size[2] = 1.f / (float)levelW[0];
-	c.size[3] = 1.f / (float)levelH[0];
 	c.more[0] = std::clamp(phase, 0.f, 1.f);
 	generationPass(g.between, g.blend, g.kept[g.now ^ 1].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			g.kept[g.now].texture.GetView(), g.movement[0].texture.GetView(), c);
+			g.kept[g.now].texture.GetView(), g.chosen.texture.GetView(), c);
 	return (void *)g.between.set;
 }
 

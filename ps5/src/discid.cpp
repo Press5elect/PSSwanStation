@@ -20,6 +20,7 @@
 #include "common/error.h"
 #include "core/bus.h"
 #include "core/cpu_core.h"
+#include "core/gpu.h"
 #include "core/system.h"
 
 #include <memory>
@@ -73,6 +74,11 @@ uint8_t *coreRam(uint32_t& size)
 uint8_t *coreScratchpad()
 {
 	return CPU::g_state.dcache.data();
+}
+
+uint32_t coreDisplayChanges()
+{
+	return g_gpu ? g_gpu->GetDisplayStartChangeCount() : 0;
 }
 
 const uint8_t *coreBios(uint32_t& size)

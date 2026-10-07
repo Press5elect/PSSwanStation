@@ -70,6 +70,7 @@ void discClose(void *disc);
 uint8_t *coreRam(uint32_t& size);
 uint8_t *coreScratchpad();
 const uint8_t *coreBios(uint32_t& size);
+uint32_t coreDisplayChanges();
 void nameTextureFolders();
 
 namespace
@@ -119,6 +120,21 @@ bool blackNow;
 // is between the game's last two, and whether the latest is new.
 bool genOn, genFresh;
 float genPhase = 1.f;
+// How often the game shows a new picture. Most games draw into a second
+// buffer and then move the display's start to it: that is counted (the
+// emulator's GPU says how often it happened), and a game that draws 30 or 20
+// pictures a second is seen to. A game that never does that is taken to show
+// a new picture every frame.
+struct Cadence
+{
+	uint32_t changesSeen = 0;
+	uint64_t changedAtFrame = ~0ull;	// the emulated frame the display's start last moved in
+	bool pictureNow = false;			// a new picture came in this refresh
+	uint64_t refreshes = 0, pictureAtRefresh = 0, pictureAtFrame = 0;
+	int gapRefreshes = 1, gapFrames = 1;	// between the last two pictures
+	int sincePicture = 0;				// refreshes since the last one
+	bool counted = false;				// by the display's start, not by frames
+} cadence;
 uint64_t emulatedFrames;
 double clockNext;			// pacing by the clock: when the next frame is due
 int lastSlot = -1;			// the state slot used last, for the shortcuts
@@ -1342,6 +1358,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 		aim = Aim();
 	display::forgetAmbient();
 	display::forgetGenerated();
+	cadence = Cadence();
 	audio::setMuted(false);
 	audio::clear();
 	setPaused(false);
@@ -1443,6 +1460,19 @@ void runOne(bool keep)
 #endif
 	retro_run();
 	emulatedFrames++;
+	{
+		// Was that a new picture?
+		const uint32_t changes = coreDisplayChanges();
+		const bool changed = changes != cadence.changesSeen;
+		cadence.changesSeen = changes;
+		if (changed)
+			cadence.changedAtFrame = emulatedFrames;
+		// A game that moved its display's start within the last second is
+		// counted by that; another, or one standing still, by its frames.
+		cadence.counted = cadence.changedAtFrame != ~0ull && emulatedFrames - cadence.changedAtFrame < 60;
+		if (changed || !cadence.counted)
+			cadence.pictureNow = true;
+	}
 	if (keep)
 		keepForRewind();
 	if (!netOn)
@@ -1490,7 +1520,8 @@ void runFrame()
 	// A game that stands still shows its latest picture.
 	genFresh = false;
 	genPhase = 1.f;
-	genOn = isRunning && options::frontend().frameGeneration;
+	genOn = isRunning && options::frontend().frameGeneration != 0;
+	cadence.pictureNow = false;
 	if (!isRunning || isPaused)
 		return;
 	const options::Frontend& settings = options::frontend();
@@ -1599,32 +1630,63 @@ void runFrame()
 			pacing = 0;
 		// Black frame insertion: at twice the game's rate, the refresh between
 		// two of its frames shows nothing, as a picture tube does.
-		blackNow = even && settings.blackFrames && !settings.frameGeneration && ran == 0;
+		blackNow = even && settings.blackFrames && settings.frameGeneration == 0 && ran == 0;
 	}
-	// Frame generation: which picture this refresh is to show. A game at the
-	// display's rate, or at half of it, gets the picture half way to each new
-	// frame the refresh that frame is made in (and, at half the rate, the
-	// frame itself the refresh after). At any other rate (a PAL game on a
-	// 60 Hz screen) the screen is a frame behind the game and shows where the
-	// game was at that moment, which is between two frames nearly always.
-	genFresh = ran > 0;
-	if (ffOn || rewindOn || ran > 1 || ratio > 1.0)
+	// The game's pictures, counted in refreshes and in its own frames.
+	cadence.refreshes++;
+	if (cadence.pictureNow)
 	{
-		// (Or a game faster than the display: there is no room between its frames.)
-		// Run fast or backwards, or catching up: the frames as they are.
+		cadence.gapRefreshes = (int)std::min<uint64_t>(cadence.refreshes - cadence.pictureAtRefresh, 99);
+		cadence.gapFrames = (int)std::min<uint64_t>(emulatedFrames - cadence.pictureAtFrame, 99);
+		cadence.pictureAtRefresh = cadence.refreshes;
+		cadence.pictureAtFrame = emulatedFrames;
+		cadence.sincePicture = 0;
+	}
+	// Frame generation: which picture this refresh is to show.
+	if (settings.frameGeneration == 0)
 		genOn = false;
-		if (settings.frameGeneration && ran > 0)
+	else if (ffOn || rewindOn || ran > 1 || ratio > 1.0)
+	{
+		// Run fast or backwards, or catching up, or a game faster than the
+		// display: the frames as they are.
+		genOn = false;
+		if (ran > 0)
 			display::forgetGenerated();
 	}
-	else if (settings.pacing == 2 || ratio == 1.0 || even)
-		genPhase = ran > 0 ? 0.5f : 1.f;
+	else if (cadence.gapFrames <= 1)
+	{
+		// A new picture every frame. At half the display's rate the picture
+		// half way to each is shown the refresh it is made in, and the frame
+		// itself the refresh after. At the display's own rate there is no room
+		// between two frames, and nothing is made. At any other rate (a PAL
+		// game on a 60 Hz screen) the screen is a frame behind the game and
+		// shows where the game was at that moment, between two frames nearly
+		// always.
+		genFresh = ran > 0;
+		if (even)
+			genPhase = ran > 0 ? 0.5f : 1.f;
+		else if (settings.pacing == 2 || ratio == 1.0)
+			genOn = false;
+		else
+			genPhase = (float)std::clamp(pacing, 0.0, 1.0);
+	}
 	else
-		genPhase = (float)std::clamp(pacing, 0.0, 1.0);
+	{
+		// A new picture every second, third... frame, as most PlayStation
+		// games draw: the refreshes until the next one is due (as many as
+		// there were between the last two) show even steps from the picture
+		// before to this one, the last of them this one itself.
+		genFresh = cadence.pictureNow;
+		const int steps = cadence.gapRefreshes > 8 ? 1 : std::max(cadence.gapRefreshes, 1);
+		genPhase = std::min((float)(cadence.sincePicture + 1) / (float)steps, 1.f);
+	}
+	cadence.sincePicture++;
 #if defined(SWANSTATION_HOST)
 	// A test reads how the frames fell.
 	if (getenv("SWANSTATION_PACING_LOG") != nullptr)
-		diag::mark("pacing: display frame %llu ran %d ratio %.4f phase %.2f generation %d", (unsigned long long)display::frameCount(),
-				ran, ratio, genPhase, (int)genOn);
+		diag::mark("pacing: display frame %llu ran %d ratio %.4f picture %d every %d frames (%d refreshes) phase %.2f generation %d",
+				(unsigned long long)display::frameCount(), ran, ratio, (int)cadence.pictureNow, cadence.gapFrames,
+				cadence.gapRefreshes, genPhase, (int)genOn);
 #endif
 	ranThisSecond += ran;
 	const double t = now();
@@ -1707,6 +1769,13 @@ bool generationPhase(float& phase, bool& fresh)
 	phase = genPhase;
 	fresh = genFresh;
 	return genOn;
+}
+
+double picturesPerSecond()
+{
+	if (!isRunning || !cadence.counted)
+		return 0;
+	return (av.timing.fps > 1.0 ? av.timing.fps : 60.0) / std::max(cadence.gapFrames, 1);
 }
 
 int nativeLines()

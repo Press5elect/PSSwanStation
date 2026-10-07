@@ -36,4 +36,4 @@ PY
 write "$ps5/src/fsr_spirv.inc" "SPIR-V of the FSR 1 passes (AMD's ffx_fsr1.h, MIT: ps5/third_party/fsr)." \
     fsr_vertex.vert fsr_easu.frag fsr_rcas.frag
 write "$ps5/src/fg_spirv.inc" "SPIR-V of the frame generation passes." \
-    fg_copy.frag fg_luma.frag fg_search.frag fg_blend.frag
+    fg_copy.frag fg_luma.frag fg_search.frag fg_tidy.frag fg_choose.frag fg_blend.frag

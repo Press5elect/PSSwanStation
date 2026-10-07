@@ -96,7 +96,13 @@ bool decode(const uint8_t *data, size_t size, Decoded& out)
 		return false;
 	}
 	const int longest = std::max(w, h);
-	if (longest > MaxSide)
+#if defined(SWANSTATION_HOST)
+	// The frame generation test's pictures are a game's: as large as they are.
+	static const bool whole = getenv("SWANSTATION_FG_TEST") != nullptr;
+#else
+	const bool whole = false;
+#endif
+	if (longest > MaxSide && !whole)
 	{
 		const int nw = std::max(1, w * MaxSide / longest), nh = std::max(1, h * MaxSide / longest);
 		out.pixels.resize((size_t)nw * nh * 4);
