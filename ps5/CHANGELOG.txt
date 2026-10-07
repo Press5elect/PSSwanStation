@@ -9,7 +9,9 @@ Build 14
     Picture; they are remembered for that game. Display output stays one
     setting for every game.
   - Circle in the library asks whether to close PSSwanStation.
-  Run on a PC only so far.
+  - The cheat and patch database is fetched from its project when asked
+    (Settings, Games and network); a release does not carry it.
+  The first build published as a release; it ran on a console before that.
 
 Build 13
   - Frame generation smears far less. The title now counts the pictures the
