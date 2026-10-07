@@ -71,6 +71,18 @@ void forgetAmbient();
 // smaller than that, or it cannot be done: the picture is then drawn the
 // usual way. Only between a frame's begin and its end.
 void *upscale(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, int sharpness);
+// Frame generation: a picture between the game's last and this one. `texture`
+// is the game's picture as it is about to be drawn (its part up to u, v,
+// `width` x `height` pixels; FSR's result when that is on). `fresh`: it is a
+// new one since the last call, and is kept. `phase`: where the screen is now
+// between the picture before (0) and this one (1). Returns what to draw in its
+// place, the whole of a texture of the same size: the picture in between, or
+// (at phase 1, or with no picture before) this one as it was kept. Null when
+// it cannot be done: the picture is then drawn as it is. Only between a
+// frame's begin and its end.
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase);
+// The next picture has no picture before it (another game, a state loaded).
+void forgetGenerated();
 // RGBA8 pixels as a PNG file. May be called on any thread.
 bool writePng(const std::string& path, const uint8_t *rgba, int width, int height);
 

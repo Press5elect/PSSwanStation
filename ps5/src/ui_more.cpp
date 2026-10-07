@@ -306,9 +306,7 @@ void libraryOptionsPage(Frame& f)
 		// any Aurora layout files in the layouts folder.
 		if (f.fresh)
 			flowRescan();
-		std::vector<std::string> names = { "Covers", "List" };
-		for (const std::string& name : flowNames())
-			names.push_back(name);
+		const std::vector<std::string> names = libraryViewNames();
 		Item item = choice("View", std::min(o.view, (int)names.size() - 1), names, "",
 				[](int i) { options::frontend().view = i; });
 		items.push_back(item);
@@ -1682,8 +1680,22 @@ void moreSettings(int kind, std::vector<Item>& items)
 				item.enabled = false;
 				item.value = "Needs 120 Hz";
 			}
+			else if (f.frameGeneration)
+			{
+				item.enabled = false;
+				item.value = "Frame generation is on";
+			}
 			items.push_back(item);
 		}
+		items.push_back(toggle("Frame generation", &f.frameGeneration,
+				"Draws a picture of its own between each two of the game's, from how the picture moved: movement "
+				"looks smoother than the game makes it. At 120 Hz every game gets twice its frames. At 60 Hz it is "
+				"for the many games that only draw 30 pictures a second or fewer, which then move at 60; a game "
+				"that already draws 60 gains nothing there. A PAL game on a 60 Hz screen loses its stutter. The "
+				"made pictures are guesses: fast or small things can smear or flicker, and text over a moving "
+				"background can wobble. The game answers the pad about half a frame later (a whole one for a PAL "
+				"game at 60 Hz). Not while fast forwarding or rewinding. An experiment: tried on a PC only.",
+				[] { display::forgetGenerated(); }));
 		break;
 	case 2:
 		items.push_back(choice("Menu music", f.music, { "None", "The title's own", "My file" },

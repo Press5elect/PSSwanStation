@@ -1,6 +1,13 @@
 PSSwanStation - what changed
 ============================
 
+Build 12
+  - Frame generation (Settings, Picture): a picture drawn between each two
+    of the game's. Twice the frames at 120 Hz; at 60 Hz, 30 fps games move
+    at 60 and PAL games lose their stutter. An experiment.
+  - Settings, Interface, "Library view" now lists every view (Flow, Row,
+    Wall, Cascade, Wheel and Aurora layouts), as the library's own list does.
+
 Build 11
   - Library: five new views that stand the covers in space, in the manner of
     the Xbox 360's Aurora: Flow, Row, Wall, Cascade, Wheel (Square, View).

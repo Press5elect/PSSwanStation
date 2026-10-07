@@ -294,6 +294,7 @@ struct Frontend
 	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
 	int displayMode = 0;
 	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
+	bool frameGeneration = false;	// a picture made between each two of the game's (display::generated)
 	int crt = 0;				// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask
 	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
 	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced
@@ -434,6 +435,11 @@ float rewindSeconds();
 void setInputBlocked(bool blocked);
 // With black frame insertion: this refresh shows black.
 bool blackFrame();
+// With frame generation: where this refresh is between the game's picture
+// before (0) and its latest (1), and whether the latest is new this refresh.
+// False when no picture is to be made (it is off, or the game is being run
+// fast or backwards).
+bool generationPhase(float& phase, bool& fresh);
 // The lines the PlayStation draws (240, 480...), for the scanlines.
 int nativeLines();
 // The game's picture as it is now, without the interface: RGBA8, at most

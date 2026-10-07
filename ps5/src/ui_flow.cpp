@@ -781,6 +781,14 @@ std::vector<std::string> flowNames()
 	return names;
 }
 
+std::vector<std::string> libraryViewNames()
+{
+	std::vector<std::string> names = { "Covers", "List" };
+	for (const std::string& name : flowNames())
+		names.push_back(name);
+	return names;
+}
+
 bool flowIsOwn(int index)
 {
 	if (!layoutsRead)
