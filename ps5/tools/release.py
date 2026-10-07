@@ -20,6 +20,10 @@ DIR (default: build-ps5/release-build<N>):
   SHA256SUMS            the ZIP's and the archives' digests
   NOTES.md              the release's text (--notes), with the commit and the
                         ZIP's digest filled in
+  attach/               every file the release page carries, side by side: the
+                        ZIP, its .sha256, the archives, SOURCES.txt and
+                        SHA256SUMS (--attach-limit cuts a large archive into
+                        parts)
 
 It refuses, and says why:
   - a folder not built with RELEASE=1 from the commit that is checked out, or
@@ -33,7 +37,12 @@ It refuses, and says why:
     own commit not being there yet is said, and is not a refusal: it is pushed
     before the release is published.
 
-The release itself (tag, GitHub release, read-back) is a step of its own.
+The release itself is a step of its own: the tag on the commit the ZIP was
+built from (the release page's "target" is the branch ps5-port, not the
+fork's default branch), the files of attach/ and NOTES.md as its text. Build
+14 was published that way by hand, as a full release, so that the title's
+updater finds it; then it is read back (the ZIP's digest, the updater against
+the page).
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -195,6 +204,9 @@ def main():
     parser.add_argument("--out")
     parser.add_argument("--offline", action="store_true", help="do not ask GitHub whether it has every revision")
     parser.add_argument("--notes", help="the release's text; {{COMMIT}}, {{ZIP}}, {{ZIP_SHA256}} and {{BUILD}} are filled in")
+    parser.add_argument("--attach-limit", type=int, default=0, metavar="MIB",
+                        help="also write attach/: every file the release page carries, in one folder, an archive "
+                             "larger than this many MiB cut into parts (0: no parts)")
     args = parser.parse_args()
 
     title_id = json.loads((PS5 / "sce_sys/param.json").read_text())["titleId"]
@@ -266,6 +278,38 @@ def main():
             refuse("the notes still hold %s" % ", ".join(sorted(set(left))))
         (out / "NOTES.md").write_text(text)
         print("==> NOTES.md")
+    # The release page holds its files side by side: the ZIP, its checksum,
+    # the archives, what they are and their digests. An archive too large for
+    # the way it travels there is cut into parts that `cat` joins again.
+    attach = out / "attach"
+    attach.mkdir()
+    shutil.copy2(zip_path, attach)
+    shutil.copy2(str(zip_path) + ".sha256", attach)
+    limit = args.attach_limit << 20
+    joining = []
+    for path in sorted((out / "source").glob("*.tar.gz")):
+        if not limit or path.stat().st_size <= limit:
+            shutil.copy2(path, attach)
+            continue
+        data = path.read_bytes()
+        count = -(-len(data) // limit)
+        names = ["%s.part%dof%d" % (path.name, i + 1, count) for i in range(count)]
+        for i, name in enumerate(names):
+            (attach / name).write_bytes(data[i * limit:(i + 1) * limit])
+        joining.append((path.name, names, sha256(path)))
+    text = (out / "source/SOURCES.txt").read_text()
+    if joining:
+        note = "\nThese archives are attached in parts. Join them before unpacking:\n\n"
+        for name, names, digest in joining:
+            note += "  cat %s > %s\n" % (" ".join(names), name)
+        note += "\n(on Windows: copy /b part1 + part2 ... whole). The joined files' SHA-256:\n\n"
+        note += "".join("  %s  %s\n" % (digest, name) for name, names, digest in joining)
+        head_end = text.index("\n\n") + 1
+        text = text[:head_end] + note + text[head_end:]
+    (attach / "SOURCES.txt").write_text(text)
+    listed = sorted(p for p in attach.iterdir() if p.name.endswith((".zip", ".tar.gz")) or ".tar.gz.part" in p.name)
+    (attach / "SHA256SUMS").write_text("".join("%s  %s\n" % (sha256(p), p.name) for p in listed))
+    print("==> attach/: %d files for the release page" % sum(1 for _ in attach.iterdir()))
     print("==> sha256 %s  %s" % (zip_sum, zip_path.name))
     print("==> built from %s" % head)
     for line in not_yet:

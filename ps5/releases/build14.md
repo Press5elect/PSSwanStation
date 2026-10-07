@@ -6,7 +6,7 @@ A PlayStation (PS1) emulator as a PS5 homebrew title: SwanStation, the libretro 
 > **Piracy is not condoned.** This release contains no games, no BIOS files, no console firmware and no decryption keys, and none will ever be provided or linked to. Use only **legally obtained backups of games you own**, made yourself from your own discs, and BIOS files dumped from **hardware you own**. Please don't ask for, or post links to, games, BIOS files, firmware or keys in issues or discussions: they will be removed.
 
 > [!WARNING]
-> **A work in progress.** Much of what is in this build has run on a PC only. "Tested for this release" below says what has run on a console and what has not.
+> **A work in progress.** This build has run on my console, but not every part of it has been checked there one by one. "Tested for this release" below says which.
 
 ## What it does
 
@@ -26,19 +26,19 @@ A PlayStation (PS1) emulator as a PS5 homebrew title: SwanStation, the libretro 
 
 ## Tested for this release
 
-On my console (a jailbroken PS5 with kstuff), with earlier builds; **build {{BUILD}} itself has run on a PC only so far**:
+Build {{BUILD}}, the build in this ZIP, has run on my console (a jailbroken PS5 with kstuff). What I have a result for one by one, and the build it was seen with:
 
-| What | On the console | With |
+| What | On the console | Seen with |
 | --- | --- | --- |
 | Starting games from the title's folder and from an SMB share, sound, picture, controller | works | build 9 |
 | Library: covers downloaded, search, jumping by letter, menu and start-up sounds | works | build 9 |
 | Cheats and patches (from the database carried then), games on several discs, save states and continuing, cancelling a load | works | build 9 |
 | RetroAchievements | works | build 10 |
-| Frame generation | ran, and smeared; reworked since | build 12 |
+| Frame generation | ran, and smeared; reworked in build 13 | build 12 |
 
-Not yet run on a console: a game's own picture settings, closing from the library, the reworked frame generation, FSR 1 scaling, the views in space, fetching the cheat database, the updater, 120 Hz output, black frame insertion and the variable refresh rate, USB drives, FTP, a second controller and the multitap, netplay, keeping files outside the title's folder, the newer Lapy helper, speed at 8x internal resolution.
+No separate result on a console yet for: 120 Hz output, black frame insertion and the variable refresh rate, USB drives, FTP, a second controller and the multitap, netplay, keeping files outside the title's folder, the updater (this is the first release it can find), and speed at 8x internal resolution. Frame rates were not measured.
 
-On a PC (the same frontend on the same Vulkan code paths, with the validation layers silent): the interface test, the module tests (updater, memory cards, RetroAchievements against a stand-in server, netplay between two processes), and frame generation against pictures of known movement.
+On a PC (the same frontend on the same Vulkan code paths, with the validation layers silent): the interface test, the module tests (updater, memory cards, RetroAchievements against a stand-in server, netplay between two processes), a game's own picture settings kept and brought back, fetching the cheat database from its project, and frame generation against pictures of known movement.
 
 ## Known issues
 
@@ -61,7 +61,7 @@ Say what you did, what you saw, which build (top right of the library) and which
 
 ## Source
 
-This ZIP was built from PSSwanStation commit `{{COMMIT}}`, which is this release's tag. The title is distributed under the GNU General Public License, version 3, as a whole. The source of every part at the revision it was built from is attached (`source/SOURCES.txt` lists the archives, `SHA256SUMS` their digests); `licenses/` in the title's folder holds each part's licence and `licenses/components.json` the revisions.
+This ZIP was built from PSSwanStation commit `{{COMMIT}}`, which is this release's tag. The title is distributed under the GNU General Public License, version 3, as a whole. The source of every part at the revision it was built from is attached (`SOURCES.txt` lists the archives, `SHA256SUMS` their digests); `licenses/` in the title's folder holds each part's licence and `licenses/components.json` the revisions.
 
 ## Build
 

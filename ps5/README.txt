@@ -482,8 +482,10 @@ closes when it is done; start it again from the home screen. With "Ask for
 updates at start" (Interface) the library's header says when a build is out;
 nothing is fetched until you say so.
 
-Tested on a PC against a stand-in for GitHub, not yet on a console. Should an
-update go wrong half way, the next start puts the earlier files back.
+Tested on a PC, against a stand-in for GitHub and against the real releases
+page (as build 13 it found build 14, fetched it, checked it and put it in
+place, leaving network.cfg and the games alone); not yet on a console. Should
+an update go wrong half way, the next start puts the earlier files back.
 
 
 Keeping your files outside the title folder
