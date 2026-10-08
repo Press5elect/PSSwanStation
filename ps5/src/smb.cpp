@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - games on a network share (SMB), and what every
-	network source goes through (an FTP server is ftp.cpp's).
+	network source goes through (an FTP server is ftp.cpp's, an NFS share
+	nfs.cpp's).
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5/ps5_smb.cpp)
 	SPDX-License-Identifier: GPL-2.0-or-later
@@ -104,7 +105,8 @@ struct Account
 	std::string domain;
 };
 Account account;
-std::vector<std::string> folders;	// smb://server/share/folder and ftp://server/folder, from network.cfg
+std::vector<std::string> folders;	// smb://, ftp:// and nfs:// folders, from network.cfg
+std::string filesPlace;				// network.cfg's "files" folder, or ""
 
 // ---------------------------------------------------- what the share is doing
 
@@ -812,6 +814,8 @@ std::vector<Entry> list(const std::string& path)
 {
 	if (ftp::isPath(path))
 		return ftp::list(path);
+	if (nfs::isPath(path))
+		return nfs::list(path);
 	std::vector<Entry> entries;
 	std::string relative;
 	Share *share = locate(path, relative);
@@ -862,17 +866,17 @@ std::vector<Entry> list(const std::string& path)
 
 File *open(const std::string& path)
 {
-	const bool onFtp = ftp::isPath(path);
+	const bool onFtp = ftp::isPath(path), onNfs = nfs::isPath(path);
 	std::string relative;
-	Share *share = onFtp ? nullptr : locate(path, relative);
-	if (share == nullptr && !onFtp)
+	Share *share = onFtp || onNfs ? nullptr : locate(path, relative);
+	if (share == nullptr && !onFtp && !onNfs)
 		return nullptr;
 	// A file that is in memory already is read from there, whoever asks.
 	if (std::shared_ptr<RamImage> image = findImage(path))
 		return new RamFile(std::move(image));
 	if (stopping())
 		return nullptr;
-	File *file = onFtp ? ftp::openStream(path) : openStream(share, relative);
+	File *file = onFtp ? ftp::openStream(path) : onNfs ? nfs::openStream(path) : openStream(share, relative);
 	if (file == nullptr || !loading || streamOnly || !options::frontend().ramCache || file->size() == 0)
 		return file;
 	// A game is being loaded into memory: this file, whole, now. The share's
@@ -890,10 +894,10 @@ File *open(const std::string& path)
 
 int stat(const std::string& path, Entry& entry)
 {
-	const bool onFtp = ftp::isPath(path);
+	const bool onFtp = ftp::isPath(path), onNfs = nfs::isPath(path);
 	std::string relative;
-	Share *share = onFtp ? nullptr : locate(path, relative);
-	if (share == nullptr && !onFtp)
+	Share *share = onFtp || onNfs ? nullptr : locate(path, relative);
+	if (share == nullptr && !onFtp && !onNfs)
 		return 0;
 	if (std::shared_ptr<RamImage> image = findImage(path))
 	{
@@ -905,6 +909,8 @@ int stat(const std::string& path, Entry& entry)
 	}
 	if (onFtp)
 		return ftp::stat(path, entry);
+	if (onNfs)
+		return nfs::stat(path, entry);
 	smb2_stat_64 st{};
 	const int found = statShare(share, relative, st);
 	if (found == 1)
@@ -1018,6 +1024,7 @@ bool wake()
 void loadConfig()
 {
 	folders.clear();
+	filesPlace.clear();
 	wakeSet = false;
 	const std::string file = rootDir + "network.cfg";
 	FILE *f = fopen(file.c_str(), "r");
@@ -1026,14 +1033,24 @@ void loadConfig()
 		// A template to fill in.
 		if ((f = fopen(file.c_str(), "w")) != nullptr)
 		{
-			fputs("# PSSwanStation - games on the network: an SMB share (Windows sharing) or an\n"
-					"# FTP server.\n"
+			fputs("# PSSwanStation - games on the network: an SMB share (Windows sharing), an\n"
+					"# NFS share or an FTP server.\n"
 					"#\n"
 					"# One \"path\" line for each folder to scan, the server by its IP address.\n"
-					"# An SMB share is server/share/folder; an FTP server is ftp://server/folder\n"
-					"# (ftp://server:2121/folder for a port other than 21). For example:\n"
+					"# An SMB share is server/share/folder; an NFS share is nfs://server/path;\n"
+					"# an FTP server is ftp://server/folder (ftp://server:2121/folder for a\n"
+					"# port other than 21). For example:\n"
 					"#   path = 192.168.1.10/Games/PSX\n"
+					"#   path = nfs://192.168.1.10/volume1/games/psx\n"
 					"#   path = ftp://192.168.1.10/games/psx\n"
+					"# An NFS share is written to as the user and group the line names:\n"
+					"#   path = nfs://192.168.1.10/volume1/games/psx?uid=1026&gid=100\n"
+					"# (0 when not given; add &version=4 for NFS 4).\n"
+					"#\n"
+					"# A folder on an SMB or NFS share for PSSwanStation's own files: copies\n"
+					"# of the memory cards, covers, and everything when Settings, Games and\n"
+					"# network keeps your files there. For example:\n"
+					"#   files = 192.168.1.10/Games/PSSwanStation\n"
 					"# Remove the # in front of a path line to use it. The folder and the\n"
 					"# folders inside it are scanned for games when PSSwanStation first starts\n"
 					"# with it, and again with Square in the library; the list is kept, so\n"
@@ -1076,6 +1093,22 @@ void loadConfig()
 			ftpLines.emplace_back(folders.size(), value);
 			folders.emplace_back();
 		}
+		else if (key == "path" && lowercase(value).rfind("nfs://", 0) == 0)
+		{
+			const std::string folder = nfs::addFolder(value);
+			if (!folder.empty())
+				folders.push_back(folder);
+			else
+				diag::mark("share: network.cfg: \"%s\" is not nfs://server/path", value.c_str());
+		}
+		else if (key == "files" && !value.empty())
+		{
+			filesPlace = lowercase(value).rfind("nfs://", 0) == 0 ? nfs::addFolder(value)
+					: lowercase(value).rfind("ftp://", 0) == 0 ? std::string() : normalize(value);
+			if (filesPlace.empty())
+				diag::mark("share: network.cfg: \"files = %s\" is not an SMB or NFS folder (an FTP server is only read)",
+						value.c_str());
+		}
 		else if (key == "path")
 		{
 			const std::string folder = normalize(value);
@@ -1108,7 +1141,9 @@ void loadConfig()
 	folders.erase(std::remove(folders.begin(), folders.end(), std::string()), folders.end());
 	for (const std::string& folder : folders)
 		diag::mark("share: games folder %s%s", folder.c_str(),
-				ftp::isPath(folder) ? "" : (" (user " + account.user + ")").c_str());
+				ftp::isPath(folder) || nfs::isPath(folder) ? "" : (" (user " + account.user + ")").c_str());
+	if (!filesPlace.empty())
+		diag::mark("share: the title's files folder %s", filesPlace.c_str());
 	// A server that sleeps is woken as the title starts: it is up by the time
 	// its games are asked for.
 	if (wakeSet && !folders.empty())
@@ -1122,7 +1157,7 @@ const std::vector<std::string>& gameFolders()
 
 bool isNetworkPath(const std::string& path)
 {
-	return path.rfind("smb://", 0) == 0 || ftp::isPath(path);
+	return path.rfind("smb://", 0) == 0 || ftp::isPath(path) || nfs::isPath(path);
 }
 
 void retryNow()
@@ -1131,6 +1166,7 @@ void retryNow()
 	if (wakeSet)
 		wake();
 	ftp::retryNow();
+	nfs::retryNow();
 	std::lock_guard<std::mutex> lock(sharesMutex);
 	for (auto& [name, share] : shares)
 	{
@@ -1328,5 +1364,181 @@ int selfTest(const char *spec)
 	return 0;
 }
 #endif
+
+const std::string& filesFolder()
+{
+	return filesPlace;
+}
+
+bool canWrite(const std::string& path)
+{
+	return path.rfind("smb://", 0) == 0 || nfs::isPath(path);
+}
+
+namespace
+{
+// Each folder of `relative` ("a/b/c") on the share, made where it is not there.
+bool makeShareFolders(Share *share, const std::string& relative)
+{
+	for (size_t at = 0; at <= relative.size(); at++)
+		if (at == relative.size() || relative[at] == '/')
+		{
+			if (at == 0)
+				continue;
+			const std::string part = relative.substr(0, at);
+			smb2_stat_64 st{};
+			if (smb2_stat(share->context, part.c_str(), &st) == 0)
+			{
+				if (st.smb2_type != SMB2_TYPE_DIRECTORY)
+					return false;
+				continue;
+			}
+			if (smb2_mkdir(share->context, part.c_str()) != 0)
+				return false;
+		}
+	return true;
+}
+}
+
+bool makeFolders(const std::string& path)
+{
+	if (nfs::isPath(path))
+		return nfs::makeFolders(path);
+	std::string relative;
+	Share *share = locate(path, relative);
+	if (share == nullptr)
+		return false;
+	std::lock_guard<std::recursive_mutex> lock(share->mutex);
+	Busy busy;
+	for (int attempt = 0; attempt < 2; attempt++)
+	{
+		if (!share->connect())
+			return false;
+		const long long started = nowMs();
+		if (makeShareFolders(share, relative))
+			return true;
+		if (!share->lost(started))
+			return false;
+	}
+	return false;
+}
+
+bool writeFile(const std::string& path, const void *data, size_t bytes, std::string& error)
+{
+	if (nfs::isPath(path))
+		return nfs::writeFile(path, data, bytes, error);
+	std::string relative;
+	Share *share = ftp::isPath(path) ? nullptr : locate(path, relative);
+	if (share == nullptr)
+	{
+		error = ftp::isPath(path) ? "an FTP folder is only read" : "not on a share of network.cfg";
+		return false;
+	}
+	std::lock_guard<std::recursive_mutex> lock(share->mutex);
+	Busy busy;
+	for (int attempt = 0; attempt < 2; attempt++)
+	{
+		if (!share->connect())
+		{
+			error = "the share does not answer";
+			return false;
+		}
+		const long long started = nowMs();
+		const size_t slash = relative.find_last_of('/');
+		if (slash != std::string::npos && !makeShareFolders(share, relative.substr(0, slash)))
+		{
+			if (!share->lost(started))
+			{
+				error = "its folder could not be made on the share (" + stripped(smb2_get_error(share->context)) + ")";
+				return false;
+			}
+			continue;
+		}
+		// Written beside it and then put in its place.
+		const std::string part = relative + ".part";
+		smb2fh *handle = smb2_open(share->context, part.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+		if (handle == nullptr)
+		{
+			if (!share->lost(started))
+			{
+				error = "the share does not let it be written (" + stripped(smb2_get_error(share->context)) + ")";
+				return false;
+			}
+			continue;
+		}
+		const uint8_t *from = static_cast<const uint8_t *>(data);
+		const size_t piece = std::max<size_t>(std::min<size_t>(smb2_get_max_write_size(share->context), 1 << 20), 4096);
+		size_t done = 0;
+		bool ok = true;
+		while (done < bytes)
+		{
+			const int wrote = smb2_pwrite(share->context, handle, from + done, (uint32_t)std::min(bytes - done, piece), done);
+			if (wrote <= 0)
+			{
+				ok = false;
+				break;
+			}
+			done += (size_t)wrote;
+		}
+		ok = smb2_close(share->context, handle) == 0 && ok;
+		if (ok)
+		{
+			// SMB renames over nothing: what was there goes first.
+			smb2_unlink(share->context, relative.c_str());
+			ok = smb2_rename(share->context, part.c_str(), relative.c_str()) == 0;
+		}
+		if (ok)
+			return true;
+		error = "the share could not be written (" + stripped(smb2_get_error(share->context)) + ")";
+		smb2_unlink(share->context, part.c_str());
+		if (!share->lost(started))
+			return false;
+	}
+	return false;
+}
+
+bool remove(const std::string& path)
+{
+	if (nfs::isPath(path))
+		return nfs::remove(path);
+	std::string relative;
+	Share *share = locate(path, relative);
+	if (share == nullptr)
+		return false;
+	std::lock_guard<std::recursive_mutex> lock(share->mutex);
+	Busy busy;
+	if (!share->connect())
+		return false;
+	smb2_stat_64 st{};
+	return smb2_unlink(share->context, relative.c_str()) == 0 || smb2_stat(share->context, relative.c_str(), &st) != 0;
+}
+
+bool readWhole(const std::string& path, std::vector<uint8_t>& out)
+{
+	out.clear();
+	Entry entry;
+	if (stat(path, entry) != 1 || entry.directory || entry.size > (256ull << 20))
+		return false;
+	File *file = nullptr;
+	if (ftp::isPath(path))
+		file = ftp::openStream(path);
+	else if (nfs::isPath(path))
+		file = nfs::openStream(path);
+	else
+	{
+		std::string relative;
+		Share *share = locate(path, relative);
+		file = share != nullptr ? openStream(share, relative) : nullptr;
+	}
+	if (file == nullptr)
+		return false;
+	out.resize((size_t)entry.size);
+	const size_t got = out.empty() ? 0 : file->read(out.data(), out.size());
+	const bool ok = got == out.size() && !file->failed();
+	delete file;
+	if (!ok)
+		out.clear();
+	return ok;
+}
 
 } // namespace fe::smb

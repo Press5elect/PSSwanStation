@@ -110,6 +110,37 @@ target_include_directories(smb2 PRIVATE "${LIBSMB2_DIR}/include" "${LIBSMB2_DIR}
 target_include_directories(smb2 INTERFACE "${LIBSMB2_DIR}/include")
 target_compile_options(smb2 PRIVATE -w)
 
+# libnfs (LGPL-2.1-or-later): NFS shares, versions 3 and 4, AUTH_SYS. Built
+# from its sources as libsmb2 is; on the console with the same socket shims
+# (nfs/compat.c, and libsmb2's in smb/compat.c).
+set(LIBNFS_DIR "${ROOT}/../deps-src/libnfs" CACHE PATH "libnfs")
+set(LIBNFS_SOURCES)
+foreach(name lib/init lib/libnfs lib/libnfs-sync lib/libnfs-zdr lib/multithreading lib/nfs_v3 lib/nfs_v4 lib/pdu
+		lib/socket mount/mount mount/libnfs-raw-mount nfs/nfs nfs/nfsacl nfs/libnfs-raw-nfs nfs4/nfs4
+		nfs4/libnfs-raw-nfs4 nlm/nlm nlm/libnfs-raw-nlm nsm/nsm nsm/libnfs-raw-nsm portmap/portmap
+		portmap/libnfs-raw-portmap rquota/rquota rquota/libnfs-raw-rquota)
+	list(APPEND LIBNFS_SOURCES "${LIBNFS_DIR}/${name}.c")
+endforeach()
+if(SWANSTATION_PS5)
+	add_library(nfs STATIC ${LIBNFS_SOURCES} nfs/compat.c)
+	target_include_directories(nfs BEFORE PRIVATE nfs)
+	target_compile_definitions(nfs PRIVATE HAVE_CONFIG_H HAVE_NFS4_2 "_U_=__attribute__((unused))"
+		readv=ps5_smb_readv writev=ps5_smb_writev getaddrinfo=ps5_smb_getaddrinfo freeaddrinfo=ps5_smb_freeaddrinfo
+		connect=ps5_smb_connect fcntl=ps5_nfs_fcntl ioctl=ps5_nfs_ioctl recv=ps5_nfs_recv
+		getservbyport=ps5_nfs_getservbyport getprotobyname=ps5_nfs_getprotobyname
+		getuid=ps5_nfs_getuid getgid=ps5_nfs_getgid strndup=ps5_nfs_strndup)
+	target_link_libraries(nfs PRIVATE smb2)
+else()
+	add_library(nfs STATIC ${LIBNFS_SOURCES})
+	target_include_directories(nfs BEFORE PRIVATE nfs/host)
+	target_compile_definitions(nfs PRIVATE HAVE_CONFIG_H HAVE_NFS4_2 "_U_=__attribute__((unused))" _GNU_SOURCE)
+endif()
+target_include_directories(nfs PRIVATE "${LIBNFS_DIR}/include" "${LIBNFS_DIR}/include/nfsc" "${LIBNFS_DIR}/mount"
+	"${LIBNFS_DIR}/nfs" "${LIBNFS_DIR}/nfs4" "${LIBNFS_DIR}/nlm" "${LIBNFS_DIR}/nsm" "${LIBNFS_DIR}/portmap"
+	"${LIBNFS_DIR}/rquota")
+target_include_directories(nfs INTERFACE "${LIBNFS_DIR}/include" "${LIBNFS_DIR}/mount" "${LIBNFS_DIR}/nfs")
+target_compile_options(nfs PRIVATE -w)
+
 # rcheevos (MIT): RetroAchievements. Its client, the server API, the
 # achievement runtime and the hash of a PlayStation disc; nothing for other
 # systems. The three definitions are needed by whatever includes its headers
@@ -142,6 +173,7 @@ set(frontend_sources
 	src/ui_more.cpp
 	src/ui_flow.cpp
 	src/display.cpp
+	src/chain.cpp
 	src/host.cpp
 	src/options.cpp
 	src/ui.cpp
@@ -154,6 +186,8 @@ set(frontend_sources
 	src/vfs.cpp
 	src/smb.cpp
 	src/ftp.cpp
+	src/nfs.cpp
+	src/netfiles.cpp
 	src/covers.cpp
 	src/gamedb.cpp
 	src/history.cpp
@@ -191,9 +225,9 @@ set(imgui_sources
 	${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
 
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources} ${imgui_sources})
-target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 rcheevos)
+target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos)
 target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
-	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen)
+	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis)
 # ImGui's Vulkan backend draws through the core's function table
 # (dep/vulkan-loader), which is filled from the RADV linked into the title.
 target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKAN_NO_PROTOTYPES

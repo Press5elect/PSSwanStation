@@ -144,8 +144,8 @@ bool httpAvailable();
 // Seconds to add to UTC for the console's local time (its time zone and
 // summer time), for clocks on the screen.
 int localTimeOffset();
-// Whether the folder outside the title's (for "keep my files outside") can be
-// reached this run, and why not when it cannot.
+// Whether the place the files are kept in (Settings, "Where my files are
+// kept") could be used this run, and why not when it could not.
 bool outsideAvailable();
 std::string outsideProblem();
 // The previous start did not get as far as the library (it is tried without
@@ -162,12 +162,34 @@ uint64_t freeMemory();
 bool jitAvailable();
 }
 
+// -------------------------------------------------------------- netfiles.cpp
+namespace netfiles
+{
+// Whether the share's "files" folder is set and something is kept there.
+bool wanted();
+// Brings the files up to date with the share, on a thread of its own: as the
+// title starts, when a game closed, and when asked.
+void startUp();
+void gameClosed();
+void now();
+// True while that runs (a game is not started meanwhile).
+bool working();
+// Waits for it (the title closes).
+void finish();
+// What it is doing, or what it did last.
+std::string status();
+// How many files were found changed on both sides, this run.
+int conflicts();
+}
+
 // --------------------------------------------------------------- storage.cpp
 namespace storage
 {
 // The folder a user's files are kept in when they are kept outside the
 // title's folder.
 constexpr const char *OutsideDir = "/data/psswanstation/";
+// The folder on a USB drive they are kept in (at the top of the drive).
+constexpr const char *UsbFolder = "PSSwanStation";
 // The folders a user's files go in, made under `root` (0777).
 void makeFolders(const std::string& root);
 // The first start with the files outside: what the title's folder holds of
@@ -280,9 +302,15 @@ struct Frontend
 	bool usb = false;			// leave the sandbox at start to read USB drives
 	bool ramCache = true;		// read a network game whole into memory before it starts
 	bool notifications = false;	// the console's pop-up notices
-	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch, 3 fit with FSR 1
-	int fsrSharpness = 1;		// 0 soft, 1 normal, 2 sharp
-	bool linearFilter = true;	// how the picture is stretched to the screen
+	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch (3, before build 15: fit with FSR 1)
+	// How the picture is grown to the screen: 0 smooth (bilinear), 1 square
+	// pixels (nearest), 2 sharp bilinear, 3 FSR 1, 4 NIS, 5 CAS.
+	int scaler = 0;
+	int fsrSharpness = 1;		// the sharpening of FSR, NIS and CAS: 0 soft, 1 normal, 2 sharp
+	bool linearFilter = true;	// before build 15: square pixels when false (scaler took its place)
+	int signal = 0;				// 0 as it is, 1 the dither undone, 2 S-Video, 3 composite
+	// The colours, each in steps of 5% from 50% (0) to 150% (20); 10 unchanged.
+	int brightness = 10, contrast = 10, saturation = 10, gamma = 10;
 	int volume = 100;
 	bool showFps = false;
 	// How frames are timed: 0 by the display (one frame of the game for each
@@ -294,8 +322,16 @@ struct Frontend
 	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
 	int displayMode = 0;
 	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
-	int frameGeneration = 0;	// pictures made between the game's (display::generated): 0 off, 1 on, 2 on, the lighter way
-	int crt = 0;				// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask
+	int frameGeneration = 0;	// pictures made between the game's (display::generated): 0 off, 1 on (2, before build 15: lighter)
+	int fgQuality = 1;			// 0 performance, 1 balanced, 2 quality (with the two-way check)
+	int fgCap = 0;				// 0 up to the screen's rate, 1 up to 60 a second
+	int fgVideos = 0;			// 0 videos too, 1 not while a video plays (the PlayStation's MDEC decoding)
+	int fgMode = 0;				// 0 between the game's last two pictures, 1 ahead of the last (no waiting)
+	bool fgRunAhead = false;	// one frame of run-ahead while it is on, to take back its delay
+	bool fgDebug = false;		// the movement shown in colours
+	// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask; 4 on,
+	// crt-guest-advanced with display::crtPresetNames()[crt - 4]
+	int crt = 0;
 	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
 	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
@@ -334,7 +370,13 @@ struct Frontend
 	int regionFilter = 0;		// 0 all, 1 USA, 2 Europe, 3 Japan
 	int idleMinutes = 5;		// the swan takes the screen after this long without a button; 0 never
 	bool clock = true;			// the time in the library's header
-	bool outside = false;		// keep the user's files in /data/psswanstation (needs the sandbox left)
+	// Where the user's files are kept: 0 the title's folder, 1 /data/psswanstation,
+	// 2 a USB drive, 3 the network share's "files" folder (with a working copy on
+	// the console). 1 and 2 need the sandbox left; 3's copy is kept as 1 is where
+	// it can be, else in the title's folder.
+	int filesAt = 0;
+	bool cardsOnShare = false;		// copies of the memory cards in the share's "files" folder
+	bool coversFromShare = false;	// covers brought from the share's "files" folder
 	int cardBackups = 10;		// copies kept of each memory card that changed; 0 none
 	bool updateCheck = true;	// ask the releases page at start-up
 	bool achievements = false;	// RetroAchievements
@@ -394,6 +436,10 @@ unsigned generation();
 // Values that hold while something else asks for them (a widescreen patch's
 // aspect ratio): over the game's and the global ones, never saved.
 void setOverride(const std::string& key, const std::string& value);
+// A value the frontend holds for a while, over the user's own (an empty one
+// lets go); own() is the user's value, past it.
+void hold(const std::string& key, const std::string& value);
+const char *own(const std::string& key);
 void clearOverrides();
 bool hasOverride(const std::string& key);
 void setVisible(const std::string& key, bool visible);
@@ -452,6 +498,13 @@ bool generationPhase(float& phase, bool& fresh);
 // How many new pictures a second the running game shows, when that can be
 // counted (it moves its display from one buffer to another); else 0.
 double picturesPerSecond();
+// How many pictures the screen showed in the last second, the game's and the
+// ones frame generation made.
+float shownPerSecond();
+// A new picture of the game came in this refresh; and how long the game takes
+// between two, in milliseconds.
+bool newPicture();
+float pictureMs();
 // The lines the PlayStation draws (240, 480...), for the scanlines.
 int nativeLines();
 // The game's picture as it is now, without the interface: RGBA8, at most
@@ -592,8 +645,22 @@ public:
 };
 // Reads <root>network.cfg (and writes a template when there is none).
 void loadConfig();
-// The folders it names, as smb://server/share/folder.
+// The folders it names, as smb://server/share/folder, ftp://server/folder or
+// nfs://server/path.
 const std::vector<std::string>& gameFolders();
+// network.cfg's "files" line: the folder on a share for the title's own files
+// (memory card copies, covers, everything when the files are kept there), or
+// "" when it names none.
+const std::string& filesFolder();
+// Writing to a network folder: an SMB or NFS share (an FTP folder is only
+// read). A file is written beside its place and then put there, so that one
+// cut short is never taken for it; the folders it is in are made.
+bool canWrite(const std::string& path);
+bool writeFile(const std::string& path, const void *data, size_t bytes, std::string& error);
+bool makeFolders(const std::string& path);
+bool remove(const std::string& path);
+// A whole file, read as it is now (never from memory): false when it cannot be.
+bool readWhole(const std::string& path, std::vector<uint8_t>& out);
 bool isNetworkPath(const std::string& path);
 std::vector<Entry> list(const std::string& path);
 File *open(const std::string& path);

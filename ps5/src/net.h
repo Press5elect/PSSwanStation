@@ -1,5 +1,5 @@
 /*
-	PSSwanStation - what the network sources share (smb.cpp, ftp.cpp).
+	PSSwanStation - what the network sources share (smb.cpp, ftp.cpp, nfs.cpp).
 
 	SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -165,5 +165,24 @@ std::vector<smb::Entry> list(const std::string& path);
 int stat(const std::string& path, smb::Entry& entry);
 // The file, to be read as asked, or nullptr.
 smb::File *openStream(const std::string& path);
+void retryNow();
+}
+
+// NFS shares (nfs.cpp), reached through fe.h's smb functions by their nfs://
+// paths.
+namespace fe::nfs
+{
+bool isPath(const std::string& path);
+// A "path" line of network.cfg that names an NFS folder,
+// nfs://server/path[?uid=N&gid=N&version=4]: remembers it and gives it as
+// nfs://server/path, or "" when the line does not name one.
+std::string addFolder(const std::string& value);
+std::vector<smb::Entry> list(const std::string& path);
+// 1 there, 0 not there, -1 the server cannot be reached.
+int stat(const std::string& path, smb::Entry& entry);
+smb::File *openStream(const std::string& path);
+bool makeFolders(const std::string& path);
+bool writeFile(const std::string& path, const void *data, size_t bytes, std::string& error);
+bool remove(const std::string& path);
 void retryNow();
 }
