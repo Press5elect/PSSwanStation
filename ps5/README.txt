@@ -167,11 +167,20 @@ loader listening on port 9021 (the title leaves its sandbox with the Lapy
 helper beside eboot.bin). Games are read from a folder named psx, ps1 or
 playstation at the top of the drive.
 
-Network: an SMB share (Windows sharing) or an FTP server, or several of
-either. Name each folder in network.cfg with a "path" line, for example
+Network: an SMB share (Windows sharing), an NFS export or an FTP server, or
+several of them. Name each folder in network.cfg with a "path" line, for
+example
   path = 192.168.1.10/Games/PSX
+  path = nfs://192.168.1.10/volume1/games/psx
   path = ftp://192.168.1.10/games/psx
-with the server by its IP address, and restart PSSwanStation. An FTP server on
+with the server by its IP address, and restart PSSwanStation. NFS: version 3
+when the server offers it (the export is found from the path, the longest
+that matches), else version 4. The title asks as user and group 0 unless
+the path names others, which a NAS that checks users wants:
+nfs://192.168.1.10/volume1/games/psx?uid=1026&gid=100 (add &version=4 to
+skip version 3). The export has to let the console's address in; NFS sends
+nothing hidden. NFS has run against a server on a PC, not yet from a
+console. An FTP server on
 another port is ftp://192.168.1.10:2121/games; one with an account of its
 own is ftp://user:password@192.168.1.10/games (otherwise the "user" and
 "password" lines are used, and guest with no password logs in to an FTP
@@ -190,6 +199,24 @@ A server that sleeps: add its network card's hardware address to network.cfg,
 and the wake-up packet (Wake-on-LAN) is sent when PSSwanStation starts,
 whenever the share is scanned, and from Settings, Games and network, "Wake the
 server". The server has to have Wake-on-LAN switched on in its own settings.
+
+Your files on the share: a "files" line names a writable SMB or NFS folder
+for the title's own files (an FTP server is only read):
+  files = 192.168.1.10/Games/PSSwanStation
+  files = nfs://192.168.1.10/volume1/psswanstation
+Then, in Settings, Games and network:
+  "Memory cards on the network share"  each game's card is kept in the
+        share's "memory cards" folder as well, and brought up to date both
+        ways: several consoles in one home play on the same cards.
+  "Covers from the network share"      covers in the share's "covers" folder
+        are brought to this console.
+  "Bring my files up to date now"      does it at once.
+It happens when PSSwanStation starts, when a game closes, and when asked;
+games wait while it runs. A card changed on two consoles since they last met
+keeps the newer one, and the other is kept beside it as
+<name>.conflict-<date>-<time>, so nothing is lost. A card removed on one
+console is removed on the others (the removed copy is kept in
+data/sync/removed/).
 
 Covers: a cover is looked for in covers/ by the game's file name. With
 "Download covers" on, missing ones are fetched from the libretro thumbnails
@@ -251,14 +278,19 @@ Internal Resolution Scale) if a game does not hold its speed; "Show frame
 rate" (Interface) tells.
 
 Picture (Settings):
-  Scaling            fit the screen, whole multiples, stretch, or fit the
-                     screen with FSR 1 (below).
+  Picture size       fit the screen, whole multiples, or stretch.
+  Scaling filter     smooth, square pixels, sharp bilinear, FSR 1, NIS or
+                     CAS (below); "Sharpening" for the last three.
   Picture preset     Original (the PlayStation's own resolution, with a picture
                      tube's lines), Sharp (8x, full colour, PGXP) or Enhanced
                      (Sharp with xBR textures and 4x MSAA), set for every game
                      at once; each setting can still be changed by itself.
   Picture tube       scanlines over the game's picture, soft or full, and the
-                     tube's mask.
+                     tube's mask; or a whole tube, crt-guest-advanced, in five
+                     kinds (below).
+  Video signal       as it is, dither smoothed, S-Video or composite (below).
+  Brightness, Contrast, Colour, Gamma   from 50% to 150% (gamma 0.50 to
+                     1.50).
   Beside the picture what fills the sides of a 4:3 picture: black, the
                      picture's own light, a gradient, or a picture file from
                      borders/.
@@ -269,8 +301,13 @@ Picture (Settings):
                      left on; from the next start.
   Black frame insertion   at 120 Hz, a black refresh between a 60 fps game's
                      frames: clearer movement, a darker picture.
-  Frame generation   pictures of the title's own between the game's: off,
-                     on, or on and lighter (below).
+  Frame generation   pictures of the title's own between the game's (below),
+                     with its quality, between or ahead of the game's
+                     pictures, how many, videos, run-ahead, and a view of
+                     the movement it found.
+
+Every one of these but Display output can be a game's own: set it in the
+game's details (Options) or, while it runs, under Game settings, Picture.
 
 Display output is kept in the title's own sce_sys/param.json, which is where
 the console reads it when the title starts. If the screen stays dark after it
@@ -281,17 +318,48 @@ too; the first start after it writes the setting again and the one after that
 has it. 120 Hz and the variable refresh rate have not run on a console from
 this title yet.
 
-FSR 1 ("Scaling", "Fit the screen, FSR 1") enlarges the game's picture to the
-screen with AMD's FidelityFX Super Resolution 1 instead of a plain filter:
-edges stay clean, and the picture is sharpened ("FSR sharpening": soft,
-normal, sharp). It is worth most with a lower Internal Resolution Scale
-(Enhancement): 3x or 4x with FSR looks close to a higher scale and leaves the
-console more time for everything else. A picture already as large as the
-screen is left alone. This is FSR 1, the kind that works on one finished
+The scaling filters: Smooth blends neighbouring pixels; Square pixels shows
+them as squares (uneven when the size is not a whole multiple); Sharp
+bilinear grows each pixel to a square of the whole number of times it fits
+and blends only the step between two, so pixels stay even and crisp at any
+size. FSR 1 (AMD FidelityFX Super Resolution 1) and NIS (NVIDIA Image
+Scaling, its scaler with NVIDIA's own filter tables) enlarge with filters
+that follow edges, then sharpen; CAS (AMD Contrast Adaptive Sharpening)
+enlarges smoothly and then sharpens fine detail without halos. NIS grows a
+picture at most twice each way, so a larger step starts from the picture
+made half the screen's size with sharp bilinear. FSR and NIS are worth most
+with a lower Internal Resolution Scale (Enhancement): 3x or 4x with them
+looks close to a higher scale and leaves the console more time for
+everything else. A picture already as large as the screen is left alone. This is FSR 1, the kind that works on one finished
 picture. FSR 2 and 3 rebuild a picture from several frames and need each
 pixel's depth and movement, which an emulated PlayStation does not give.
 
-Frame generation ("Off", "On", "On, lighter") draws pictures of the title's
+The picture tube's CRT kinds are crt-guest-advanced, by guest(r), from the
+libretro slang shaders (GPL-2.0-or-later): the beam's shape, the glow and
+bloom of bright parts, the afterglow of the phosphors, the mask, the curved
+glass and a real tube's colours, twelve passes. Home television: a curved
+set with a shadow mask. Studio monitor: flat and sharp, with an aperture
+grille. Arcade monitor: curved and bright, with a slot mask. Soft: gentle
+lines, little mask. Guest's own: the shader as its author set it. On a 4K
+screen the mask is drawn two pixels wide. A tube takes the place of the
+scaling filter. The shaders are compiled when the title is built
+(ps5/tools/make-chains.py) and run by a small runner of libretro's preset
+format in the title (src/chain.cpp). They ask more of the graphics processor
+than the rest; tested on a PC, not yet on a console.
+
+Video signal: what reached a television's input. Dither smoothed undoes the
+fine checkered pattern the PlayStation mixes into its colours (it adds a 4 x
+4 pattern before dropping them to five bits): each pixel is averaged with
+those around it over the pattern's size, leaving out any too different, so
+edges stay. It matters most at the original resolution, or with True Colour
+off. S-Video blurs the colour a little against the brightness. Composite
+carries the colour on the brightness at the colour carrier's frequency, as
+most homes had it, and reads it back: softer, colour fringes on fine
+detail, and the dither blended into even colour, as the games' artists saw
+it on their televisions. These are my own shaders, run at the game's own
+size before the picture is enlarged; they work with every scaling filter
+and with the tube.
+Frame generation ("Off", "On") draws pictures of the title's
 own between the game's, worked out from how the picture moved, so that
 movement is smoother than the game makes it. The title counts the pictures
 the game really draws, which is rarely as many as the PlayStation sends to
@@ -310,10 +378,13 @@ that gives:
 
 A game counts when it draws into one part of the PlayStation's picture memory
 while it shows another and then swaps them, as nearly all 3D games do. One
-that draws straight into what is shown cannot be counted: each of its frames
-is then taken for a new picture, which is right for a game that draws 60 and
-gains nothing for one that draws fewer. Settings, Picture, "Frame generation"
-says what the running game is counted at.
+that draws straight into what is shown is counted by whether it drew anything
+in a frame: a frame it drew nothing in shows the picture before again. Where
+the pictures come unevenly (two refreshes, then three), the steps between
+them follow the average of the last four gaps. Settings, Picture, "Frame
+generation" says what the running game is counted at, and the frame counter
+(Interface, "Show frame rate") shows the game's pictures and the screen's
+side by side, as "30 -> 60".
 
 How a picture is made: the two game pictures are compared at four sizes,
 from small to large, to find how each part moved; where two things meet, each
@@ -344,18 +415,52 @@ and that ghosting falls with more: a PlayStation game's 30 or 20 are under
 that, and no method makes them clean. At 20 the made pictures outnumber the
 game's two to one and the errors show most.
 
-"On, lighter" decides the movement on a smaller picture and skips the last
-refinement: less work for the graphics processor, coarser edges. It is for
-when the frame rate drops with "On" (the frame counter under Interface
-tells), which a high Internal Resolution Scale makes likelier.
+Its settings:
+  Generation quality   Performance decides the movement on a smaller picture
+                       and skips the last refinement, for when the frame
+                       rate drops with it on. Balanced is the usual.
+                       Quality looks for movement on a finer picture,
+                       decides it at the game's own size, and checks each
+                       movement from both frames' side: where both say
+                       otherwise it is not believed, and the game's own
+                       picture is shown there. It asks most of the graphics
+                       processor. On my test scene it measures about the
+                       same as Balanced (25.5 dB against 25.8); it is meant
+                       for what comes into view, which that scene has
+                       little of.
+  Made pictures        between the game's last two (the smoothest, a little
+                       delay), or ahead of the latest along its movement
+                       (shown the moment it comes, no delay; more mistakes
+                       where movement changes). Ahead measures 21.4 dB on
+                       the same scene; showing the game picture twice,
+                       13.5.
+  Generate up to       the screen's rate, or 60 a second at 120 Hz (half the
+                       work).
+  Videos               made pictures for the films between scenes too, or
+                       none while the PlayStation's video decoder works.
+  Take back the delay  one frame of run-ahead while frame generation is on:
+                       the game answers the pad a frame sooner. About twice
+                       the emulator's work. Not when run-ahead is set by
+                       itself (Emulation), not in netplay.
+  Show the movement    the movement found, as colours over the picture (its
+                       way and length), grey where it is not believed.
+
+With Frame pacing "by the clock" the screen is not made to wait for the
+game: every refresh shows where the game is at that moment, between its last
+two pictures (or past the latest), at whatever rate the two have. That is
+any-rate generation: best with a variable refresh rate.
 
 The game answers the pad a refresh of the screen later with one picture made
 between two, two refreshes later with two. Frame generation is off while fast
 forwarding and rewinding, and black frame insertion is off while it is on. It
-works with FSR 1 (the enlarged pictures are what it works on). This is the
+works on the game's own picture, before the look (scaling filter, tube,
+signal), so all of those work with it. This is the
 title's own way of doing it, not AMD's or Nvidia's, which need more than an
-emulated PlayStation gives. An experiment: build 12's ran on a console and
-smeared; this one has run on a PC only.
+emulated PlayStation gives. Movement told by the emulator itself (from the
+polygons drawn) and depth for what is in front are not done: a PlayStation
+game sends its polygons anew each frame with nothing that says which is
+which, so their movement would have to be guessed as well. An experiment:
+build 12's ran on a console and smeared; build 15's has run on a PC only.
 
 Sound: "Menu music" plays in the library and the menus: the title's own quiet
 piece, or your file (music/menu.ogg, .mp3 or .wav).
@@ -387,6 +492,13 @@ its details (Triangle in the library) and in its menu while it runs, under
 on or off; where a cheat has a value to choose (a character, a car), Left
 and Right choose it. What is switched on is kept for that game. A widescreen
 patch also sets the aspect ratio it needs while it is on.
+
+A game the database has no codes for gets the libretro database's instead
+(CC BY-SA 4.0, carried in assets/libretro-cheats.zip): about 1,700 of its
+PlayStation cheat files, matched to discs by their Redump names, or by title
+within the regions the file names. Each says where it came from, and that it
+may not fit your version of the game. It is used only when chtdb and your
+own file give a game nothing.
 
 Your own codes: cheats/<serial>.cht in the same format, for example
 
@@ -489,15 +601,26 @@ an update go wrong half way, the next start puts the earlier files back.
 Keeping your files outside the title folder
 -------------------------------------------
 
-Settings, Games and network, "Keep my files outside the title folder": BIOS
-files, covers, cheats, memory cards, states, layouts and settings then
-live in /data/psswanstation/, where replacing or deleting
-/data/homebrew/PPSA99248 cannot take them along. From the next start, what
-the title's folder holds is copied over once (and left where it is). The
+Settings, Games and network, "Where my files are kept": BIOS files, covers,
+cheats, memory cards, states, layouts and settings live in
+
+  the title's folder      as before
+  /data/psswanstation/    where replacing or deleting
+                          /data/homebrew/PPSA99248 cannot take them along
+  a USB drive             PSSwanStation/ at the top of the first drive found
+  the network share       the "files" folder of network.cfg: the title works
+                          on a copy in /data/psswanstation/ and brings the two
+                          up to date both ways when it starts, when a game
+                          closes, and when asked (as memory cards are, above)
+
+From the next start, what the title's folder holds is copied over once (and
+left where it is). The
 console hides that folder from a title, so PSSwanStation has to leave its
 sandbox each time it starts: that needs a resident Lapy service or the ELF
 loader on port 9021, as USB drives do. Without either it says so and uses the
-title's folder. Not yet run on a console.
+title's folder. Without the drive or the share, the title says so and uses
+the title's folder. Not yet run on a console; the USB drive and the share
+have run on a PC.
 
 
 Safe start
