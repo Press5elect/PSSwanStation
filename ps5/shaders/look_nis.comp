@@ -1,0 +1,62 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+// PSSwanStation - NVIDIA Image Scaling, the scaler: NVIDIA's NIS_Main.glsl
+// (ps5/third_party/nis) as this title runs it, in 32-bit floats and with the
+// picture it makes declared as RGBA8 (no device feature needed to write it).
+// SPDX-License-Identifier: GPL-3.0-or-later
+#define NIS_GLSL 1
+#define NIS_SCALER 1
+#define NIS_USE_HALF_PRECISION 0
+
+layout(set=0,binding=0) uniform const_buffer
+{
+	float kDetectRatio;
+	float kDetectThres;
+	float kMinContrastRatio;
+	float kRatioNorm;
+
+	float kContrastBoost;
+	float kEps;
+	float kSharpStartY;
+	float kSharpScaleY;
+
+	float kSharpStrengthMin;
+	float kSharpStrengthScale;
+	float kSharpLimitMin;
+	float kSharpLimitScale;
+
+	float kScaleX;
+	float kScaleY;
+
+	float kDstNormX;
+	float kDstNormY;
+	float kSrcNormX;
+	float kSrcNormY;
+
+	uint kInputViewportOriginX;
+	uint kInputViewportOriginY;
+	uint kInputViewportWidth;
+	uint kInputViewportHeight;
+
+	uint kOutputViewportOriginX;
+	uint kOutputViewportOriginY;
+	uint kOutputViewportWidth;
+	uint kOutputViewportHeight;
+
+	float reserved0;
+	float reserved1;
+};
+
+layout(set=0,binding=1) uniform sampler samplerLinearClamp;
+layout(set=0,binding=2) uniform texture2D in_texture;
+layout(set=0,binding=3, rgba8) uniform writeonly image2D out_texture;
+layout(set=0,binding=4) uniform texture2D coef_scaler;
+layout(set=0,binding=5) uniform texture2D coef_usm;
+
+#include "NIS_Scaler.h"
+
+layout(local_size_x=NIS_THREAD_GROUP_SIZE) in;
+void main()
+{
+	NVScaler(gl_WorkGroupID.xy, gl_LocalInvocationID.x);
+}

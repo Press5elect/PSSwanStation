@@ -80,10 +80,37 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 // (at phase 1, or with no picture before) this one as it was kept. Null when
 // it cannot be done: the picture is then drawn as it is. Only between a
 // frame's begin and its end.
-// `lighter`: with less work for the graphics processor, and less care.
-void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, bool lighter = false);
+// A `phase` past 1 (up to 2) is a picture ahead of this one, along the same
+// movement (extrapolation: no waiting for the next frame). `quality`: 0 less
+// work for the graphics processor and less care, 1 the usual, 2 finer, with
+// every movement checked from both frames' side. `debug`: the movement shown
+// in colours over the picture.
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality = 1,
+		bool debug = false);
 // The next picture has no picture before it (another game, a state loaded).
 void forgetGenerated();
+// The picture's look: how it is grown to the screen, what signal a television
+// would have had, a picture tube, its colours.
+struct Look
+{
+	int scaler = 0;			// 0 by ImGui (bilinear or nearest), 1 sharp bilinear, 2 FSR 1, 3 NIS, 4 CAS
+	int sharpness = 1;		// 0 soft, 1 normal, 2 sharp (FSR, NIS, CAS)
+	int signal = 0;			// 0 as it is, 1 the dither undone, 2 S-Video, 3 composite
+	int cell = 1;			// texels to one of the PlayStation's pixels (the resolution scale)
+	int crt = 0;			// 0 none, else crt-guest-advanced with the preset crtPresetNames()[crt - 1]
+	float brightness = 1, contrast = 1, saturation = 1, gamma = 1;
+	bool plain() const;		// nothing to do
+};
+std::vector<std::string> crtPresetNames();
+// `texture` (its part up to u, v, which is `width` x `height` pixels) with
+// that look, for a place on the screen of `outWidth` x `outHeight`. Returns
+// what to draw: with `full`, a picture of that size, drawn pixel for pixel;
+// otherwise one of the picture's own size, for ImGui to stretch. Null when
+// there is nothing to do or it cannot be done: the picture is then drawn the
+// usual way. Only between a frame's begin and its end.
+void *picture(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, const Look& look, bool& full);
+// What the picture tube keeps from frame to frame starts anew (another game).
+void forgetPicture();
 // RGBA8 pixels as a PNG file. May be called on any thread.
 bool writePng(const std::string& path, const uint8_t *rgba, int width, int height);
 
