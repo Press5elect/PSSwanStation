@@ -25,10 +25,14 @@
 #   CHTDB_DIR         a folder holding cheats.zip and patches.zip from the
 #                     DuckStation chtdb release (default: ../deps-src); without
 #                     them the title is staged with no cheat database
+#   SLANG_SHADERS_DIR a checkout of github.com/libretro/slang-shaders (default:
+#                     ../deps-src/slang-shaders; crt/ is read), from which the
+#                     picture tube's shaders are made
 #   LIBRETRO_DATABASE_DIR  a checkout of github.com/libretro/libretro-database
 #                     (default: ../deps-src/libretro-database; only its
-#                     metadat/developer and metadat/redump PlayStation lists are
-#                     read), from which the game database is made; without it
+#                     metadat/developer and metadat/redump PlayStation lists and
+#                     its cht/Sony - PlayStation cheats are read), from which the
+#                     game database and the libretro cheats are made; without it
 #                     the title has no descriptions
 #   NETWORK_PATH      server/share/folder, written into the staged network.cfg
 #                     (a build for one's own console; never in the repository)
@@ -127,8 +131,22 @@ fi
 database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
 if [[ -f "$database/metadat/developer/Sony - PlayStation.dat" ]]; then
     python3 "$ps5/tools/make-gamedb.py" "$database" "$app/assets/gamedb.zip"
+    # The libretro database's cheats (CC BY-SA 4.0), for games chtdb has none for.
+    if [[ -d "$database/cht/Sony - PlayStation" ]]; then
+        python3 "$ps5/tools/make-libretro-cheats.py" "$database" "$app/assets/libretro-cheats.zip"
+    else
+        echo "No libretro cheats staged: $database has no cht/Sony - PlayStation" >&2
+    fi
 else
     echo "No game database staged: $database is not a libretro-database checkout" >&2
+fi
+# The picture tube: crt-guest-advanced from the libretro slang shaders
+# (GPL-2.0-or-later), compiled for the title's chain runner.
+slang=${SLANG_SHADERS_DIR:-$src/../deps-src/slang-shaders}
+if [[ -f "$slang/crt/crt-guest-advanced.slangp" ]]; then
+    python3 "$ps5/tools/make-chains.py" "$slang" "$app/assets/shaders"
+else
+    echo "No CRT shaders staged: $slang is not a slang-shaders checkout" >&2
 fi
 if [[ -n ${NETWORK_PATH:-} ]]; then
     {
@@ -159,13 +177,15 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     grep -h -E '^(revision|sdk):' "$vk/.deps/native/radv-release/PROVENANCE.txt" 2>/dev/null | sed 's/^/RADV /'
     echo "Dear ImGui:  $(git -C "$imgui" describe --tags --always 2>/dev/null || echo unknown)"
     echo "libsmb2:     $(git -C "$libsmb2" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "libnfs:      $(git -C "${LIBNFS_DIR:-$src/../deps-src/libnfs}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "slang-shaders: $(git -C "$slang" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "rcheevos:    $(git -C "$rcheevos" describe --tags --always 2>/dev/null || echo unknown)"
     echo "Lapy helper: $(sed -n 's/.*"elf_sha256": "\([0-9a-f]*\)".*/\1/p' "$lapy/lapy-manifest.json") (sha256)"
     echo "eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)"
 } > "$app/BUILD.txt"
 # Every part as data, with the revision it was built from.
 python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$imgui" "$libsmb2" "$rcheevos" "$lapy" \
-    "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}"
+    "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}" "${LIBNFS_DIR:-$src/../deps-src/libnfs}" "$slang"
 # Everything is readable and writable over FTP; the program's own files as the
 # console wants a title's (and as the updater leaves them).
 find "$app" -type d -exec chmod 0777 {} +

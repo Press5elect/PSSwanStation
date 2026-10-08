@@ -41,6 +41,11 @@ done
 database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
 [[ -f "$database/metadat/developer/Sony - PlayStation.dat" && ! -f $root/assets/gamedb.zip ]] \
     && python3 "$ps5/tools/make-gamedb.py" "$database" "$root/assets/gamedb.zip"
+[[ -d "$database/cht/Sony - PlayStation" && ! -f $root/assets/libretro-cheats.zip ]] \
+    && python3 "$ps5/tools/make-libretro-cheats.py" "$database" "$root/assets/libretro-cheats.zip"
+slang=${SLANG_SHADERS_DIR:-$src/../deps-src/slang-shaders}
+[[ -f "$slang/crt/crt-guest-advanced.slangp" && ! -f $root/assets/shaders/crt-guest-advanced/chain.txt ]] \
+    && python3 "$ps5/tools/make-chains.py" "$slang" "$root/assets/shaders"
 # The software rasteriser of a PC draws 1x quickly enough to script against.
 [[ -f $root/data/options.cfg ]] || printf 'swanstation_GPU_ResolutionScale = "1"\n' > "$root/data/options.cfg"
 rm -f "$root/data/history.txt"

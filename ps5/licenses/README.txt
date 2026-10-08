@@ -32,6 +32,9 @@ libunwind, compiler-rt       LLVM-exception                            archives
 OpenBIOS (built-in BIOS)     MIT              OpenBIOS-LICENSE.txt     PCSX-Redux project
 Dear ImGui                   MIT              DearImGui-LICENSE.txt    github.com/ocornut/imgui
 libsmb2                      LGPL-2.1         LGPL-2.1.txt             github.com/sahlberg/libsmb2
+libnfs                       LGPL-2.1;        LGPL-2.1.txt,            github.com/sahlberg/libnfs
+                             protocol files   BSD-2-Clause.txt
+                             BSD-2-Clause
 libchdr, with LZMA and zstd  BSD-3-Clause     libchdr-LICENSE.txt      github.com/rtissera/libchdr
 miniz                        MIT              MIT.txt                  github.com/richgel999/miniz
 xxHash                       BSD-2-Clause     BSD-2-Clause.txt         github.com/Cyan4973/xxHash
@@ -39,9 +42,18 @@ Xbyak                        BSD-3-Clause     BSD-3-Clause.txt         github.co
 stb_image, stb_image_resize  MIT / public     MIT.txt                  github.com/nothings/stb
                              domain
 libretro-common              MIT              MIT.txt                  github.com/libretro/libretro-common
+Vulkan headers               Apache-2.0       Apache-2.0.txt           github.com/KhronosGroup/Vulkan-Headers
+                                                                       v1.4.360 (dep/vulkan-loader/include)
 rcheevos (RetroAchievements) MIT              rcheevos-LICENSE.txt     github.com/RetroAchievements/rcheevos
 FidelityFX Super Resolution  MIT              FSR-LICENSE.txt          github.com/GPUOpen-Effects/FidelityFX-FSR
 1.0 (the FSR 1 scaling)                                                (AMD), its two shader headers unmodified
+FidelityFX CAS (sharpening)  MIT              CAS-LICENSE.txt          github.com/GPUOpen-Effects/FidelityFX-CAS
+                                                                       (AMD), ffx_cas.h unmodified
+NVIDIA Image Scaling         MIT              NIS-LICENSE.txt          github.com/NVIDIAGameWorks/NVIDIAImageScaling,
+                                                                       its headers unmodified
+crt-guest-advanced           GPL-2.0-or-      GPL-3.0.txt              github.com/libretro/slang-shaders, by
+(the picture tube)           later                                     guest(r): compiled to SPIR-V, used under
+                                                                       GPL-3.0 as its licence allows
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,
                              domain                                    github.com/mackron/dr_libs
 Roboto (font)                Apache-2.0       Apache-2.0.txt           Google
@@ -56,6 +68,12 @@ Game database                CC BY-SA 4.0     CC-BY-SA-4.0.txt         github.co
                                                                        serials), rearranged by
                                                                        ps5/tools/make-gamedb.py into
                                                                        assets/gamedb.zip
+libretro cheats              CC BY-SA 4.0     CC-BY-SA-4.0.txt         github.com/libretro/libretro-database:
+                                                                       its cht/Sony - PlayStation files,
+                                                                       matched to disc serials by
+                                                                       ps5/tools/make-libretro-cheats.py into
+                                                                       assets/libretro-cheats.zip (used only
+                                                                       for games chtdb has no codes for)
 The swan icon and pictures   GPL-3.0-or-later GPL-3.0.txt              drawn by ps5/tools/make-art.py
 
 This title contains no games, no BIOS file of an original console, no console

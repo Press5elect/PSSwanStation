@@ -33,13 +33,15 @@ def at(repo, remote=None):
 
 def main():
     app, src, vulkan, sdk, imgui, libsmb2, rcheevos, lapy, database = (Path(a) for a in sys.argv[1:10])
+    libnfs = Path(sys.argv[10]) if len(sys.argv) > 10 else src.parent / "deps-src/libnfs"
+    slang = Path(sys.argv[11]) if len(sys.argv) > 11 else src.parent / "deps-src/slang-shaders"
     parts = []
     title = at(src, "https://github.com/Press5elect/PSSwanStation")
     parts.append(dict(
         id="psswanstation",
         name="PSSwanStation: SwanStation (the emulator, with the libraries in its tree: libchdr with LZMA and zstd, "
              "xxHash, Xbyak, stb, libretro-common, OpenBIOS) and the PS5 frontend in ps5/ (with miniz, stb_vorbis, "
-             "dr_mp3, AMD's FSR 1 headers, the sandbox elevation client, Roboto and Font Awesome Free)",
+             "dr_mp3, AMD's FSR 1 and CAS headers, NVIDIA Image Scaling, the sandbox elevation client, Roboto and Font Awesome Free)",
         licence="GPL-3.0 as a whole; each library's own in licenses/README.txt",
         artifacts=["eboot.bin", "sce_sys/", "README.txt", "CHANGELOG.txt", "LEGAL.txt", "licenses/"],
         source=title))
@@ -69,6 +71,8 @@ def main():
     parts.append(dict(id="imgui", name="Dear ImGui", licence="MIT", artifacts=["eboot.bin"], source=at(imgui)))
     parts.append(dict(id="libsmb2", name="libsmb2 (network shares)", licence="LGPL-2.1-or-later", artifacts=["eboot.bin"],
                       source=at(libsmb2)))
+    parts.append(dict(id="libnfs", name="libnfs (NFS shares)", licence="LGPL-2.1-or-later; its protocol files BSD-2-Clause",
+                      artifacts=["eboot.bin"], source=at(libnfs)))
     parts.append(dict(id="rcheevos", name="rcheevos (RetroAchievements)", licence="MIT", artifacts=["eboot.bin"],
                       source=at(rcheevos)))
     note = (lapy / "SOURCE.txt").read_text() if (lapy / "SOURCE.txt").exists() else ""
@@ -88,6 +92,21 @@ def main():
             id="gamedb", name="the game database (assets/gamedb.zip): the libretro database's PlayStation lists, "
                               "rearranged by ps5/tools/make-gamedb.py",
             licence="CC BY-SA 4.0", artifacts=["assets/gamedb.zip"], source=source))
+    if (app / "assets/libretro-cheats.zip").exists():
+        source = at(database)
+        source["paths"] = ["cht/Sony - PlayStation", "metadat/redump/Sony - PlayStation.dat", "LICENSE"]
+        parts.append(dict(
+            id="libretro-cheats", name="the libretro cheats (assets/libretro-cheats.zip): the libretro database's "
+                                      "PlayStation cheat files, matched to serials by ps5/tools/make-libretro-cheats.py",
+            licence="CC BY-SA 4.0", artifacts=["assets/libretro-cheats.zip"], source=source))
+    if (app / "assets/shaders/crt-guest-advanced/chain.txt").exists():
+        source = at(slang)
+        source["paths"] = ["crt/crt-guest-advanced.slangp", "crt/shaders/guest/advanced"]
+        parts.append(dict(
+            id="slang-shaders", name="crt-guest-advanced by guest(r), from the libretro slang shaders "
+                                    "(assets/shaders/crt-guest-advanced): its passes compiled to SPIR-V by "
+                                    "ps5/tools/make-chains.py, its lookup pictures unchanged",
+            licence="GPL-2.0-or-later", artifacts=["assets/shaders/"], source=source))
     for name in ("cheats.zip", "patches.zip"):
         if (app / "assets" / name).exists():
             parts.append(dict(
