@@ -142,6 +142,19 @@ public:
   // a game that draws into a second buffer does that to show each new picture
   // (the PS5 title's frame generation counts its pictures by it).
   uint32_t GetDisplayStartChangeCount() const { return m_display_start_changes; }
+  // How many drawing commands (polygons, rectangles, lines, fills, copies
+  // into video memory) the game has sent: a frame with none drew nothing new.
+  uint32_t GetDrawCommandCount() const { return m_draw_commands; }
+  // A sub-pixel shift of everything the hardware renderer draws from now
+  // on, in pixels of its scaled framebuffer (nothing for the software one).
+  virtual void SetDrawJitter(float x, float y) {}
+  // The scale the hardware renderer draws at now (1 for the software one).
+  virtual uint32_t GetDrawResolutionScale() const { return 1; }
+  // The lines of video memory the display shows, before any scaling (a game's
+  // own line count: 240, 480...).
+  uint32_t GetDisplayVRAMHeight() const { return m_crtc_state.display_vram_height; }
+  // Whether the counters above count: not while run-ahead replays a frame.
+  static bool s_count_pictures;
 #endif
 
 protected:
@@ -504,6 +517,7 @@ protected:
   TickCount m_max_run_ahead = 128;
   uint32_t m_fifo_size = 128;
   uint32_t m_display_start_changes = 0;
+  uint32_t m_draw_commands = 0;
 
 private:
   using GP0CommandHandler = bool (GPU::*)();
