@@ -288,10 +288,8 @@ normal, sharp). It is worth most with a lower Internal Resolution Scale
 (Enhancement): 3x or 4x with FSR looks close to a higher scale and leaves the
 console more time for everything else. A picture already as large as the
 screen is left alone. This is FSR 1, the kind that works on one finished
-picture. FSR 2, 3 and 4 rebuild a picture from several frames and need each
-pixel's depth and movement, which an emulated PlayStation does not give, and
-the FSR 4 that exists for PS5 homebrew runs on another Vulkan driver than
-this title's. Tested on a PC; not yet seen on a console in this title.
+picture. FSR 2 and 3 rebuild a picture from several frames and need each
+pixel's depth and movement, which an emulated PlayStation does not give.
 
 Frame generation ("Off", "On", "On, lighter") draws pictures of the title's
 own between the game's, worked out from how the picture moved, so that

@@ -3,7 +3,6 @@
 // Licensed under GPLv2+
 // Refer to the LICENSE file included.
 
-#include <atomic>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -11,6 +10,8 @@
 #include <string>
 
 #include "vulkan_loader.h"
+
+#include <retro_atomic.h>
 
 #ifndef _WIN32
 #include <dlfcn.h>
@@ -93,14 +94,14 @@ void UnloadVulkanLibrary()
 #elif defined(_WIN32)
 
 static HMODULE vulkan_module;
-static std::atomic_int vulkan_module_ref_count = {0};
+static retro_atomic_int_t vulkan_module_ref_count;
 
 bool LoadVulkanLibrary()
 {
   // Not thread safe if a second thread calls the loader whilst the first is still in-progress.
   if (vulkan_module)
   {
-    vulkan_module_ref_count++;
+    retro_atomic_inc_int(&vulkan_module_ref_count);
     return true;
   }
 
@@ -137,13 +138,13 @@ bool LoadVulkanLibrary()
     return false;
   }
 
-  vulkan_module_ref_count++;
+  retro_atomic_inc_int(&vulkan_module_ref_count);
   return true;
 }
 
 void UnloadVulkanLibrary()
 {
-  if ((--vulkan_module_ref_count) > 0)
+  if (retro_atomic_fetch_sub_int(&vulkan_module_ref_count, 1) > 1)
     return;
 
   ResetVulkanLibraryFunctionPointers();
@@ -154,14 +155,14 @@ void UnloadVulkanLibrary()
 #else
 
 static void* vulkan_module;
-static std::atomic_int vulkan_module_ref_count = {0};
+static retro_atomic_int_t vulkan_module_ref_count;
 
 bool LoadVulkanLibrary()
 {
   // Not thread safe if a second thread calls the loader whilst the first is still in-progress.
   if (vulkan_module)
   {
-    vulkan_module_ref_count++;
+    retro_atomic_inc_int(&vulkan_module_ref_count);
     return true;
   }
 
@@ -230,13 +231,13 @@ bool LoadVulkanLibrary()
     return false;
   }
 
-  vulkan_module_ref_count++;
+  retro_atomic_inc_int(&vulkan_module_ref_count);
   return true;
 }
 
 void UnloadVulkanLibrary()
 {
-  if ((--vulkan_module_ref_count) > 0)
+  if (retro_atomic_fetch_sub_int(&vulkan_module_ref_count, 1) > 1)
     return;
 
   ResetVulkanLibraryFunctionPointers();

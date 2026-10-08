@@ -68,6 +68,8 @@ include_directories(${CMAKE_BINARY_DIR}/gen)
 # The title owns the Vulkan device (src/core/gpu_hw_vulkan.cpp keeps it alive
 # when a game ends).
 add_compile_definitions(SWANSTATION_STANDALONE=1)
+# One retro_atomic backend for C and C++ alike, never std::atomic (as SwanStation's own CMakeLists.txt).
+add_compile_definitions(RETRO_ATOMIC_FORCE_GCC_NEW)
 
 # The frontend compresses save states and reads the cheat database's ZIP
 # archives with the core's miniz (dep/libchdr/deps/miniz-3.1.1/miniz.h keeps

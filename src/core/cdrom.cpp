@@ -19,7 +19,7 @@ struct CommandInfo
   uint8_t expected_parameters;
 };
 
-static CommandInfo s_command_info[255] = {
+static CommandInfo s_command_info[256] = {
   {"Sync", 0},       {"Getstat", 0},   {"Setloc", 3},  {"Play", 0},     {"Forward", 0}, {"Backward", 0},
   {"ReadN", 0},      {"MotorOn", 0},   {"Stop", 0},    {"Pause", 0},    {"Reset", 0},   {"Mute", 0},
   {"Demute", 0},     {"Setfilter", 2}, {"Setmode", 1}, {"Getparam", 0}, {"GetlocL", 0}, {"GetlocP", 0},
@@ -62,8 +62,7 @@ static CommandInfo s_command_info[255] = {
   {"Unknown", 0},    {"Unknown", 0},   {"Unknown", 0}, {"Unknown", 0},  {"Unknown", 0}, {"Unknown", 0},
   {"Unknown", 0},    {"Unknown", 0},   {"Unknown", 0}, {"Unknown", 0},  {"Unknown", 0}, {"Unknown", 0},
   {"Unknown", 0},    {"Unknown", 0},   {"Unknown", 0}, {"Unknown", 0},  {"Unknown", 0}, {"Unknown", 0},
-  {"Unknown", 0},    {"Unknown", 0},   {nullptr, 0} // Unknown
-};
+  {"Unknown", 0},    {"Unknown", 0},   {"Unknown", 0}, {"Unknown", 0}};
 
 CDROM g_cdrom;
 
@@ -288,6 +287,17 @@ bool CDROM::DoState(StateWrapper& sw)
 
   if (sw.IsReading())
   {
+    if (m_xa_resample_p >= XA_RESAMPLE_RING_BUFFER_SIZE || m_current_read_sector_buffer >= NUM_SECTOR_BUFFERS ||
+        m_current_write_sector_buffer >= NUM_SECTOR_BUFFERS)
+    {
+      return false;
+    }
+    for (const SectorBuffer& sb : m_sector_buffers)
+    {
+      if (sb.size > RAW_SECTOR_OUTPUT_SIZE)
+        return false;
+    }
+
     if (m_reader.HasMedia())
       m_reader.QueueReadSector(m_requested_lba);
     UpdateCommandEvent();
