@@ -1852,12 +1852,20 @@ void DoRunahead()
     LibretroAudioStream* const audio_stream = g_host_interface->GetAudioStream();
     audio_stream->SetSilentMode(true);
 
+#ifdef SWANSTATION_STANDALONE
+    // The replayed frames are not new pictures of the game (the PS5 title
+    // counts its pictures by the GPU's counters).
+    GPU::s_count_pictures = false;
+#endif
     while (frames_to_run > 0)
     {
       DoRunFrame();
       SaveRunaheadState();
       frames_to_run--;
     }
+#ifdef SWANSTATION_STANDALONE
+    GPU::s_count_pictures = true;
+#endif
 
     audio_stream->SetSilentMode(false);
   }

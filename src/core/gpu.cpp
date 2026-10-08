@@ -288,6 +288,10 @@ bool GPU::DoState(StateWrapper& sw, HostDisplayTexture** host_texture, bool upda
   return !sw.HasError();
 }
 
+#ifdef SWANSTATION_STANDALONE
+bool GPU::s_count_pictures = true;
+#endif
+
 void GPU::ResetGraphicsAPIState() {}
 
 void GPU::RestoreGraphicsAPIState() {}
@@ -1103,7 +1107,10 @@ void GPU::WriteGP1(uint32_t value)
       {
         SynchronizeCRTC();
         m_crtc_state.regs.display_address_start = new_value;
-        m_display_start_changes++;
+#ifdef SWANSTATION_STANDALONE
+        if (s_count_pictures)
+          m_display_start_changes++;
+#endif
         UpdateCRTCDisplayParameters();
       }
     }

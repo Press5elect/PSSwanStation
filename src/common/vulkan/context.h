@@ -39,6 +39,11 @@ public:
   // Destroys context.
   static void Destroy();
 
+  // A chain of feature structures for the next device created (a
+  // VkPhysicalDeviceFeatures2 at its head takes the base features), and
+  // extensions to enable with it, for what the renderer does not need itself.
+  static void SetExtraDeviceCreateInfo(void* features_chain, const char* const* extensions, uint32_t num_extensions);
+
   // Enable/disable debug message runtime.
   bool EnableDebugUtils();
   void DisableDebugUtils();

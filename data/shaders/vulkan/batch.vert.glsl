@@ -117,6 +117,10 @@ layout(location = 0) out VertexData {
 // way to jump past unused fields.
 layout(std140, set = 0, binding = 0) uniform BatchUBOData {
   layout(offset = 52) uint u_pgxp_depth;
+  // A sub-pixel shift of everything drawn, in pixels of the scaled
+  // framebuffer, set per picture (SetDrawJitter); 0 otherwise.
+  layout(offset = 64) float u_jitter_x;
+  layout(offset = 68) float u_jitter_y;
 };
 
 // --------------------------------------------------------------------
@@ -131,6 +135,11 @@ void main()
   // PSX VRAM addressing is 0..1023 horizontally, mapped to NDC -1..+1.
   float pos_x = ((a_pos.x + vertex_offset) /  512.0) - 1.0;
   float pos_y = ((a_pos.y + vertex_offset) / -256.0) + 1.0;
+
+  // The sub-pixel jitter: one scaled pixel is 1/(512 S) of NDC across and
+  // 1/(256 S) down (a_pos.y grows downwards, pos_y upwards here).
+  pos_x += u_jitter_x / (512.0 * float(RESOLUTION_SCALE));
+  pos_y -= u_jitter_y / (256.0 * float(RESOLUTION_SCALE));
 
   // Vulkan flips Y vs GL/D3D; shadergen does this unconditionally
   // under #if API_VULKAN. We are Vulkan-only here so it is also

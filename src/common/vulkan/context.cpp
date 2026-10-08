@@ -163,6 +163,17 @@ bool Context::SelectDeviceExtensions(ExtensionList* extension_list, bool enable_
   return true;
 }
 
+static void* s_extra_features_chain = nullptr;
+static const char* const* s_extra_extensions = nullptr;
+static uint32_t s_num_extra_extensions = 0;
+
+void Context::SetExtraDeviceCreateInfo(void* features_chain, const char* const* extensions, uint32_t num_extensions)
+{
+  s_extra_features_chain = features_chain;
+  s_extra_extensions = extensions;
+  s_num_extra_extensions = num_extensions;
+}
+
 bool Context::SelectDeviceFeatures(const VkPhysicalDeviceFeatures* required_features)
 {
   VkPhysicalDeviceFeatures available_features;
@@ -279,6 +290,8 @@ bool Context::CreateDevice(VkSurfaceKHR surface, bool enable_validation_layer, c
   ExtensionList enabled_extensions;
   for (uint32_t i = 0; i < num_required_device_extensions; i++)
     enabled_extensions.emplace_back(required_device_extensions[i]);
+  for (uint32_t i = 0; i < s_num_extra_extensions; i++)
+    enabled_extensions.emplace_back(s_extra_extensions[i]);
   if (!SelectDeviceExtensions(&enabled_extensions, surface != VK_NULL_HANDLE))
     return false;
 
@@ -292,6 +305,20 @@ bool Context::CreateDevice(VkSurfaceKHR surface, bool enable_validation_layer, c
     return false;
 
   device_info.pEnabledFeatures = &m_device_features;
+  if (s_extra_features_chain)
+  {
+    VkPhysicalDeviceFeatures2* features2 = static_cast<VkPhysicalDeviceFeatures2*>(s_extra_features_chain);
+    if (features2->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
+    {
+      // The renderer's base features, and the chain's own on top.
+      VkBool32* mine = reinterpret_cast<VkBool32*>(&m_device_features);
+      VkBool32* theirs = reinterpret_cast<VkBool32*>(&features2->features);
+      for (size_t i = 0; i < sizeof(VkPhysicalDeviceFeatures) / sizeof(VkBool32); i++)
+        theirs[i] = theirs[i] || mine[i];
+      device_info.pEnabledFeatures = nullptr;
+    }
+    device_info.pNext = s_extra_features_chain;
+  }
 
   // Enable debug layer on debug builds
   if (enable_validation_layer)

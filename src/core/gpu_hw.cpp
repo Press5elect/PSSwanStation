@@ -1545,3 +1545,16 @@ void GPU_HW::ShaderCompileProgressTracker::Increment()
     m_last_update_time = tv;
   }
 }
+
+#ifdef SWANSTATION_STANDALONE
+void GPU_HW::SetDrawJitter(float x, float y)
+{
+  if (m_batch_ubo_data.u_jitter_x == x && m_batch_ubo_data.u_jitter_y == y)
+    return;
+  // What is batched so far was drawn with the jitter before.
+  FlushRender();
+  m_batch_ubo_data.u_jitter_x = x;
+  m_batch_ubo_data.u_jitter_y = y;
+  m_batch_ubo_dirty = true;
+}
+#endif
