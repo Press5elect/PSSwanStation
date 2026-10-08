@@ -54,9 +54,11 @@
 	can be saved as PNGs: that is how the interface is checked without a console.
 */
 #include "display.h"
+#include "chain.h"
 #include "fe.h"
 
 #include "common/vulkan/context.h"
+#include "common/vulkan/staging_buffer.h"
 #include "common/vulkan/staging_texture.h"
 #include "common/vulkan/texture.h"
 
@@ -143,6 +145,7 @@ VkRenderPass shaderPass = VK_NULL_HANDLE, floatPass = VK_NULL_HANDLE;
 constexpr VkFormat FloatFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 void fsrShutdown();
 void generationShutdown();
+void lookShutdown();
 // Descriptor sets ImGui must not lose before the frames that used them are
 // drawn: freed two frames later.
 struct Retired
@@ -198,7 +201,9 @@ bool createInstance()
 	app.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	app.pEngineName = AppName;
 	app.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	app.apiVersion = VK_API_VERSION_1_0;
+	// 1.3 (the driver offers 1.4 on the console): room for compute work that
+	// needs more than 1.0's features.
+	app.apiVersion = VK_API_VERSION_1_3;
 	VkInstanceCreateInfo info{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	info.pApplicationInfo = &app;
 	info.enabledExtensionCount = (uint32_t)(sizeof(extensions) / sizeof(extensions[0]));
@@ -597,6 +602,7 @@ void shutdown()
 	VkDevice device = g_vulkan_context->GetDevice();
 	g_vulkan_context->WaitForGPUIdle();
 	releaseWrapped();
+	lookShutdown();
 	generationShutdown();
 	fsrShutdown();
 	for (Target *target : { &captureTarget, &ambientTarget })
@@ -1009,7 +1015,7 @@ struct Fsr
 	VkPipeline easu = VK_NULL_HANDLE, rcas = VK_NULL_HANDLE;
 	// A set is written each time it is used, and must not be written again
 	// while a frame under way reads it: they go round.
-	static constexpr unsigned Sets = 16;
+	static constexpr unsigned Sets = 64;
 	VkDescriptorSet sets[Sets] = {};
 	unsigned next = 0;
 	Target easuTarget, rcasTarget;
@@ -1256,27 +1262,16 @@ void fsrShutdown()
 }
 }
 
-void *upscale(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, int sharpness)
+namespace
 {
-	// For a picture that grows: one that is as large as the screen's already
-	// is left to the usual filter.
-	if (texture == nullptr || !frameOpen || width < 16 || height < 16 || u <= 0 || v <= 0 || outWidth > 8192
-			|| outHeight > 8192 || width > outWidth || height > outHeight || (width == outWidth && height == outHeight))
+// FSR from an image: `view` (in `layout`), whose part up to u, v is the
+// picture of `width` x `height`.
+void *upscaleView(VkImageView view, VkImageLayout layout, int width, int height, float u, float v, int outWidth, int outHeight,
+		int sharpness)
+{
+	if (width < 16 || height < 16 || u <= 0 || v <= 0 || outWidth > 8192 || outHeight > 8192 || width > outWidth
+			|| height > outHeight || (width == outWidth && height == outHeight))
 		return nullptr;
-	// The image behind what ImGui draws.
-	VkImageView view = VK_NULL_HANDLE;
-	VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	if (texture == (void *)wrappedSet && wrappedView != VK_NULL_HANDLE)
-	{
-		view = wrappedView;
-		layout = (VkImageLayout)wrappedLayout;
-	}
-	else
-	{
-		const auto it = dynamicViews.find(texture);
-		if (it != dynamicViews.end())
-			view = it->second;
-	}
 	if (view == VK_NULL_HANDLE || !fsrInit() || !ensureTarget(fsr.easuTarget, outWidth, outHeight, swapFormat, shaderPass)
 			|| !ensureTarget(fsr.rcasTarget, outWidth, outHeight, swapFormat, shaderPass))
 		return nullptr;
@@ -1298,6 +1293,28 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 	}
 	return (void *)fsr.rcasTarget.set;
 }
+}
+
+void *upscale(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, int sharpness)
+{
+	if (texture == nullptr || !frameOpen)
+		return nullptr;
+	// The image behind what ImGui draws.
+	VkImageView view = VK_NULL_HANDLE;
+	VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	if (texture == (void *)wrappedSet && wrappedView != VK_NULL_HANDLE)
+	{
+		view = wrappedView;
+		layout = (VkImageLayout)wrappedLayout;
+	}
+	else
+	{
+		const auto it = dynamicViews.find(texture);
+		if (it != dynamicViews.end())
+			view = it->second;
+	}
+	return view != VK_NULL_HANDLE ? upscaleView(view, layout, width, height, u, v, outWidth, outHeight, sharpness) : nullptr;
+}
 
 // --------------------------------------------------------- frame generation
 
@@ -1313,7 +1330,8 @@ struct Generation
 	VkSampler sampler = VK_NULL_HANDLE;
 	VkPipelineLayout layout = VK_NULL_HANDLE;
 	VkPipeline copy = VK_NULL_HANDLE, luma = VK_NULL_HANDLE, search = VK_NULL_HANDLE, tidy = VK_NULL_HANDLE,
-			choose = VK_NULL_HANDLE, blend = VK_NULL_HANDLE;
+			choose = VK_NULL_HANDLE, blend = VK_NULL_HANDLE, check = VK_NULL_HANDLE;
+	VkPipeline copyFloat = VK_NULL_HANDLE;		// the copy into a picture of floats
 	// A set is written each time it is used: they go round, and none comes
 	// round again while a frame under way reads it.
 	static constexpr unsigned Sets = 64;
@@ -1327,8 +1345,11 @@ struct Generation
 	// order (fg_tidy.frag); decided for each part of the picture itself
 	// (fg_choose.frag); and the picture between.
 	Target movement[Levels], tidied, chosen, between;
+	// The quality kind's two-way check: the movement found from each frame's
+	// side alone, and the tidied movement with what they disagree on marked.
+	Target fromBefore, fromNow, checked;
 	int now = 0;				// which of the two is this frame's
-	bool haveNow = false, haveBefore = false, haveMovement = false;
+	bool haveNow = false, haveBefore = false, haveMovement = false, useChecked = false;
 	uint64_t keptAt = 0;		// the display frame this frame's was kept in
 	int saidW = 0, saidH = 0;
 } generation;
@@ -1400,11 +1421,18 @@ bool generationInit()
 	const VkShaderModule tidy = shaderModule(fg_tidy_spirv, sizeof(fg_tidy_spirv));
 	const VkShaderModule choose = shaderModule(fg_choose_spirv, sizeof(fg_choose_spirv));
 	const VkShaderModule blend = shaderModule(fg_blend_spirv, sizeof(fg_blend_spirv));
+	const VkShaderModule check = shaderModule(fg_check_spirv, sizeof(fg_check_spirv));
+	if (check != VK_NULL_HANDLE)
+	{
+		g.check = fsrPipeline(vertex, check, g.layout, floatPass);
+		vkDestroyShaderModule(device, check, nullptr);
+	}
 	if (vertex != VK_NULL_HANDLE && copy != VK_NULL_HANDLE && luma != VK_NULL_HANDLE && search != VK_NULL_HANDLE
 			&& tidy != VK_NULL_HANDLE && choose != VK_NULL_HANDLE && blend != VK_NULL_HANDLE)
 	{
 		g.choose = fsrPipeline(vertex, choose, g.layout, floatPass);
 		g.copy = fsrPipeline(vertex, copy, g.layout);
+		g.copyFloat = fsrPipeline(vertex, copy, g.layout, floatPass);
 		g.luma = fsrPipeline(vertex, luma, g.layout, floatPass);
 		g.search = fsrPipeline(vertex, search, g.layout, floatPass);
 		g.tidy = fsrPipeline(vertex, tidy, g.layout, floatPass);
@@ -1413,7 +1441,7 @@ bool generationInit()
 	for (VkShaderModule module : { vertex, copy, luma, search, tidy, choose, blend })
 		if (module != VK_NULL_HANDLE)
 			vkDestroyShaderModule(device, module, nullptr);
-	g.ready = g.copy != VK_NULL_HANDLE && g.luma != VK_NULL_HANDLE && g.search != VK_NULL_HANDLE && g.tidy != VK_NULL_HANDLE
+	g.ready = g.copy != VK_NULL_HANDLE && g.copyFloat != VK_NULL_HANDLE && g.luma != VK_NULL_HANDLE && g.search != VK_NULL_HANDLE && g.tidy != VK_NULL_HANDLE
 			&& g.choose != VK_NULL_HANDLE && g.blend != VK_NULL_HANDLE;
 	diag::mark(g.ready ? "frame generation: ready" : "frame generation: the driver refused a shader or a pipeline: it stays off");
 	return g.ready;
@@ -1484,7 +1512,10 @@ void generationShutdown()
 	destroyTarget(g.tidied);
 	destroyTarget(g.chosen);
 	destroyTarget(g.between);
-	for (VkPipeline pipeline : { g.copy, g.luma, g.search, g.tidy, g.choose, g.blend })
+	destroyTarget(g.fromBefore);
+	destroyTarget(g.fromNow);
+	destroyTarget(g.checked);
+	for (VkPipeline pipeline : { g.copy, g.copyFloat, g.luma, g.search, g.tidy, g.choose, g.blend, g.check })
 		if (pipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(device, pipeline, nullptr);
 	if (g.layout != VK_NULL_HANDLE)
@@ -1516,6 +1547,12 @@ bool viewBehind(void *texture, VkImageView& view, VkImageLayout& layout)
 		view = fsr.rcasTarget.texture.GetView();
 		return true;
 	}
+	for (const Target *target : { &generation.kept[0], &generation.kept[1], &generation.between })
+		if (texture == (void *)target->set && target->framebuffer != VK_NULL_HANDLE)
+		{
+			view = target->texture.GetView();
+			return true;
+		}
 	const auto it = dynamicViews.find(texture);
 	if (it == dynamicViews.end())
 		return false;
@@ -1529,8 +1566,10 @@ void forgetGenerated()
 	generation.haveNow = generation.haveBefore = generation.haveMovement = false;
 }
 
-void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, bool lighter)
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality, bool debug)
 {
+	const bool lighter = quality <= 0;
+	const bool careful = quality >= 2 && generation.check != VK_NULL_HANDLE;
 	Generation& g = generation;
 	if (texture == nullptr || !frameOpen || width < 64 || height < 64 || width > 8192 || height > 8192 || u <= 0 || v <= 0)
 		return nullptr;
@@ -1542,7 +1581,7 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 	// The sizes movement is looked for at: the largest about 360 lines, each
 	// of the others half the one before.
 	int levelW[Generation::Levels], levelH[Generation::Levels];
-	levelH[0] = std::clamp(height, 64, 360) / 8 * 8;
+	levelH[0] = std::clamp(height, 64, careful ? 480 : 360) / 8 * 8;
 	levelW[0] = std::clamp((int)std::lround((double)levelH[0] * width / height / 8.0) * 8, 64, 1024);
 	for (int i = 1; i < Generation::Levels; i++)
 	{
@@ -1552,7 +1591,8 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 	// And the size the movement is decided at: half the picture's, but no
 	// less than a PlayStation's own lines when the picture has them, and (the
 	// lighter way) no more than 540.
-	const int chosenH = std::clamp(height / 2, std::min(height, 480), lighter ? 540 : 1080);
+	// (The quality kind: the picture's own size, up to 1080.)
+	const int chosenH = careful ? std::min(height, 1080) : std::clamp(height / 2, std::min(height, 480), lighter ? 540 : 1080);
 	const int chosenW = std::max((int)std::lround((double)chosenH * width / height), 64);
 	if (fresh)
 	{
@@ -1610,6 +1650,7 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 				c = GenerationConstants();
 				c.size[0] = 1.f / (float)levelW[i];
 				c.size[1] = 1.f / (float)levelH[i];
+				c.size[2] = 0.5f;
 				c.more[0] = smallest ? 4.f : 2.f;
 				c.more[1] = i == 0 ? 0.5f : 1.f;
 				c.more[2] = smallest ? 0.f : 1.f;
@@ -1625,6 +1666,35 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 			c.more[0] = 0.02f;
 			generationPass(g.tidied, g.tidy, g.bright[now ^ 1][0].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 					g.bright[now][0].texture.GetView(), g.movement[0].texture.GetView(), c);
+			g.useChecked = false;
+			if (careful && ensureTarget(g.fromBefore, levelW[0], levelH[0], FloatFormat, floatPass, false)
+					&& ensureTarget(g.fromNow, levelW[0], levelH[0], FloatFormat, floatPass, false)
+					&& ensureTarget(g.checked, levelW[0], levelH[0], FloatFormat, floatPass, false))
+			{
+				// The two-way check: the movement found again from each frame's
+				// side (seeded by the next size's), and the tidied movement
+				// marked where both say otherwise.
+				for (int side = 0; side < 2; side++)
+				{
+					c = GenerationConstants();
+					c.size[0] = 1.f / (float)levelW[0];
+					c.size[1] = 1.f / (float)levelH[0];
+					c.size[2] = side == 0 ? 0.f : 1.f;
+					c.more[0] = 2.f;
+					c.more[1] = 0.5f;
+					c.more[2] = 1.f;
+					c.more[3] = 0.004f;
+					generationPass(side == 0 ? g.fromBefore : g.fromNow, g.search, g.bright[now ^ 1][0].texture.GetView(),
+							VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, g.bright[now][0].texture.GetView(),
+							g.movement[1].texture.GetView(), c);
+				}
+				c = GenerationConstants();
+				c.size[0] = 1.f / (float)levelW[0];
+				c.size[1] = 1.f / (float)levelH[0];
+				generationPass(g.checked, g.check, g.tidied.texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+						g.fromBefore.texture.GetView(), g.fromNow.texture.GetView(), c);
+				g.useChecked = true;
+			}
 			g.haveMovement = true;
 		}
 		else
@@ -1640,29 +1710,536 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 		return nullptr;
 	// This frame itself; or, with the one before to go by, the picture a part
 	// of the way from that one to this.
-	if (phase >= 0.999f || !g.haveBefore || !g.haveMovement)
+	// (Past 1, up to 2: a picture ahead of this one, along the same movement.)
+	phase = std::clamp(phase, 0.f, 2.f);
+	if (std::fabs(phase - 1.f) < 0.001f || !g.haveBefore || !g.haveMovement)
 		return (void *)g.kept[g.now].set;
+	const Target& movement = g.useChecked ? g.checked : g.tidied;
 	// The movement, decided for each part of the picture on the picture
 	// itself, and for this moment between the two: where things meet, which
 	// of them is in front depends on how far each has come.
 	GenerationConstants c{};
 	c.size[0] = 1.f / (float)g.chosen.width;
 	c.size[1] = 1.f / (float)g.chosen.height;
-	c.size[2] = 1.f / (float)g.tidied.width;
-	c.size[3] = 1.f / (float)g.tidied.height;
+	c.size[2] = 1.f / (float)(g.useChecked ? g.checked : g.tidied).width;
+	c.size[3] = 1.f / (float)(g.useChecked ? g.checked : g.tidied).height;
 	c.more[0] = 1.f / (float)width;
 	c.more[1] = 1.f / (float)height;
 	c.more[2] = lighter ? 0.f : 1.f;
-	c.more[3] = std::clamp(phase, 0.f, 1.f);
+	c.more[3] = phase;
 	generationPass(g.chosen, g.choose, g.kept[g.now ^ 1].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			g.kept[g.now].texture.GetView(), g.tidied.texture.GetView(), c);
+			g.kept[g.now].texture.GetView(), movement.texture.GetView(), c);
 	c = GenerationConstants();
 	c.size[0] = 1.f / (float)width;
 	c.size[1] = 1.f / (float)height;
-	c.more[0] = std::clamp(phase, 0.f, 1.f);
+	c.more[0] = phase;
+	c.more[1] = debug ? 1.f : 0.f;
 	generationPass(g.between, g.blend, g.kept[g.now ^ 1].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			g.kept[g.now].texture.GetView(), g.chosen.texture.GetView(), c);
 	return (void *)g.between.set;
+}
+
+// ------------------------------------------------------------ the picture's look
+
+namespace
+{
+#include "look_spirv.inc"
+}
+}
+
+#include "NIS_Config.h"
+
+namespace fe::display
+{
+namespace
+{
+
+struct LookConstants
+{
+	float a[4], b[4], c[4], d[4];
+};
+
+// What crt-guest-advanced's presets change from its own values.
+struct CrtPreset
+{
+	const char *name;
+	std::vector<std::pair<const char *, float>> values;
+};
+const std::vector<CrtPreset>& crtPresets()
+{
+	static const std::vector<CrtPreset> presets = {
+		{ "Guest's own", {} },
+		{ "Home television", { { "warpX", 0.03f }, { "warpY", 0.04f }, { "csize", 0.02f }, { "shadowMask", 1.f },
+				{ "maskstr", 0.35f }, { "glow", 0.10f }, { "bloom", 0.15f }, { "halation", 0.08f }, { "h_sharp", 3.0f },
+				{ "s_sharp", 0.30f }, { "vigstr", 0.20f } } },
+		{ "Studio monitor", { { "shadowMask", 6.f }, { "maskstr", 0.35f }, { "h_sharp", 7.0f }, { "s_sharp", 1.0f },
+				{ "beam_min", 1.60f }, { "beam_max", 1.05f }, { "scanline1", 10.f }, { "glow", 0.04f },
+				{ "brightboost", 1.70f }, { "brightboost1", 1.25f } } },
+		{ "Arcade monitor", { { "warpX", 0.02f }, { "warpY", 0.03f }, { "slotmask", 0.50f }, { "slotmask1", 0.60f },
+				{ "maskstr", 0.40f }, { "glow", 0.12f }, { "bloom", 0.20f }, { "brightboost", 1.60f },
+				{ "beam_min", 1.20f } } },
+		{ "Soft", { { "h_sharp", 2.0f }, { "s_sharp", 0.20f }, { "glow", 0.15f }, { "maskstr", 0.15f },
+				{ "beam_min", 1.0f } } },
+	};
+	return presets;
+}
+
+struct LookState
+{
+	bool tried = false, ready = false;
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	VkPipeline signal = VK_NULL_HANDLE, scale = VK_NULL_HANDLE, cas = VK_NULL_HANDLE;
+	// The picture at its own size, looked after; stretched to the screen's
+	// size; and that sharpened (CAS); the picture NIS starts from.
+	Target staged, stretched, sharpened, before;
+	unsigned frame = 0;
+	// NVIDIA Image Scaling.
+	bool nisTried = false, nisReady = false;
+	VkDescriptorSetLayout nisSetLayout = VK_NULL_HANDLE;
+	VkDescriptorPool nisPool = VK_NULL_HANDLE;
+	static constexpr unsigned NisSets = 8;
+	VkDescriptorSet nisSets[NisSets] = {};
+	unsigned nisNext = 0;
+	VkPipelineLayout nisLayout = VK_NULL_HANDLE;
+	VkPipeline nis = VK_NULL_HANDLE;
+	Vulkan::Texture coefScaler, coefUsm, nisOut;
+	Vulkan::StagingBuffer coefStaging, nisUniforms;
+	bool coefUploaded = false;
+	VkDescriptorSet nisOutSet = VK_NULL_HANDLE;
+	// crt-guest-advanced.
+	chain::Chain *crt = nullptr;
+	bool crtTried = false;
+	int crtPreset = -1, crtMaskSize = 0;
+	VkImageView crtView = VK_NULL_HANDLE;
+	VkDescriptorSet crtSet = VK_NULL_HANDLE;
+	std::string said;
+} look;
+
+bool lookInit()
+{
+	LookState& l = look;
+	if (l.tried)
+		return l.ready;
+	l.tried = true;
+	if (!fsrInit())
+		return false;
+	VkDevice device = g_vulkan_context->GetDevice();
+	VkPushConstantRange range{ VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(LookConstants) };
+	VkPipelineLayoutCreateInfo pipelineLayout{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayout.setLayoutCount = 1;
+	pipelineLayout.pSetLayouts = &fsr.setLayout;
+	pipelineLayout.pushConstantRangeCount = 1;
+	pipelineLayout.pPushConstantRanges = &range;
+	if (vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &l.layout) != VK_SUCCESS)
+		return false;
+	const VkShaderModule vertex = shaderModule(fsr_vertex_spirv, sizeof(fsr_vertex_spirv));
+	const VkShaderModule signal = shaderModule(look_signal_spirv, sizeof(look_signal_spirv));
+	const VkShaderModule scale = shaderModule(look_scale_spirv, sizeof(look_scale_spirv));
+	const VkShaderModule cas = shaderModule(look_cas_spirv, sizeof(look_cas_spirv));
+	if (vertex != VK_NULL_HANDLE && signal != VK_NULL_HANDLE && scale != VK_NULL_HANDLE && cas != VK_NULL_HANDLE)
+	{
+		l.signal = fsrPipeline(vertex, signal, l.layout);
+		l.scale = fsrPipeline(vertex, scale, l.layout);
+		l.cas = fsrPipeline(vertex, cas, l.layout);
+	}
+	for (VkShaderModule module : { vertex, signal, scale, cas })
+		if (module != VK_NULL_HANDLE)
+			vkDestroyShaderModule(device, module, nullptr);
+	l.ready = l.signal != VK_NULL_HANDLE && l.scale != VK_NULL_HANDLE && l.cas != VK_NULL_HANDLE;
+	diag::mark(l.ready ? "look: ready" : "look: the driver refused a shader or a pipeline: the picture is drawn the usual way");
+	return l.ready;
+}
+
+bool nisInit()
+{
+	LookState& l = look;
+	if (l.nisTried)
+		return l.nisReady;
+	l.nisTried = true;
+	VkDevice device = g_vulkan_context->GetDevice();
+	const VkDescriptorType types[6] = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_SAMPLER,
+		VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+		VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE };
+	VkDescriptorSetLayoutBinding bindings[6] = {};
+	for (uint32_t i = 0; i < 6; i++)
+	{
+		bindings[i].binding = i;
+		bindings[i].descriptorType = types[i];
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 6;
+	layoutInfo.pBindings = bindings;
+	const VkDescriptorPoolSize sizes[4] = {
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LookState::NisSets }, { VK_DESCRIPTOR_TYPE_SAMPLER, LookState::NisSets },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, LookState::NisSets * 3 }, { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, LookState::NisSets },
+	};
+	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	poolInfo.maxSets = LookState::NisSets;
+	poolInfo.poolSizeCount = 4;
+	poolInfo.pPoolSizes = sizes;
+	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &l.nisSetLayout) != VK_SUCCESS
+			|| vkCreateDescriptorPool(device, &poolInfo, nullptr, &l.nisPool) != VK_SUCCESS)
+		return false;
+	VkDescriptorSetLayout layouts[LookState::NisSets];
+	for (VkDescriptorSetLayout& layout : layouts)
+		layout = l.nisSetLayout;
+	VkDescriptorSetAllocateInfo allocate{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = l.nisPool;
+	allocate.descriptorSetCount = LookState::NisSets;
+	allocate.pSetLayouts = layouts;
+	VkPipelineLayoutCreateInfo pipelineLayout{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayout.setLayoutCount = 1;
+	pipelineLayout.pSetLayouts = &l.nisSetLayout;
+	if (vkAllocateDescriptorSets(device, &allocate, l.nisSets) != VK_SUCCESS
+			|| vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &l.nisLayout) != VK_SUCCESS)
+		return false;
+	const VkShaderModule module = shaderModule(look_nis_spirv, sizeof(look_nis_spirv));
+	if (module != VK_NULL_HANDLE)
+	{
+		VkComputePipelineCreateInfo info{ VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
+		info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+		info.stage.module = module;
+		info.stage.pName = "main";
+		info.layout = l.nisLayout;
+		vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &l.nis);
+		vkDestroyShaderModule(device, module, nullptr);
+	}
+	// The filters' tables, 64 phases of eight numbers, as two RGBA32F texels a row.
+	const uint32_t align = std::max<uint32_t>((uint32_t)g_vulkan_context->GetDeviceLimits().minUniformBufferOffsetAlignment, 256);
+	if (l.nis == VK_NULL_HANDLE
+			|| !l.coefScaler.Create(2, (uint32_t)kPhaseCount, 1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_SAMPLE_COUNT_1_BIT,
+					VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+			|| !l.coefUsm.Create(2, (uint32_t)kPhaseCount, 1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_SAMPLE_COUNT_1_BIT,
+					VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+			|| !l.coefStaging.Create(Vulkan::StagingBuffer::Type::Upload, sizeof(coef_scale) + sizeof(coef_usm),
+					VK_BUFFER_USAGE_TRANSFER_SRC_BIT) || !l.coefStaging.Map()
+			|| !l.nisUniforms.Create(Vulkan::StagingBuffer::Type::Upload, (VkDeviceSize)align * LookState::NisSets,
+					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) || !l.nisUniforms.Map())
+	{
+		diag::mark("look: NIS could not be made: FSR's stretch is used in its place");
+		return false;
+	}
+	memcpy(l.coefStaging.GetMapPointer(), coef_scale, sizeof(coef_scale));
+	memcpy(l.coefStaging.GetMapPointer() + sizeof(coef_scale), coef_usm, sizeof(coef_usm));
+	l.coefStaging.FlushCPUCache();
+	l.nisReady = true;
+	diag::mark("look: NIS ready");
+	return true;
+}
+
+// NVIDIA Image Scaling from `view` (a `width` x `height` picture, all of the
+// image) to `outWidth` x `outHeight`, at most twice as large each way.
+void *nisScale(VkImageView view, int width, int height, int outWidth, int outHeight, int sharpness)
+{
+	LookState& l = look;
+	if (!nisInit())
+		return nullptr;
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	if (!l.coefUploaded)
+	{
+		for (Vulkan::Texture *texture : { &l.coefScaler, &l.coefUsm })
+		{
+			texture->TransitionToLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+			texture->UpdateFromBuffer(cmd, 0, 0, 0, 0, 2, (uint32_t)kPhaseCount, l.coefStaging.GetBuffer(),
+					texture == &l.coefScaler ? 0 : (uint32_t)sizeof(coef_scale), 2);
+			texture->TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+		l.coefUploaded = true;
+	}
+	NISConfig config{};
+	static const float strength[3] = { 0.15f, 0.5f, 0.85f };
+	if (!NVScalerUpdateConfig(config, strength[std::clamp(sharpness, 0, 2)], 0, 0, (uint32_t)width, (uint32_t)height,
+				(uint32_t)width, (uint32_t)height, 0, 0, (uint32_t)outWidth, (uint32_t)outHeight, (uint32_t)outWidth,
+				(uint32_t)outHeight))
+		return nullptr;
+	if (!l.nisOut.IsValid() || (int)l.nisOut.GetWidth() != outWidth || (int)l.nisOut.GetHeight() != outHeight)
+	{
+		retire(l.nisOutSet);
+		l.nisOutSet = VK_NULL_HANDLE;
+		l.nisOut.Destroy(true);
+		if (!l.nisOut.Create((uint32_t)outWidth, (uint32_t)outHeight, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT,
+					VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+					VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
+			return nullptr;
+		l.nisOutSet = ImGui_ImplVulkan_AddTexture(l.nisOut.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+	const uint32_t align = std::max<uint32_t>((uint32_t)g_vulkan_context->GetDeviceLimits().minUniformBufferOffsetAlignment, 256);
+	const unsigned slot = l.nisNext++ % LookState::NisSets;
+	memcpy(l.nisUniforms.GetMapPointer() + (size_t)slot * align, &config, sizeof(config));
+	l.nisUniforms.FlushCPUCache((VkDeviceSize)slot * align, sizeof(config));
+	const VkDescriptorSet set = l.nisSets[slot];
+	VkDescriptorBufferInfo buffer{ l.nisUniforms.GetBuffer(), (VkDeviceSize)slot * align, sizeof(config) };
+	VkDescriptorImageInfo images[5] = {
+		{ fsr.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+		{ VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+		{ VK_NULL_HANDLE, l.nisOut.GetView(), VK_IMAGE_LAYOUT_GENERAL },
+		{ VK_NULL_HANDLE, l.coefScaler.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+		{ VK_NULL_HANDLE, l.coefUsm.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+	};
+	const VkDescriptorType types[5] = { VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE };
+	VkWriteDescriptorSet writes[6] = {};
+	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[0].dstSet = set;
+	writes[0].dstBinding = 0;
+	writes[0].descriptorCount = 1;
+	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[0].pBufferInfo = &buffer;
+	for (uint32_t i = 0; i < 5; i++)
+	{
+		writes[i + 1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[i + 1].dstSet = set;
+		writes[i + 1].dstBinding = i + 1;
+		writes[i + 1].descriptorCount = 1;
+		writes[i + 1].descriptorType = types[i];
+		writes[i + 1].pImageInfo = &images[i];
+	}
+	vkUpdateDescriptorSets(g_vulkan_context->GetDevice(), 6, writes, 0, nullptr);
+	// The picture it reads was drawn by a render pass; the one it writes was
+	// read by ImGui a frame ago.
+	VkMemoryBarrier drawn{ VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+	drawn.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	drawn.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &drawn,
+			0, nullptr, 0, nullptr);
+	VkImageMemoryBarrier toWrite{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+	toWrite.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	toWrite.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	toWrite.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	toWrite.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+	toWrite.srcQueueFamilyIndex = toWrite.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toWrite.image = l.nisOut.GetImage();
+	toWrite.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
+			nullptr, 1, &toWrite);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, l.nis);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, l.nisLayout, 0, 1, &set, 0, nullptr);
+	// NIS_Scaler.h's blocks: 32 x 24 pixels each.
+	vkCmdDispatch(cmd, (uint32_t)(outWidth + 31) / 32, (uint32_t)(outHeight + 23) / 24, 1);
+	VkImageMemoryBarrier toRead = toWrite;
+	toRead.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	toRead.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+	toRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
+			nullptr, 1, &toRead);
+	l.nisOut.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	return (void *)l.nisOutSet;
+}
+
+uint16_t halfBits(float value)
+{
+	uint32_t f = floatBits(value);
+	const uint32_t sign = (f >> 16) & 0x8000u;
+	const int exponent = (int)((f >> 23) & 0xff) - 127 + 15;
+	const uint32_t mantissa = (f >> 13) & 0x3ffu;
+	if (exponent <= 0)
+		return (uint16_t)sign;
+	if (exponent >= 31)
+		return (uint16_t)(sign | 0x7c00u);
+	return (uint16_t)(sign | ((uint32_t)exponent << 10) | mantissa);
+}
+
+void *crtRun(VkImageView view, int width, int height, int outWidth, int outHeight, int preset)
+{
+	LookState& l = look;
+	if (!l.crtTried)
+	{
+		l.crtTried = true;
+		l.crt = chain::load(appDir + "assets/shaders/crt-guest-advanced");
+	}
+	if (l.crt == nullptr)
+		return nullptr;
+	// The mask is drawn in the screen's own pixels: on a 4K screen, twice as wide.
+	const int maskSize = outHeight >= 1600 ? 2 : 1;
+	if (preset != l.crtPreset || maskSize != l.crtMaskSize)
+	{
+		chain::resetParameters(l.crt);
+		chain::setParameter(l.crt, "masksize", (float)maskSize);
+		const std::vector<CrtPreset>& presets = crtPresets();
+		for (const auto& [name, value] : presets[std::clamp(preset, 0, (int)presets.size() - 1)].values)
+			chain::setParameter(l.crt, name, value);
+		l.crtPreset = preset;
+		l.crtMaskSize = maskSize;
+	}
+	const VkImageView out = chain::run(l.crt, g_vulkan_context->GetCurrentCommandBuffer(), view,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, width, height, outWidth, outHeight);
+	if (out == VK_NULL_HANDLE)
+		return nullptr;
+	if (out != l.crtView)
+	{
+		retire(l.crtSet);
+		l.crtSet = ImGui_ImplVulkan_AddTexture(out, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		l.crtView = out;
+	}
+	return (void *)l.crtSet;
+}
+
+void lookShutdown()
+{
+	LookState& l = look;
+	VkDevice device = g_vulkan_context->GetDevice();
+	chain::destroy(l.crt);
+	retire(l.crtSet);
+	retire(l.nisOutSet);
+	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before })
+		destroyTarget(*target);
+	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis })
+		if (pipeline != VK_NULL_HANDLE)
+			vkDestroyPipeline(device, pipeline, nullptr);
+	for (VkPipelineLayout layout : { l.layout, l.nisLayout })
+		if (layout != VK_NULL_HANDLE)
+			vkDestroyPipelineLayout(device, layout, nullptr);
+	if (l.nisPool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(device, l.nisPool, nullptr);
+	if (l.nisSetLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(device, l.nisSetLayout, nullptr);
+	l.coefScaler.Destroy(false);
+	l.coefUsm.Destroy(false);
+	l.nisOut.Destroy(false);
+	l.coefStaging.Destroy(false);
+	l.nisUniforms.Destroy(false);
+	l = LookState();
+}
+}
+
+std::vector<std::string> crtPresetNames()
+{
+	std::vector<std::string> names;
+	for (const CrtPreset& preset : crtPresets())
+		names.push_back(preset.name);
+	return names;
+}
+
+bool Look::plain() const
+{
+	return scaler == 0 && signal == 0 && crt == 0 && brightness == 1.f && contrast == 1.f && saturation == 1.f && gamma == 1.f;
+}
+
+void forgetPicture()
+{
+	if (look.crt != nullptr)
+		chain::forget(look.crt);
+}
+
+void *picture(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, const Look& want, bool& full)
+{
+	full = false;
+	if (texture == nullptr || !frameOpen || want.plain() || width < 8 || height < 8 || width > 8192 || height > 8192 || u <= 0
+			|| v <= 0 || outWidth < 8 || outHeight < 8 || outWidth > 8192 || outHeight > 8192 || !lookInit())
+		return nullptr;
+	LookState& l = look;
+	VkImageView view = VK_NULL_HANDLE;
+	VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	if (!viewBehind(texture, view, layout))
+		return nullptr;
+	// The picture at its own size: its part of the texture, the signal, the
+	// colours.
+	if (!ensureTarget(l.staged, width, height, swapFormat, shaderPass))
+		return nullptr;
+	LookConstants c{};
+	c.a[0] = (float)width;
+	c.a[1] = (float)height;
+	c.a[2] = u;
+	c.a[3] = v;
+	c.b[0] = (float)std::clamp(want.signal, 0, 3);
+	c.b[1] = (float)std::max(want.cell, 1);
+	c.b[2] = (float)(l.frame++ & 1);
+	// The colour carrier's cycles a pixel: 3.58 MHz over the dot clock, which
+	// is about 0.021 MHz for each pixel of a line's width.
+	const float lineWidth = (float)width / (float)std::max(want.cell, 1);
+	c.b[3] = 3.579545f / std::max(lineWidth * 0.020975f, 1.f);
+	c.c[0] = want.brightness;
+	c.c[1] = want.contrast;
+	c.c[2] = want.saturation;
+	c.c[3] = std::max(want.gamma, 0.1f);
+	c.d[0] = 0.05f;
+	fsrPass(l.staged, l.signal, l.layout, view, layout, &c, sizeof(c));
+	const VkImageView staged = l.staged.texture.GetView();
+	const VkImageLayout readable = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	std::string said;
+	void *result = nullptr;
+	if (want.crt > 0)
+	{
+		result = crtRun(staged, width, height, outWidth, outHeight, want.crt - 1);
+		said = "crt-guest-advanced";
+	}
+	else if (want.scaler != 0 && (width < outWidth || height < outHeight))
+	{
+		auto stretch = [&](Target& target, int w, int h, bool sharp) {
+			if (!ensureTarget(target, w, h, swapFormat, shaderPass))
+				return false;
+			LookConstants s{};
+			s.a[0] = (float)width;
+			s.a[1] = (float)height;
+			s.a[2] = s.a[3] = 1.f;
+			s.b[0] = (float)w;
+			s.b[1] = (float)h;
+			s.b[2] = sharp ? 1.f : 0.f;
+			fsrPass(target, l.scale, l.layout, staged, readable, &s, sizeof(s));
+			return true;
+		};
+		switch (want.scaler)
+		{
+		case 1:
+			if (stretch(l.stretched, outWidth, outHeight, true))
+				result = (void *)l.stretched.set;
+			said = "sharp bilinear";
+			break;
+		case 2:
+			result = upscaleView(staged, readable, width, height, 1.f, 1.f, outWidth, outHeight, want.sharpness);
+			said = "FSR 1";
+			break;
+		case 3:
+		{
+			// NIS grows a picture at most twice each way: a larger step starts
+			// from the picture made half the screen's size, sharp bilinear.
+			VkImageView from = staged;
+			int fromW = width, fromH = height;
+			if (outWidth > width * 2 || outHeight > height * 2)
+			{
+				fromW = (outWidth + 1) / 2;
+				fromH = (outHeight + 1) / 2;
+				if (!stretch(l.before, fromW, fromH, true))
+					break;
+				from = l.before.texture.GetView();
+			}
+			result = nisScale(from, fromW, fromH, outWidth, outHeight, want.sharpness);
+			said = "NIS";
+			break;
+		}
+		case 4:
+			if (stretch(l.stretched, outWidth, outHeight, false) && ensureTarget(l.sharpened, outWidth, outHeight, swapFormat, shaderPass))
+			{
+				static const float strength[3] = { 0.2f, 0.6f, 1.f };
+				const float sharp = -1.f / (8.f + (5.f - 8.f) * strength[std::clamp(want.sharpness, 0, 2)]);
+				uint32_t k[8] = { floatBits(1.f), floatBits(1.f), floatBits(0.f), floatBits(0.f), floatBits(sharp),
+					(uint32_t)halfBits(sharp), floatBits(8.f), 0 };
+				fsrPass(l.sharpened, l.cas, l.layout, l.stretched.texture.GetView(), readable, k, sizeof(k));
+				result = (void *)l.sharpened.set;
+			}
+			said = "CAS";
+			break;
+		}
+	}
+	if (result != nullptr)
+		full = true;
+	else
+	{
+		// Only the signal and the colours: ImGui stretches the picture.
+		result = (void *)l.staged.set;
+		said = said.empty() ? "colours and signal" : said + " refused: colours and signal";
+	}
+	const std::string line = format("look: %s, %d x %d to %d x %d", said.c_str(), width, height, outWidth, outHeight);
+	if (line != l.said)
+	{
+		diag::mark("%s", line.c_str());
+		l.said = line;
+	}
+	return result;
 }
 
 bool capture(void *texture, float u, float v, int width, int height, std::vector<uint8_t>& rgba)
