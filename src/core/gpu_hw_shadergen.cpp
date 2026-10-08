@@ -85,7 +85,8 @@ void GPU_HW_ShaderGen::WriteBatchUniformBuffer(std::stringstream& ss)
                         "float u_dst_alpha_factor", "uint u_interlaced_displayed_field",
                         "bool u_set_mask_while_drawing", "uint u_resolution_scale", "uint u_true_color",
                         "uint u_scaled_dithering", "uint u_dithering",
-                        "uint u_interlacing", "uint u_pgxp_depth", "uint u_uv_limits", "uint u_render_mode"},
+                        "uint u_interlacing", "uint u_pgxp_depth", "uint u_uv_limits", "uint u_render_mode",
+                        "float u_jitter_x", "float u_jitter_y"},
                        false);
 
   // Alias the historical compile-time constants to their cbuffer-
@@ -205,6 +206,10 @@ std::string GPU_HW_ShaderGen::GenerateBatchVertexShader(bool textured)
   // 0..+1023 -> -1..1
   float pos_x = ((a_pos.x + vertex_offset) / 512.0) - 1.0;
   float pos_y = ((a_pos.y + vertex_offset) / -256.0) + 1.0;
+
+  // The sub-pixel jitter (u_jitter_x/y, in scaled-framebuffer pixels).
+  pos_x += u_jitter_x / (512.0 * float(RESOLUTION_SCALE));
+  pos_y -= u_jitter_y / (256.0 * float(RESOLUTION_SCALE));
 
 #if API_OPENGL || API_OPENGL_ES
   pos_y += POS_EPSILON;

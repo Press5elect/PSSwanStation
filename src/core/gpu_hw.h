@@ -15,6 +15,11 @@ struct GPUBackendDrawCommand;
 class GPU_HW : public GPU
 {
 public:
+#ifdef SWANSTATION_STANDALONE
+  void SetDrawJitter(float x, float y) override;
+  uint32_t GetDrawResolutionScale() const override { return m_resolution_scale; }
+#endif
+
   enum class BatchRenderMode : uint8_t
   {
     TransparencyDisabled,
@@ -188,6 +193,13 @@ protected:
     // for the D3D12 pre-bake: 288 -> 72 variants per textured
     // filter template (4x reduction).
     uint32_t u_render_mode;
+#ifdef SWANSTATION_STANDALONE
+    // u_jitter_x/y: a sub-pixel shift of everything drawn, in pixels of
+    // the scaled framebuffer, set per picture (SetDrawJitter).
+    float u_jitter_x;
+    float u_jitter_y;
+    float u_jitter_pad[2];
+#endif
   };
 
   struct VRAMFillUBOData
