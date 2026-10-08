@@ -201,7 +201,8 @@ void earlyInit()
 	safeStart = storage::startBegan(appDir);
 	if (safeStart)
 		diag::mark("main: the last start did not finish: this one stays in the sandbox, at 59.94 Hz");
-	const bool wantOut = (options::frontend().usb || options::frontend().outside) && !safeStart;
+	const int filesAt = options::frontend().filesAt;
+	const bool wantOut = (options::frontend().usb || filesAt == 1 || filesAt == 2 || filesAt == 3) && !safeStart;
 	if (wantOut)
 	{
 		// Before any other thread exists, as the helper's protocol asks.
@@ -234,16 +235,20 @@ void earlyInit()
 	options::loadFrontend();
 	diag::setNotifications(options::frontend().notifications);
 
-	// The user's files: outside the title's folder when that is asked for and
-	// can be reached.
+	// The user's files: where "Where my files are kept" says, when that can
+	// be reached. What is copied there the first time comes from wherever
+	// they were kept before (the folder outside, else the title's).
 	int migrated = 0;
-	if (options::frontend().outside)
+	const std::string outside = storage::OutsideDir;
+	const bool outsideUsable = elevated && writableDir(outside.substr(0, outside.size() - 1));
+	const std::string before = outsideUsable && hasFile(outside + ".migrated") ? outside : appDir;
+	const std::string sandboxWhy = safeStart ? "the last start did not finish, so this one stayed in the sandbox"
+			: "the sandbox could not be left (it needs a resident Lapy service, or the ELF loader on port 9021)";
+	if (filesAt == 1)
 	{
-		const std::string outside = storage::OutsideDir;
 		if (!elevated)
-			outsideWhy = safeStart ? "the last start did not finish, so this one stayed in the sandbox"
-					: "the sandbox could not be left (it needs a resident Lapy service, or the ELF loader on port 9021)";
-		else if (!writableDir(outside.substr(0, outside.size() - 1)))
+			outsideWhy = sandboxWhy;
+		else if (!outsideUsable)
 			outsideWhy = outside + " cannot be written to";
 		else
 		{
@@ -251,6 +256,38 @@ void earlyInit()
 			rootDir = outside;
 			outsideUsed = true;
 		}
+	}
+	else if (filesAt == 2)
+	{
+		// The first USB drive that has the folder, else the first one that can be written to.
+		std::string drive;
+		for (int pass = 0; pass < 2 && drive.empty() && elevated; pass++)
+			for (int i = 0; i < 8 && drive.empty(); i++)
+			{
+				const std::string mount = "/mnt/usb" + std::to_string(i);
+				if (pass == 0 ? writableDir(mount + "/" + storage::UsbFolder) : writableDir(mount))
+					drive = mount + "/" + storage::UsbFolder + "/";
+			}
+		if (!elevated)
+			outsideWhy = sandboxWhy;
+		else if (drive.empty())
+			outsideWhy = "no USB drive that can be written to is plugged in";
+		else
+		{
+			migrated = storage::migrate(before, drive);
+			rootDir = drive;
+			outsideUsed = true;
+		}
+	}
+	else if (filesAt == 3)
+	{
+		// The console's copy of what the share keeps: outside where it can be.
+		if (outsideUsable)
+		{
+			migrated = storage::migrate(appDir, outside);
+			rootDir = outside;
+		}
+		outsideUsed = true;
 	}
 	diag::open(rootDir);
 	diag::mark("%s, build %d; title folder: %s; files: %s", AppName, BuildNumber, appDir.c_str(), rootDir.c_str());

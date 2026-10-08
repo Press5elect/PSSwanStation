@@ -71,6 +71,9 @@ uint8_t *coreRam(uint32_t& size);
 uint8_t *coreScratchpad();
 const uint8_t *coreBios(uint32_t& size);
 uint32_t coreDisplayChanges();
+uint32_t coreDrawCommands();
+uint32_t coreVideoBlocks();
+uint32_t coreDrawResolutionScale();
 void nameTextureFolders();
 
 namespace
@@ -119,15 +122,25 @@ bool blackNow;
 // Frame generation: whether a picture is to be made this refresh, where it
 // is between the game's last two, and whether the latest is new.
 bool genOn, genFresh;
-float genPhase = 1.f;
+float genPhase = 1.f, lastShownPhase = 1.f;
+// The pictures the screen showed in the last second, the game's and made ones.
+int shownThisSecond;
+float shownMeasured;
 // How often the game shows a new picture. Most games draw into a second
 // buffer and then move the display's start to it: that is counted (the
 // emulator's GPU says how often it happened), and a game that draws 30 or 20
-// pictures a second is seen to. A game that never does that is taken to show
-// a new picture every frame.
+// pictures a second is seen to. A game that never does that is counted by
+// whether it drew anything in a frame: a frame it drew nothing in shows the
+// picture before again.
 struct Cadence
 {
-	uint32_t changesSeen = 0;
+	uint32_t changesSeen = 0, drawsSeen = 0, blocksSeen = 0;
+	uint64_t videoAtFrame = ~0ull;		// the emulated frame a video was last decoded in
+	// The last few gaps between pictures, in refreshes, and when the latest
+	// came by the clock (any-rate generation).
+	int gaps[4] = { 1, 1, 1, 1 };
+	unsigned gapIndex = 0;
+	double pictureAtTime = 0, gapSeconds = 0;
 	uint64_t changedAtFrame = ~0ull;	// the emulated frame the display's start last moved in
 	bool pictureNow = false;			// a new picture came in this refresh
 	uint64_t refreshes = 0, pictureAtRefresh = 0, pictureAtFrame = 0;
@@ -1358,6 +1371,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 		aim = Aim();
 	display::forgetAmbient();
 	display::forgetGenerated();
+	display::forgetPicture();
 	cadence = Cadence();
 	audio::setMuted(false);
 	audio::clear();
@@ -1427,6 +1441,8 @@ void stop()
 		messageList.clear();
 	}
 	diag::mark("game: stopped");
+	// What the game wrote (its memory card, a state) goes to the share.
+	netfiles::gameClosed();
 }
 
 void reset()
@@ -1467,10 +1483,19 @@ void runOne(bool keep)
 		cadence.changesSeen = changes;
 		if (changed)
 			cadence.changedAtFrame = emulatedFrames;
+		const uint32_t draws = coreDrawCommands();
+		const bool drew = draws != cadence.drawsSeen;
+		cadence.drawsSeen = draws;
+		const uint32_t blocks = coreVideoBlocks();
+		if (blocks != cadence.blocksSeen)
+		{
+			cadence.blocksSeen = blocks;
+			cadence.videoAtFrame = emulatedFrames;
+		}
 		// A game that moved its display's start within the last second is
-		// counted by that; another, or one standing still, by its frames.
+		// counted by that; another by whether it drew.
 		cadence.counted = cadence.changedAtFrame != ~0ull && emulatedFrames - cadence.changedAtFrame < 60;
-		if (changed || !cadence.counted)
+		if (changed || (!cadence.counted && drew))
 			cadence.pictureNow = true;
 	}
 	if (keep)
@@ -1539,6 +1564,7 @@ void runFrame()
 		rewindOn = false;
 
 	int ran = 0;
+	bool anyRate = false;
 	if (netOn)
 	{
 		pacing += ratio;
@@ -1595,6 +1621,24 @@ void runFrame()
 		if (pacing > 2.0)
 			pacing = 0;
 	}
+	else if (settings.pacing == 2 && settings.frameGeneration != 0)
+	{
+		// By the clock, with frame generation: the screen is not waited for a
+		// frame of the game, it refreshes at its own rate and each refresh
+		// shows where the game is at that moment (any rate, with a variable
+		// refresh rate or without).
+		const double period = 1.0 / coreHz;
+		const double t = now();
+		if (clockNext == 0 || t - clockNext > 0.1)
+			clockNext = t;
+		while (clockNext <= t && ran < 2)
+		{
+			runOne(true);
+			ran++;
+			clockNext += period;
+		}
+		anyRate = true;
+	}
 	else if (settings.pacing == 2)
 	{
 		// By the clock: the frame runs when it is due, and what is drawn then
@@ -1634,6 +1678,7 @@ void runFrame()
 	}
 	// The game's pictures, counted in refreshes and in its own frames.
 	cadence.refreshes++;
+	const double clock = now();
 	if (cadence.pictureNow)
 	{
 		cadence.gapRefreshes = (int)std::min<uint64_t>(cadence.refreshes - cadence.pictureAtRefresh, 99);
@@ -1641,11 +1686,19 @@ void runFrame()
 		cadence.pictureAtRefresh = cadence.refreshes;
 		cadence.pictureAtFrame = emulatedFrames;
 		cadence.sincePicture = 0;
+		cadence.gaps[cadence.gapIndex++ % 4] = cadence.gapRefreshes;
+		cadence.gapSeconds = std::clamp(clock - cadence.pictureAtTime, 0.0, 0.5);
+		cadence.pictureAtTime = clock;
 	}
-	// Frame generation: which picture this refresh is to show.
+	// Frame generation: which picture this refresh is to show. Ahead (fgMode
+	// 1): from the game's latest picture on, along its movement, instead of
+	// between the last two, which waits for the latest.
+	const bool ahead = settings.fgMode == 1;
+	const bool capped = settings.fgCap == 1 && displayHz > 100.0;
+	const bool video = cadence.videoAtFrame != ~0ull && emulatedFrames - cadence.videoAtFrame < 30;
 	if (settings.frameGeneration == 0)
 		genOn = false;
-	else if (ffOn || rewindOn || ran > 1 || ratio > 1.0)
+	else if (ffOn || rewindOn || ran > 1 || (ratio > 1.0 && !anyRate))
 	{
 		// Run fast or backwards, or catching up, or a game faster than the
 		// display: the frames as they are.
@@ -1653,33 +1706,82 @@ void runFrame()
 		if (ran > 0)
 			display::forgetGenerated();
 	}
+	else if (video && settings.fgVideos == 1)
+	{
+		// A video plays, and is to be left as it is.
+		genOn = false;
+		if (ran > 0)
+			display::forgetGenerated();
+	}
+	else if (anyRate)
+	{
+		// By the clock: where the screen is now between the game's last two
+		// pictures (or past the latest), from the time each came.
+		genFresh = cadence.pictureNow;
+		const double gap = cadence.gapSeconds > 0.004 ? cadence.gapSeconds : (double)cadence.gapFrames / coreHz;
+		const float part = (float)std::clamp((clock - cadence.pictureAtTime) / gap, 0.0, 1.0);
+		genPhase = ahead ? 1.f + std::min(part, 0.95f) : part;
+		if (!ahead && cadence.pictureNow)
+			genPhase = 0.f;
+	}
 	else if (cadence.gapFrames <= 1)
 	{
 		// A new picture every frame. At half the display's rate the picture
 		// half way to each is shown the refresh it is made in, and the frame
-		// itself the refresh after. At the display's own rate there is no room
-		// between two frames, and nothing is made. At any other rate (a PAL
-		// game on a 60 Hz screen) the screen is a frame behind the game and
-		// shows where the game was at that moment, between two frames nearly
-		// always.
+		// itself the refresh after (ahead: the frame first, then half a frame
+		// past it). At the display's own rate there is no room between two
+		// frames, and nothing is made. At any other rate (a PAL game on a
+		// 60 Hz screen) the screen is a frame behind the game and shows where
+		// the game was at that moment, between two frames nearly always.
 		genFresh = ran > 0;
 		if (even)
-			genPhase = ran > 0 ? 0.5f : 1.f;
+		{
+			if (capped)
+				genOn = false;
+			else if (ahead)
+				genPhase = ran > 0 ? 1.f : 1.5f;
+			else
+				genPhase = ran > 0 ? 0.5f : 1.f;
+		}
 		else if (settings.pacing == 2 || ratio == 1.0)
 			genOn = false;
 		else
-			genPhase = (float)std::clamp(pacing, 0.0, 1.0);
+			genPhase = ahead ? 1.f + (float)std::clamp(pacing, 0.0, 0.95) : (float)std::clamp(pacing, 0.0, 1.0);
 	}
 	else
 	{
 		// A new picture every second, third... frame, as most PlayStation
-		// games draw: the refreshes until the next one is due (as many as
-		// there were between the last two) show even steps from the picture
-		// before to this one, the last of them this one itself.
+		// games draw: the refreshes until the next one is due show even steps
+		// from the picture before to this one, the last of them this one
+		// itself. How many is the average of the last four gaps, so that a
+		// game whose pictures come unevenly (two refreshes, then three) moves
+		// evenly too. Capped at 60: the steps go two refreshes at a time.
 		genFresh = cadence.pictureNow;
-		const int steps = cadence.gapRefreshes > 8 ? 1 : std::max(cadence.gapRefreshes, 1);
-		genPhase = std::min((float)(cadence.sincePicture + 1) / (float)steps, 1.f);
+		double steps = 0;
+		for (int gap : cadence.gaps)
+			steps += gap;
+		steps = std::clamp(steps / 4.0, 1.0, 8.0);
+		if (cadence.gapRefreshes > 8)
+			steps = 1;
+		int since = cadence.sincePicture;
+		if (capped)
+			since = since / 2 * 2 + 1;
+		const float part = std::min((float)((since + 1) / steps), 1.f);
+		genPhase = ahead ? 1.f + std::min((float)(since / steps), 0.95f) : part;
 	}
+	// Taking back frame generation's delay: one frame of run-ahead while it is
+	// on, unless the user set some of their own.
+	{
+		const char *own = options::own("swanstation_Main_RunaheadFrameCount");
+		// (By the settings, not by this refresh: a setting that changed every
+		// refresh would set the emulator up anew every refresh.)
+		const bool take = settings.frameGeneration != 0 && settings.fgRunAhead && !netOn && (own == nullptr || !strcmp(own, "0"));
+		options::hold("swanstation_Main_RunaheadFrameCount", take ? "1" : "");
+	}
+	// The pictures the screen showed this second: the game's and the made ones.
+	if (genOn ? (genFresh || std::fabs(genPhase - lastShownPhase) > 0.001f) : cadence.pictureNow)
+		shownThisSecond++;
+	lastShownPhase = genPhase;
 	cadence.sincePicture++;
 #if defined(SWANSTATION_HOST)
 	// A test reads how the frames fell.
@@ -1693,6 +1795,8 @@ void runFrame()
 	if (t - secondStarted >= 1.0)
 	{
 		fpsMeasured = (float)(ranThisSecond / (t - secondStarted));
+		shownMeasured = (float)(shownThisSecond / (t - secondStarted));
+		shownThisSecond = 0;
 		ranThisSecond = 0;
 		secondStarted = t;
 	}
@@ -1771,9 +1875,25 @@ bool generationPhase(float& phase, bool& fresh)
 	return genOn;
 }
 
+bool newPicture()
+{
+	return isRunning && cadence.pictureNow;
+}
+
+float pictureMs()
+{
+	const double pictures = picturesPerSecond();
+	return pictures > 0.5 ? (float)(1000.0 / pictures) : 16.7f;
+}
+
+float shownPerSecond()
+{
+	return isRunning ? shownMeasured : 0.f;
+}
+
 double picturesPerSecond()
 {
-	if (!isRunning || !cadence.counted)
+	if (!isRunning)
 		return 0;
 	return (av.timing.fps > 1.0 ? av.timing.fps : 60.0) / std::max(cadence.gapFrames, 1);
 }
@@ -1782,10 +1902,9 @@ int nativeLines()
 {
 	if (!isRunning || frameHeight == 0)
 		return 0;
-	int scale = 1;
-	if (frameIsHardware)
-		if (const char *value = options::get("swanstation_GPU_ResolutionScale"))
-			scale = std::max(atoi(value), 1);
+	// By the scale the renderer really drew at (a changed setting takes a
+	// frame or two to reach it).
+	const int scale = frameIsHardware ? std::max((int)coreDrawResolutionScale(), 1) : 1;
 	return (int)frameHeight / scale;
 }
 
