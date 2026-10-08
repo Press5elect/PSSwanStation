@@ -50,3 +50,8 @@ Generated Files
 *.o
 *.d
 /swanstation_libretro.so
+# The ported libraries' own configurations are source.
+!ps5/smb/config.h
+!ps5/smb/host/config.h
+!ps5/nfs/config.h
+!ps5/nfs/host/config.h
