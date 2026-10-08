@@ -115,7 +115,6 @@ void* MemoryArena::CreateViewPtr(size_t offset, size_t size, bool writable, bool
     return nullptr;
   }
 
-  m_num_views.fetch_add(1);
   return view;
 }
 
@@ -133,7 +132,6 @@ bool MemoryArena::ReleaseViewPtr(void* address, size_t size)
     return false;
   }
 
-  m_num_views.fetch_sub(1);
   return true;
 }
 
