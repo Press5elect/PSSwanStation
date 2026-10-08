@@ -110,6 +110,15 @@ private:
 
   bool DecodeMonoMacroblock();
   bool DecodeColoredMacroblock();
+
+#ifdef SWANSTATION_STANDALONE
+public:
+  // How many macroblocks of video have been decoded (the PS5 title leaves
+  // videos out of frame generation by it).
+  uint32_t GetDecodedBlockCount() const { return m_decoded_blocks; }
+private:
+  uint32_t m_decoded_blocks = 0;
+#endif
   void ScheduleBlockCopyOut(TickCount ticks);
   void CopyOutBlock();
 

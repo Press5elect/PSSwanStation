@@ -319,6 +319,9 @@ finished:
 
 bool MDEC::HandleDecodeMacroblockCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  m_decoded_blocks++;
+#endif
   if (m_status.data_output_depth <= DataOutputDepth_8Bit)
     return DecodeMonoMacroblock();
   else

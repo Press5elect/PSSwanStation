@@ -3,7 +3,9 @@
 // the frame before and this one, as seen from the picture half way between.
 //
 // For a place x in the picture between the two, a movement v is right when
-// the frame before at x - v/2 looks like this frame at x + v/2. The movements
+// the frame before at x - v/2 looks like this frame at x + v/2. (Seen from one
+// frame's side instead, for the two-way check: the frame before at x - v t,
+// this one at x + v (1 - t), t 0 or 1.) The movements
 // tried are those around what the coarser picture above found (twice as large
 // here), and no movement at all; the one whose two patches differ least is
 // kept, with a small preference for the coarser picture's answer, which keeps
@@ -14,7 +16,8 @@ layout (set = 0, binding = 1) uniform sampler2D now;
 layout (set = 0, binding = 2) uniform sampler2D coarser;
 layout (push_constant) uniform pushBlock
 {
-	vec4 size;		// xy: one over this picture's size
+	vec4 size;		// xy: one over this picture's size; z: where the movement is seen from, 0 the
+					// frame before, 0.5 half way, 1 this frame
 	vec4 search;	// x: how many steps each way, y: a step in pixels, z: 1 when there is a coarser answer, w: the preference
 } pc;
 layout (location = 0) out vec4 FragColor;
@@ -28,7 +31,7 @@ float difference(vec2 uv, vec2 v)
 			// Two pixels apart: each tap is a mix of four pixels, and the nine
 			// of them see a patch six across.
 			vec2 at = uv + vec2(x, y) * 2.0 * pc.size.xy;
-			sum += abs(texture(before, at - v * 0.5 * pc.size.xy).r - texture(now, at + v * 0.5 * pc.size.xy).r);
+			sum += abs(texture(before, at - v * pc.size.z * pc.size.xy).r - texture(now, at + v * (1.0 - pc.size.z) * pc.size.xy).r);
 		}
 	return sum;
 }

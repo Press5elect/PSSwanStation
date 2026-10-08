@@ -291,6 +291,10 @@ bool GPU::HandleSetMaskBitCommand()
 
 bool GPU::HandleRenderPolygonCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   const GPURenderCommand rc{FifoPeek(0)};
 
   // shaded vertices use the colour from the first word for the first vertex
@@ -326,6 +330,10 @@ bool GPU::HandleRenderPolygonCommand()
 
 bool GPU::HandleRenderRectangleCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   const GPURenderCommand rc{FifoPeek(0)};
   const uint32_t total_words =
     2 + static_cast<uint32_t>(rc.texture_enable) + static_cast<uint32_t>(rc.rectangle_size == GPUDrawRectangleSize::Variable);
@@ -351,6 +359,10 @@ bool GPU::HandleRenderRectangleCommand()
 
 bool GPU::HandleRenderLineCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   const GPURenderCommand rc{FifoPeek(0)};
   const uint32_t total_words = rc.shading_enable ? 4 : 3;
   CHECK_COMMAND_SIZE(total_words);
@@ -368,6 +380,10 @@ bool GPU::HandleRenderLineCommand()
 
 bool GPU::HandleRenderPolyLineCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   // always read the first two vertices, we test for the terminator after that
   const GPURenderCommand rc{FifoPeek(0)};
   const uint32_t min_words = rc.shading_enable ? 3 : 4;
@@ -397,6 +413,10 @@ bool GPU::HandleRenderPolyLineCommand()
 
 bool GPU::HandleFillRectangleCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   CHECK_COMMAND_SIZE(3);
 
   if (IsInterlacedRenderingEnabled() && IsCRTCScanlinePending())
@@ -420,6 +440,10 @@ bool GPU::HandleFillRectangleCommand()
 
 bool GPU::HandleCopyRectangleCPUToVRAMCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   CHECK_COMMAND_SIZE(3);
   m_fifo.RemoveOne();
 
@@ -505,6 +529,10 @@ bool GPU::HandleCopyRectangleVRAMToCPUCommand()
 
 bool GPU::HandleCopyRectangleVRAMToVRAMCommand()
 {
+#ifdef SWANSTATION_STANDALONE
+  if (s_count_pictures)
+    m_draw_commands++;
+#endif
   CHECK_COMMAND_SIZE(4);
   m_fifo.RemoveOne();
 

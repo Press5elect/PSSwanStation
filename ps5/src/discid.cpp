@@ -21,6 +21,7 @@
 #include "core/bus.h"
 #include "core/cpu_core.h"
 #include "core/gpu.h"
+#include "core/mdec.h"
 #include "core/system.h"
 
 #include <memory>
@@ -79,6 +80,26 @@ uint8_t *coreScratchpad()
 uint32_t coreDisplayChanges()
 {
 	return g_gpu ? g_gpu->GetDisplayStartChangeCount() : 0;
+}
+
+uint32_t coreDrawCommands()
+{
+	return g_gpu ? g_gpu->GetDrawCommandCount() : 0;
+}
+
+uint32_t coreDisplayLines()
+{
+	return g_gpu ? g_gpu->GetDisplayVRAMHeight() : 0;
+}
+
+uint32_t coreDrawResolutionScale()
+{
+	return g_gpu ? g_gpu->GetDrawResolutionScale() : 1;
+}
+
+uint32_t coreVideoBlocks()
+{
+	return g_mdec.GetDecodedBlockCount();
 }
 
 const uint8_t *coreBios(uint32_t& size)
