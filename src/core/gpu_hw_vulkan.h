@@ -124,7 +124,9 @@ private:
   void SetCapabilities();
   void DestroyResources();
 
-  ALWAYS_INLINE bool InRenderPass() const { return (m_current_render_pass != VK_NULL_HANDLE); }
+  // A pass counts as open only in the command buffer it was begun in: one
+  // submitted since (by whatever path) took the pass with it.
+  bool InRenderPass();
   void BeginRenderPass(VkRenderPass render_pass, VkFramebuffer framebuffer, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                        const VkClearValue* clear_value = nullptr);
   void BeginVRAMRenderPass();
@@ -241,6 +243,7 @@ private:
   void DownsampleFramebufferAdaptive(Vulkan::Texture& source, uint32_t left, uint32_t top, uint32_t width, uint32_t height);
 
   VkRenderPass m_current_render_pass = VK_NULL_HANDLE;
+  uint64_t m_render_pass_fence_counter = 0; // the command buffer m_current_render_pass was begun in
 
   VkRenderPass m_vram_render_pass = VK_NULL_HANDLE;
   VkRenderPass m_vram_update_depth_render_pass = VK_NULL_HANDLE;

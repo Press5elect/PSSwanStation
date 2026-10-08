@@ -1119,11 +1119,29 @@ void GPU_HW_Vulkan::BeginRenderPass(VkRenderPass render_pass, VkFramebuffer fram
                                     clear_value};
   vkCmdBeginRenderPass(g_vulkan_context->GetCurrentCommandBuffer(), &bi, VK_SUBPASS_CONTENTS_INLINE);
   m_current_render_pass = render_pass;
+  m_render_pass_fence_counter = g_vulkan_context->GetCurrentFenceCounter();
+}
+
+bool GPU_HW_Vulkan::InRenderPass()
+{
+  if (m_current_render_pass == VK_NULL_HANDLE)
+    return false;
+  if (m_render_pass_fence_counter == g_vulkan_context->GetCurrentFenceCounter())
+    return true;
+  // The command buffer the pass was begun in has been submitted: ending the
+  // pass now would end one that the current command buffer never began (on
+  // RADV, a crash). Seen on the PS5 with run-ahead, whose state saving ends
+  // the pass at the start of a frame.
+  Log_WarningPrintf("Render pass begun in command buffer %llu is still marked open in %llu; forgetting it",
+                    static_cast<unsigned long long>(m_render_pass_fence_counter),
+                    static_cast<unsigned long long>(g_vulkan_context->GetCurrentFenceCounter()));
+  m_current_render_pass = VK_NULL_HANDLE;
+  return false;
 }
 
 void GPU_HW_Vulkan::BeginVRAMRenderPass()
 {
-  if (m_current_render_pass == m_vram_render_pass)
+  if (InRenderPass() && m_current_render_pass == m_vram_render_pass)
     return;
 
   EndRenderPass();
@@ -1132,7 +1150,7 @@ void GPU_HW_Vulkan::BeginVRAMRenderPass()
 
 void GPU_HW_Vulkan::EndRenderPass()
 {
-  if (m_current_render_pass == VK_NULL_HANDLE)
+  if (!InRenderPass())
     return;
 
   vkCmdEndRenderPass(g_vulkan_context->GetCurrentCommandBuffer());
