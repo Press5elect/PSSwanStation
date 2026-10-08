@@ -8,7 +8,9 @@
 	support GameShark codes", its README says): two archives in the title's
 	folder, assets/cheats.zip and assets/patches.zip, each holding one
 	<serial>.cht per game. A file of the user's own, <root>cheats/<serial>.cht
-	in the same format, is read as well.
+	in the same format, is read as well. For a game neither has codes for,
+	assets/libretro-cheats.zip, the libretro database's PlayStation cheats
+	matched to discs by name (CC BY-SA 4.0, tools/make-libretro-cheats.py).
 
 	The format (the collection's cheat-format.txt):
 
@@ -421,6 +423,9 @@ void init()
 		text = "not fetched yet (Settings, Games and network, \"Fetch the newest cheat database\")";
 	else
 		text = format("cheats for %d games, patches for %d", std::max(cheatFiles, 0), std::max(patchFiles, 0));
+	const int libretroFiles = countArchive(appDir + "assets/libretro-cheats.zip");
+	if (libretroFiles > 0)
+		text += format("; libretro's codes for %d more discs", libretroFiles);
 	if (fileExists(rootDir + "data/cheats.zip"))
 	{
 		struct stat st;
@@ -523,6 +528,10 @@ void loadFor(const std::string& gameSerial, const std::string& firstDisc)
 	std::vector<uint8_t> own;
 	if (readFile(rootDir + "cheats/" + loadedSerial + ".cht", own))
 		parse(std::string(own.begin(), own.end()), false, codes);
+	// A game neither has codes for: the libretro database's, matched to the
+	// disc by name (tools/make-libretro-cheats.py), each saying so.
+	if (codes.empty() && readFromArchive(appDir + "assets/libretro-cheats.zip", loadedSerial + ".cht", text))
+		parse(text, false, codes);
 	// The cheat archive's files end with the game's patches again (under
 	// "PATCHES LISTED BELOW"): an entry both have is kept once, as a patch.
 	entries = patches;
