@@ -1,6 +1,23 @@
 PSSwanStation - what changed
 ============================
 
+Build 15
+  - Picture: a scaling filter of its own - smooth, square pixels, sharp
+    bilinear, FSR 1, NIS and CAS - with one sharpening setting. Picture tube
+    adds crt-guest-advanced in five kinds. Video signal: dither smoothed,
+    S-Video, composite. Brightness, contrast, colour, gamma. All per game.
+  - Frame generation: quality (Performance, Balanced, Quality with a
+    two-way check), pictures ahead of the game's (no delay), up to 60 at
+    120 Hz, videos left out if wanted, one frame of run-ahead, a view of the
+    movement, any rate with pacing by the clock, games counted by whether
+    they drew, uneven cadences evened out. The frame counter shows the
+    game's pictures and the screen's.
+  - NFS shares (versions 3 and 4) beside SMB and FTP.
+  - Your files on the network share: memory cards shared between consoles,
+    covers from the share, or the whole folder; or on a USB drive.
+  - Cheats from the libretro database for games chtdb has none for.
+  Run on a PC only so far.
+
 Build 14
   - Picture settings can be a game's own: scaling (FSR 1 too), sharpening,
     smooth scaling, picture preset, picture tube, beside the picture, frame
