@@ -27,7 +27,7 @@ namespace fe
 std::string rootDir;
 std::string appDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 14;
+const int BuildNumber = 15;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 
@@ -222,6 +222,8 @@ int main(int, char **)
 	gamedb::init();
 	history::init();
 	library::init();
+	// network.cfg is read: the files kept on the share are brought up to date.
+	netfiles::startUp();
 #if defined(SWANSTATION_HOST)
 	if (const char *spec = getenv("SWANSTATION_NET_TEST"))
 	{
@@ -276,6 +278,7 @@ int main(int, char **)
 
 	diag::mark("main: closing");
 	host::shutdown();
+	netfiles::finish();
 	options::saveFrontend();
 	audio::shutdown();
 	platform::quit();

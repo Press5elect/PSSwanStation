@@ -1161,7 +1161,7 @@ void safeStartPage(Frame& f)
 			"where they are.", [] {
 				options::Frontend& o = options::frontend();
 				o.usb = false;
-				o.outside = false;
+				o.filesAt = 0;
 				options::saveFrontend();
 				inform("Done", "From the next start PSSwanStation stays in its sandbox and uses the files in its own folder.");
 			}));
@@ -1172,7 +1172,9 @@ void safeStartPage(Frame& f)
 				options::resetFrontend();
 				// Where the files are is not an interface setting.
 				options::frontend().usb = before.usb;
-				options::frontend().outside = before.outside;
+				options::frontend().filesAt = before.filesAt;
+				options::frontend().cardsOnShare = before.cardsOnShare;
+				options::frontend().coversFromShare = before.coversFromShare;
 				options::saveFrontend();
 				storage::syncDisplayMode(appDir + "sce_sys/param.json", 0);
 				audio::setVolume(options::frontend().volume);
@@ -1451,7 +1453,8 @@ void drawScanlines(ImDrawList *list, ImVec2 p0, ImVec2 p1)
 {
 	const int kind = options::frontend().crt;
 	int lines = host::nativeLines();
-	if (kind == 0 || lines < 100)
+	// 4 and above are crt-guest-advanced, drawn into the picture itself.
+	if (kind == 0 || kind > 3 || lines < 100)
 		return;
 	const float high = p1.y - p0.y;
 	// A picture of 480 lines is two fields of 240: the tube's lines are the field's.
@@ -1556,18 +1559,24 @@ void startNotices()
 				"made as plainly as can be: inside the sandbox (so without USB drives, and with the files in the title's "
 				"own folder) and at 59.94 Hz. If the trouble came after a setting was changed, change it back now; "
 				"holding L1 and R1 while PSSwanStation starts offers more.");
-	if (options::frontend().outside && !outsideAvailable())
-		message("Your files are kept outside, and cannot be reached", std::string("Your files are in ") + storage::OutsideDir
+	const int filesAt = options::frontend().filesAt;
+	if (filesAt != 0 && !outsideAvailable())
+		message("Your files cannot be reached", std::string("Your files are kept ")
+				+ (filesAt == 2 ? std::string("on a USB drive (its ") + storage::UsbFolder + " folder)"
+				: std::string("in ") + storage::OutsideDir)
 				+ ", and this start cannot use them: " + outsideProblem() + ". Until that is put right, PSSwanStation "
-				"uses the files in its own folder (" + shownApp() + "), which are as they were when the files moved "
-				"out. A game started now saves there, not to your files outside.");
+				"uses the files in its own folder (" + shownApp() + "), which are as they were when the files moved. "
+				"A game started now saves there, not where your files are kept.");
 }
 
 // ----------------------------------------------------- rows for other pages
 
 namespace
 {
-// The emulator settings a picture preset sets, for every game.
+// The emulator settings a picture preset sets, for every game. Original: the
+// PlayStation's own picture on a picture tube. Sharp: eight times the
+// resolution, full colour, steady polygons, nothing smoothed. Enhanced: Sharp
+// with smoothed textures and edges.
 struct Preset
 {
 	const char *key;
@@ -1584,6 +1593,17 @@ const Preset presetOptions[] = {
 	{ "swanstation_GPU_MSAA", { "1", "1", "4" } },
 	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled" } },
 };
+// And the title's own picture settings each sets: the picture tube, the
+// scaling filter.
+struct PresetLook
+{
+	const char *name;
+	int values[3];
+};
+const PresetLook presetLook[] = {
+	{ "crt", { 2, 0, 0 } },
+	{ "scaler", { 0, 0, 0 } },
+};
 
 // For every game, or for the loaded one alone.
 void applyPreset(int preset, bool forGame)
@@ -1594,9 +1614,8 @@ void applyPreset(int preset, bool forGame)
 		for (const Preset& option : presetOptions)
 			if (options::find(option.key) != nullptr)
 				options::set(option.key, option.values[preset - 1], forGame);
-		// The original picture is what a picture tube showed: its lines too.
-		options::setPicture("crt", preset == 1 ? 2 : 0, forGame);
-		options::setPicture("linear_filter", 1, forGame);
+		for (const PresetLook& look : presetLook)
+			options::setPicture(look.name, look.values[preset - 1], forGame);
 	}
 }
 
@@ -1605,8 +1624,9 @@ void clearGamePreset()
 {
 	for (const Preset& option : presetOptions)
 		options::clearGameValue(option.key);
-	for (const char *name : { "preset", "crt", "linear_filter" })
-		options::clearGamePicture(name);
+	options::clearGamePicture("preset");
+	for (const PresetLook& look : presetLook)
+		options::clearGamePicture(look.name);
 }
 
 // A row for one of the picture settings a game can have of its own
@@ -1651,30 +1671,34 @@ Item pictureChoice(bool forGame, const char *name, const std::string& label, std
 void pictureItems(bool forGame, std::vector<Item>& items)
 {
 	const auto now_ = [forGame](const char *name) { return options::picture(name, forGame); };
-	const int scaling = now_("scaling");
-	items.push_back(pictureChoice(forGame, "scaling", "Scaling",
-			{ "Fit the screen", "Whole multiples", "Stretch", "Fit the screen, FSR 1" },
+	items.push_back(pictureChoice(forGame, "scaling", "Picture size",
+			{ "Fit the screen", "Whole multiples", "Stretch" },
 			"Fit keeps the picture's shape and makes it as large as the screen allows. Whole multiples only "
 			"enlarges by 2x, 3x and so on, which keeps the software renderer's pixels even. Stretch fills the "
-			"screen and distorts. FSR 1 fits the screen too, and enlarges with AMD's FidelityFX Super Resolution 1 "
-			"instead of a plain filter: edges stay clean and the picture is sharpened, so a lower Internal "
-			"Resolution Scale (Enhancement) looks closer to a high one and costs less. It is the kind of FSR that "
-			"works on one finished picture; the later kinds need things an emulated PlayStation does not give. "
-			"A picture already as large as the screen is left as it is."));
+			"screen and distorts."));
+	const int scaler = now_("scaler");
+	const int crt = now_("crt");
 	{
-		Item item = pictureChoice(forGame, "fsr_sharpness", "FSR sharpening", { "Soft", "Normal", "Sharp" },
-				"How strongly FSR 1 sharpens the enlarged picture.");
-		item.enabled = scaling == 3;
+		Item item = pictureChoice(forGame, "scaler", "Scaling filter",
+				{ "Smooth", "Square pixels", "Sharp bilinear", "FSR 1", "NIS", "CAS" },
+				"How the picture is enlarged to the screen. Smooth blends neighbouring pixels. Square pixels shows them "
+				"as sharp squares, uneven when the size is not a whole multiple. Sharp bilinear grows each pixel to a "
+				"square first and blends only the step between two, so pixels stay crisp and even at any size. FSR 1 "
+				"(AMD FidelityFX Super Resolution) and NIS (NVIDIA Image Scaling) enlarge with edge-aware filters and "
+				"sharpen the result, so a lower Internal Resolution Scale (Enhancement) looks closer to a high one and "
+				"costs less. CAS (AMD Contrast Adaptive Sharpening) enlarges smoothly, then sharpens fine detail "
+				"without halos. A picture already as large as the screen is left as it is.");
+		if (crt >= 4)
+		{
+			item.enabled = false;
+			item.value = "By the picture tube";
+		}
 		items.push_back(item);
 	}
 	{
-		Item item = pictureChoice(forGame, "linear_filter", "Smooth scaling", { "Off", "On" },
-				"Blends neighbouring pixels when the picture is enlarged to the screen. Off shows them as sharp squares.");
-		if (scaling == 3)
-		{
-			item.enabled = false;
-			item.value = "FSR 1";
-		}
+		Item item = pictureChoice(forGame, "fsr_sharpness", "Sharpening", { "Soft", "Normal", "Sharp" },
+				"How strongly FSR 1, NIS or CAS sharpens the enlarged picture.");
+		item.enabled = scaler >= 3 && crt < 4;
 		items.push_back(item);
 	}
 	{
@@ -1683,8 +1707,8 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				: "Sets the emulator's picture settings for every game at once.") + " Original: the PlayStation's own "
 				"resolution and colours, with the lines of a picture tube. Sharp: eight times the resolution, full "
 				"colour, steadier polygons (PGXP), nothing smoothed. Enhanced: as Sharp, with smoothed textures (xBR) "
-				"and smoothed edges (4x MSAA), which costs speed. Each setting can still be changed by itself (Display, "
-				"Enhancement)" + (forGame ? "." : "; a game's own settings stay above these."));
+				"and smoothed edges (4x MSAA), which costs speed. Each setting can still be changed "
+				"by itself (Display, Enhancement)" + (forGame ? "." : "; a game's own settings stay above these."));
 		item.choose = [forGame](int i) { applyPreset(i, forGame); };
 		if (forGame && item.alt)
 		{
@@ -1693,11 +1717,41 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		}
 		items.push_back(item);
 	}
-	items.push_back(pictureChoice(forGame, "crt", "Picture tube",
-			{ "Off", "Soft scanlines", "Scanlines", "Scanlines and mask" },
-			"Draws the dark between the lines a television's picture tube left, over the game's picture: the "
-			"look these games were made for. The mask adds the tube's fine vertical stripes. Darkens the picture "
-			"somewhat."));
+	{
+		std::vector<std::string> tubes = { "Off", "Soft scanlines", "Scanlines", "Scanlines and mask" };
+		for (const std::string& name : display::crtPresetNames())
+			tubes.push_back("CRT: " + name);
+		items.push_back(pictureChoice(forGame, "crt", "Picture tube", tubes,
+				"The look of a television's picture tube, which these games were made for. The first three draw the "
+				"dark between its lines over the picture, the mask adds its fine vertical stripes. The CRT kinds are "
+				"crt-guest-advanced by guest(r), from the libretro shaders: the beam's shape, the glow and bloom of "
+				"bright parts, the phosphor mask, the curved glass and the colours of a real tube. Home television: a "
+				"curved set with a shadow mask. Studio monitor: a flat, sharp professional monitor with an aperture "
+				"grille. Arcade monitor: curved, bright, with a slot mask. Soft: gentle lines, little mask. Guest's own: "
+				"the shader as its author set it. These take the place of the scaling filter, and ask more of the "
+				"graphics processor than the rest."));
+	}
+	items.push_back(pictureChoice(forGame, "signal", "Video signal",
+			{ "As it is", "Dither smoothed", "S-Video", "Composite" },
+			"What reached a television's input. Dither smoothed undoes the fine checkered pattern the PlayStation "
+			"mixes into its colours (most visible at the original resolution with True Colour off), keeping edges. "
+			"S-Video softens the colours a little against the brightness. Composite carries the colour on the "
+			"brightness, as most homes had it: softer, with colour fringes on fine detail and the dither blended "
+			"into smooth colour, as the games' artists saw it."));
+	{
+		std::vector<std::string> steps;
+		for (int i = 0; i <= 20; i++)
+			steps.push_back(format("%d%%", 50 + i * 5));
+		items.push_back(pictureChoice(forGame, "brightness", "Brightness", steps, "The picture's brightness."));
+		items.push_back(pictureChoice(forGame, "contrast", "Contrast", steps, "How far apart its darks and lights are."));
+		items.push_back(pictureChoice(forGame, "saturation", "Colour", steps, "How strong its colours are; 50% is close to "
+				"grey."));
+		std::vector<std::string> gammas;
+		for (int i = 0; i <= 20; i++)
+			gammas.push_back(format("%.2f", 0.5 + i * 0.05));
+		items.push_back(pictureChoice(forGame, "gamma", "Gamma", gammas, "Above 1.00 lightens the middle tones, below "
+				"darkens them; black and white stay."));
+	}
 	items.push_back(pictureChoice(forGame, "border", "Beside the picture",
 			{ "Black", "The picture's light", "A gradient", "A picture file" },
 			"What fills the screen left and right of a 4:3 picture. The picture's light: its own colours, soft and "
@@ -1755,23 +1809,60 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		std::string running;
 		if (host::running() && options::frontend().frameGeneration != 0)
 		{
-			const double pictures = host::picturesPerSecond(), shows = display::refreshRate();
-			running = pictures > 0 ? format("\n\nThis game is drawing about %.0f pictures a second now, and the screen shows "
-					"%.0f: %s.", pictures, shows, pictures + 1.0 < shows ? "pictures are made between them"
-					: "none needs making")
-					: format("\n\nThis game does not let its pictures be counted (it draws straight to the screen): each "
-					"of its frames is taken for a new one, and the screen shows %.0f.", shows);
+			const double pictures = host::picturesPerSecond(), shows = host::shownPerSecond();
+			running = format("\n\nThis game is drawing about %.0f pictures a second now, and the screen shows %.0f.", pictures,
+					shows);
 		}
-		items.push_back(pictureChoice(forGame, "frame_generation", "Frame generation", { "Off", "On", "On, lighter" },
+		items.push_back(pictureChoice(forGame, "frame_generation", "Frame generation", { "Off", "On" },
 				"Draws pictures of its own between the game's, from how the picture moved, so that movement is "
 				"smoother than the game makes it. The title counts how many pictures a second the game really "
-				"draws: most PlayStation games draw 30, 20 or fewer, and those are filled up to the screen's 60 "
-				"(or 120). A game that already draws as many as the screen shows is left alone; at 120 Hz every "
-				"game gains. The made pictures are guesses: where the title cannot tell how something moved it "
-				"shows the game's own picture there, a moment's stutter in that place. The game answers the pad "
-				"a refresh or two of the screen later. \"Lighter\" asks less of the graphics processor and decides more "
-				"coarsely: for when the frame rate drops with it on. Not while fast forwarding or rewinding." + running,
+				"draws (by where its picture starts, or by whether it drew anything): most PlayStation games draw "
+				"30, 20 or fewer, and those are filled up to the screen's 60 (or 120). A game that already draws as "
+				"many as the screen shows is left alone; at 120 Hz every game gains. The made pictures are guesses: "
+				"where the title cannot tell how something moved it shows the game's own picture there, a moment's "
+				"stutter in that place. Between the game's pictures, the game answers the pad a refresh or two "
+				"later; ahead of them, it does not. With frame pacing by the clock, the screen shows where the game "
+				"is at each of its refreshes, at any rate (best with a variable refresh rate). Not while fast "
+				"forwarding or rewinding. The frame rate counter (Settings, Interface) shows the game's pictures "
+				"and the screen's side by side." + running,
 				[] { display::forgetGenerated(); }));
+	}
+	if (generation != 0)
+	{
+		items.push_back(pictureChoice(forGame, "fg_quality", "Generation quality", { "Performance", "Balanced", "Quality" },
+				"How hard frame generation works. Performance: less for the graphics processor, decided more "
+				"coarsely, for when the frame rate drops with it on. Quality: movement looked for in a finer "
+				"picture, decided at the game's own size, and every movement checked from both frames' side, so "
+				"that what comes into view or goes out of it is not smeared.", [] { display::forgetGenerated(); }));
+		items.push_back(pictureChoice(forGame, "fg_mode", "Made pictures", { "Between the game's", "Ahead of the game's" },
+				"Between: each made picture lies between the game's last two, which needs the latest before the "
+				"pictures leading to it can be shown: a little delay, the smoothest result. Ahead: the game's "
+				"latest picture is shown the moment it comes, and the made ones carry its movement on until the "
+				"next: no delay, more mistakes where movement changes (a turn, a stop).",
+				[] { display::forgetGenerated(); }));
+		{
+			Item item = pictureChoice(forGame, "fg_cap", "Generate up to", { "The screen's rate", "60 a second" },
+					"At 120 Hz: the screen's rate makes pictures for all 120 refreshes; 60 a second makes half as many, "
+					"each shown for two refreshes, at half the work.");
+			if (display::refreshRate() < 100.f)
+			{
+				item.enabled = false;
+				item.value = "The screen is at 60 Hz";
+			}
+			items.push_back(item);
+		}
+		items.push_back(pictureChoice(forGame, "fg_videos", "Videos", { "Generate for them too", "Leave them as they are" },
+				"The films between a game's scenes are decoded by the PlayStation's video decoder, which the title "
+				"sees at work. Their pictures are compressed and often 15 a second: made pictures between them can "
+				"look unsteady. Leave them: no made pictures while a film plays."));
+		items.push_back(pictureChoice(forGame, "fg_runahead", "Take back the delay", { "Off", "With run-ahead" },
+				"While frame generation is on, the emulator runs one frame ahead and shows that (run-ahead): the "
+				"game answers the pad a frame sooner, which takes back the delay of pictures made between the "
+				"game's. It costs about twice the emulator's work. Not when run-ahead is set by itself (Emulation), "
+				"and not in netplay."));
+		items.push_back(pictureChoice(forGame, "fg_debug", "Show the movement", { "Off", "On" },
+				"A view for checking frame generation: over the made pictures, the movement found is shown as a "
+				"colour (its way) and a strength (its length), and grey where it is not believed."));
 	}
 }
 
@@ -1875,7 +1966,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 		}
 		{
 			Item item = action(icon::Download, "Fetch the newest cheat database", "The cheats and patches come from the "
-					"DuckStation project's chtdb, which grows. A release of PSSwanStation does not carry it (its entries "
+					"chtdb project's cheat collection, which grows. A release of PSSwanStation does not carry it (its entries "
 					"belong to their authors): this fetches the project's newest release from its own page and uses it "
 					"from then on (it is kept in " + shownRoot() + "data). Now: " + cheats::summary() + ".\n\n"
 					+ cheats::refreshStatus(),
@@ -1884,17 +1975,80 @@ void moreSettings(int kind, std::vector<Item>& items)
 			items.push_back(item);
 		}
 		{
-			Item item = toggle("Keep my files outside the title folder", &f.outside,
-					std::string("Keeps BIOS files, covers, cheats, memory cards, states and settings in ")
-					+ storage::OutsideDir + " instead of the title's folder, so that replacing or deleting that "
-					"folder cannot take them with it. Games may be in either folder's games. From the next start: "
-					"what the title's folder holds is copied over once (and left where it is), and PSSwanStation has "
-					"to leave its sandbox each time it starts, which needs a resident Lapy service or the ELF loader "
-					"on port 9021. Without that it cannot reach the files and says so.");
-			item.info += f.outside ? (outsideAvailable() ? "\n\nIn use now." : "\n\nSet, and not in use now: "
-					+ (outsideProblem().empty() ? std::string("it takes effect from the next start") : outsideProblem()) + ".")
-					: std::string();
+			const std::string share = smb::filesFolder();
+			const std::string shareName = share.empty() ? std::string("(none named)") : share;
+			Item item = choice("Where my files are kept", f.filesAt,
+					{ "The title's folder", "On the console, outside it", "A USB drive", "The network share" },
+					std::string("Where BIOS files, covers, cheats, memory cards, states, texture packs and settings live.\n\n"
+					"The title's folder: ") + shownApp() + ", which an update leaves alone but deleting the title "
+					"takes with it.\n\nOn the console, outside it: " + storage::OutsideDir + ", which deleting or replacing "
+					"the title cannot touch.\n\nA USB drive: a folder " + storage::UsbFolder + " at the top of the first USB "
+					"drive that has one, else of the first that can be written to; the drive goes from console to "
+					"console with your saves on it.\n\nThe network share: network.cfg's \"files\" folder (" + shareName
+					+ "), shared by every console at home. The console keeps a working copy, so that it starts and saves "
+					"when the share is off; the copy is brought up to date when PSSwanStation starts and sent to the share "
+					"when a game closes.\n\nFrom the next start. What was kept before is copied to the new place once "
+					"(and left where it was). All but the title's folder need PSSwanStation to leave its sandbox, which "
+					"needs a resident Lapy service or the ELF loader on port 9021.",
+					[](int i) { options::frontend().filesAt = i; });
+			if (f.filesAt != 0)
+				item.info += outsideAvailable() ? "\n\nIn use now." : "\n\nSet, and not in use now: "
+						+ (outsideProblem().empty() ? std::string("it takes effect from the next start") : outsideProblem()) + ".";
 			items.push_back(item);
+		}
+		{
+			const std::string share = smb::filesFolder();
+			const bool noShare = share.empty();
+			const std::string none = "network.cfg names no \"files\" folder on an SMB or NFS share yet (\"files = "
+					"server/share/folder\" or \"files = nfs://server/path\"; an FTP server is only read).";
+			{
+				Item item = toggle("Memory cards on the network share", &f.cardsOnShare,
+						"Keeps a copy of every memory card in the share's \"files\" folder, in \"memory cards\": a game "
+						"played on another console brings its card here before it starts, and one played here sends its "
+						"card there when it closes, so every console at home has the same saves. Should two consoles have "
+						"played the same game on their own copies, the one played last is used and the other is kept beside "
+						"it (.conflict-<date>).",
+						[] { netfiles::now(); });
+				if (noShare)
+				{
+					item.enabled = false;
+					item.value = "No files folder";
+					item.info += "\n\n" + none;
+				}
+				else if (f.filesAt == 3)
+				{
+					item.enabled = false;
+					item.value = "With all the files";
+				}
+				items.push_back(item);
+			}
+			{
+				Item item = toggle("Covers from the network share", &f.coversFromShare,
+						"Brings the covers of the share's \"files\" folder (its \"covers\" folder, named as the games' "
+						"files are) into this console's covers, where it has none or another one: put covers there once, "
+						"from a PC, and every console has them.",
+						[] { netfiles::now(); });
+				if (noShare)
+				{
+					item.enabled = false;
+					item.value = "No files folder";
+					item.info += "\n\n" + none;
+				}
+				else if (f.filesAt == 3)
+				{
+					item.enabled = false;
+					item.value = "With all the files";
+				}
+				items.push_back(item);
+			}
+			{
+				Item item = action(icon::Sync, "Bring my files up to date now", "Sends what changed here to the network "
+						"share and brings what changed there, now, instead of when PSSwanStation starts or a game closes.\n\n"
+						+ (netfiles::status().empty() ? std::string("Nothing done yet this run.") : netfiles::status()),
+						[] { netfiles::now(); }, !noShare && netfiles::wanted() && !netfiles::working());
+				item.value = netfiles::working() ? "Working\xe2\x80\xa6" : noShare ? "No files folder" : "";
+				items.push_back(item);
+			}
 		}
 		{
 			const std::string serial = host::game().serial;
@@ -1902,7 +2056,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 			const int files = host::texturePackFiles(serial, &where);
 			items.push_back(fact("Texture packs", host::running() ? (files > 0 ? format("%d files for this game", files)
 					: std::string("None for this game")) : std::string("By game"),
-					"Replacement pictures for a game's backgrounds and other 2D art, as made for DuckStation (files "
+					"Replacement pictures for a game's backgrounds and other 2D art, in the usual vram-write format (files "
 					"named vram-write-<number>.png). They go in " + shownRoot() + "textures/<serial>/ (for one game: "
 					"textures/SLUS-12345/) or, on a USB drive, in a folder named textures inside its games folder "
 					"(psx/textures/SLUS-12345/), and are used when \"Enable VRAM Write Texture Replacement\" is on "

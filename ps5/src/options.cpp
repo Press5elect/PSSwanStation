@@ -43,6 +43,9 @@ std::vector<Category> cats;
 // Values live in map nodes, whose addresses do not move: the core keeps the
 // pointers RETRO_ENVIRONMENT_GET_VARIABLE hands it.
 std::map<std::string, std::string> globalValues, gameValues, overrides;
+// Values the frontend holds for a while (frame generation's run-ahead): under
+// the overrides, over the user's own.
+std::map<std::string, std::string> held;
 std::string serial;
 bool changed;
 unsigned changes;
@@ -227,15 +230,27 @@ std::vector<Field> fields()
 		{ "ram_cache", nullptr, &c.ramCache, 0, 1 },
 		{ "notifications", nullptr, &c.notifications, 0, 1 },
 		{ "scaling", &c.scaling, nullptr, 0, 3 },
+		{ "scaler", &c.scaler, nullptr, 0, 5 },
 		{ "fsr_sharpness", &c.fsrSharpness, nullptr, 0, 2 },
 		{ "linear_filter", nullptr, &c.linearFilter, 0, 1 },
+		{ "signal", &c.signal, nullptr, 0, 3 },
+		{ "brightness", &c.brightness, nullptr, 0, 20 },
+		{ "contrast", &c.contrast, nullptr, 0, 20 },
+		{ "saturation", &c.saturation, nullptr, 0, 20 },
+		{ "gamma", &c.gamma, nullptr, 0, 20 },
 		{ "volume", &c.volume, nullptr, 0, 100 },
 		{ "show_fps", nullptr, &c.showFps, 0, 1 },
 		{ "pacing", &c.pacing, nullptr, 0, 2 },
 		{ "display_mode", &c.displayMode, nullptr, 0, 2 },
 		{ "black_frames", nullptr, &c.blackFrames, 0, 1 },
 		{ "frame_generation", &c.frameGeneration, nullptr, 0, 2 },
-		{ "crt", &c.crt, nullptr, 0, 3 },
+		{ "fg_quality", &c.fgQuality, nullptr, 0, 2 },
+		{ "fg_cap", &c.fgCap, nullptr, 0, 1 },
+		{ "fg_videos", &c.fgVideos, nullptr, 0, 1 },
+		{ "fg_mode", &c.fgMode, nullptr, 0, 1 },
+		{ "fg_runahead", nullptr, &c.fgRunAhead, 0, 1 },
+		{ "fg_debug", nullptr, &c.fgDebug, 0, 1 },
+		{ "crt", &c.crt, nullptr, 0, 8 },
 		{ "border", &c.border, nullptr, 0, 3 },
 		{ "preset", &c.preset, nullptr, 0, 3 },
 		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },
@@ -269,7 +284,9 @@ std::vector<Field> fields()
 		{ "region_filter", &c.regionFilter, nullptr, 0, 3 },
 		{ "idle_minutes", &c.idleMinutes, nullptr, 0, 60 },
 		{ "clock", nullptr, &c.clock, 0, 1 },
-		{ "outside", nullptr, &c.outside, 0, 1 },
+		{ "files_at", &c.filesAt, nullptr, 0, 3 },
+		{ "cards_on_share", nullptr, &c.cardsOnShare, 0, 1 },
+		{ "covers_from_share", nullptr, &c.coversFromShare, 0, 1 },
 		{ "card_backups", &c.cardBackups, nullptr, 0, 50 },
 		{ "update_check", nullptr, &c.updateCheck, 0, 1 },
 		{ "achievements", nullptr, &c.achievements, 0, 1 },
@@ -305,8 +322,9 @@ std::vector<PictureField>& pictureFields()
 	static std::vector<PictureField> list;
 	if (list.empty())
 	{
-		static const char *const names[] = { "scaling", "fsr_sharpness", "linear_filter", "pacing", "black_frames",
-				"frame_generation", "crt", "border", "preset" };
+		static const char *const names[] = { "scaling", "scaler", "fsr_sharpness", "linear_filter", "signal", "brightness",
+				"contrast", "saturation", "gamma", "pacing", "black_frames", "frame_generation", "fg_quality", "fg_cap", "fg_videos",
+				"fg_mode", "fg_runahead", "crt", "border", "preset" };
 		for (const Field& field : fields())
 			for (const char *name : names)
 				if (!strcmp(field.name, name))
@@ -332,6 +350,42 @@ void put(const PictureField& field, int value)
 std::string pictureKey(const char *name)
 {
 	return std::string("picture_") + name;
+}
+
+// Before build 15, FSR 1 was a kind of "Scaling" (3) and square pixels the
+// "Smooth scaling" setting off: both are the scaler now.
+void migrateGame(std::map<std::string, std::string>& values)
+{
+	const auto scaling = values.find("picture_scaling");
+	const bool ownScaler = values.count("picture_scaler") != 0;
+	if (scaling != values.end() && scaling->second == "3")
+	{
+		scaling->second = "0";
+		if (!ownScaler)
+			values["picture_scaler"] = "3";
+	}
+	else
+	{
+		const auto linear = values.find("picture_linear_filter");
+		if (linear != values.end() && linear->second == "0" && !ownScaler)
+			values["picture_scaler"] = "1";
+	}
+	// And frame generation's "lighter" kind is its performance quality.
+	const auto generation = values.find("picture_frame_generation");
+	if (generation != values.end() && generation->second == "2")
+	{
+		generation->second = "1";
+		if (values.count("picture_fg_quality") == 0)
+			values["picture_fg_quality"] = "0";
+	}
+	// A build 15 made before its release had a scaler (6) and a preset (4) that
+	// are gone: back to the plain picture, not to the nearest one.
+	const auto scaler = values.find("picture_scaler");
+	if (scaler != values.end() && scaler->second == "6")
+		scaler->second = "0";
+	const auto preset = values.find("picture_preset");
+	if (preset != values.end() && preset->second == "4")
+		preset->second = "0";
 }
 
 // The loaded game's own value of a picture setting, if it has one. Called
@@ -454,6 +508,18 @@ void loadFrontend()
 		// What "Follow the display" was before the pacing had three kinds.
 		else if (!strcmp(key, "sync_to_display"))
 			current.pacing = i != 0 ? 0 : 1;
+		// What "Keep my files outside the title folder" was before there were four places.
+		else if (!strcmp(key, "outside"))
+		{
+			if (i != 0 && current.filesAt == 0)
+				current.filesAt = 1;
+		}
+		// A build 15 made before its release had a scaler (6) and a preset (4)
+		// that are gone.
+		else if (!strcmp(key, "scaler") && i == 6)
+			current.scaler = 0;
+		else if (!strcmp(key, "preset") && i == 4)
+			current.preset = 0;
 		else
 			for (const Field& field : known)
 				if (!strcmp(key, field.name))
@@ -466,6 +532,21 @@ void loadFrontend()
 				}
 	}
 	fclose(f);
+	// The settings of before build 15 (migrateGame).
+	if (current.scaling == 3)
+	{
+		current.scaling = 0;
+		if (current.scaler == 0)
+			current.scaler = 3;
+	}
+	else if (!current.linearFilter && current.scaler == 0)
+		current.scaler = 1;
+	current.linearFilter = true;
+	if (current.frameGeneration == 2)
+	{
+		current.frameGeneration = 1;
+		current.fgQuality = 0;
+	}
 	std::lock_guard<std::mutex> lock(mutex);
 	takeGeneral();
 }
@@ -518,7 +599,10 @@ Option *find(const std::string& key)
 	return nullptr;
 }
 
-const char *get(const std::string& key)
+namespace
+{
+// `own`: the user's value, past what the frontend holds.
+const char *resolve(const std::string& key, bool own)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	const Option *option = nullptr;
@@ -538,11 +622,24 @@ const char *get(const std::string& key)
 	};
 	if (const auto it = overrides.find(key); it != overrides.end() && valid(it->second))
 		return it->second.c_str();
+	if (const auto it = held.find(key); it != held.end() && valid(it->second) && !own)
+		return it->second.c_str();
 	if (const auto it = gameValues.find(key); it != gameValues.end() && valid(it->second))
 		return it->second.c_str();
 	if (const auto it = globalValues.find(key); it != globalValues.end() && valid(it->second))
 		return it->second.c_str();
 	return option->defaultValue.c_str();
+}
+}
+
+const char *get(const std::string& key)
+{
+	return resolve(key, false);
+}
+
+const char *own(const std::string& key)
+{
+	return resolve(key, true);
 }
 
 std::string label(const Option& option, const std::string& value)
@@ -605,7 +702,10 @@ void loadGame(const std::string& id)
 	if (id.empty())
 		gameValues.clear();
 	else
+	{
 		readValues(gameFile(id), gameValues);
+		migrateGame(gameValues);
+	}
 	layPicture();
 	changed = true;
 	changes++;
@@ -636,6 +736,20 @@ void setOverride(const std::string& key, const std::string& value)
 	if (it != overrides.end() && it->second == value)
 		return;
 	overrides[key] = value;
+	changed = true;
+	changes++;
+}
+
+void hold(const std::string& key, const std::string& value)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	const auto it = held.find(key);
+	if (value.empty() ? it == held.end() : (it != held.end() && it->second == value))
+		return;
+	if (value.empty())
+		held.erase(it);
+	else
+		held[key] = value;
 	changed = true;
 	changes++;
 }

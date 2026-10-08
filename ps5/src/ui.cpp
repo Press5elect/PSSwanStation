@@ -241,6 +241,14 @@ void launchNow(const library::Game& game, int slot, int disc)
 // `disc`: the one in the tray at the start; -1 for the one last played.
 void launch(const library::Game& game, int slot, int disc)
 {
+	// The memory cards (or all the files) are being brought from the share:
+	// a game started now would play on the old ones.
+	if (netfiles::working())
+	{
+		inform("Your files are being brought up to date", "PSSwanStation is bringing your files up to date with the "
+				"network share (" + netfiles::status() + "). Start the game again in a moment.");
+		return;
+	}
 	if (slot == -1 && options::frontend().autoLoadOnStart && host::stateExistsFor(game.path, host::ResumeSlot))
 		slot = host::ResumeSlot;
 	if (slot == FromBeginning)
@@ -589,9 +597,9 @@ void drawGame(float dim)
 		float u = 1, v = 1;
 		host::frameUv(u, v);
 		float dw = W, dh = H;
-		// FSR is a way of stretching: the picture is where "fit" has it.
-		const bool fsr = options::frontend().scaling == 3;
-		const int scaling = fsr ? 0 : options::frontend().scaling;
+		const options::Frontend& f = options::frontend();
+		// (3 was "fit, with FSR 1" before build 15.)
+		const int scaling = f.scaling == 3 ? 0 : f.scaling;
 		if (scaling != 2)
 		{
 			dh = H;
@@ -611,33 +619,51 @@ void drawGame(float dim)
 		// What is beside the picture, then the picture, then the lines of a
 		// picture tube over it.
 		drawBorder(list, texture, u, v, p0, p1);
-		// With FSR the picture arrives the size it has here, and is drawn pixel
-		// for pixel; when it cannot be made, the usual way.
+		// The look (display::picture): the signal, the colours, how it is
+		// grown to the screen, a picture tube. A picture that arrives the size
+		// it has here is drawn pixel for pixel.
+		display::Look look;
+		static const int scalers[6] = { 0, 0, 1, 2, 3, 4 };
+		look.scaler = scalers[std::clamp(f.scaler, 0, 5)];
+		look.sharpness = f.fsrSharpness;
+		look.signal = f.signal;
+		const int lines = host::nativeLines();
+		const int scale = lines > 0 ? std::max(h / lines, 1) : 1;
+		// The dither is as fine as the picture's pixels unless it is scaled.
+		const char *scaledDither = options::get("swanstation_GPU_ScaledDithering");
+		look.cell = f.signal == 1 && !(scaledDither != nullptr && !strcmp(scaledDither, "true")) ? 1 : scale;
+		look.crt = f.crt >= 4 ? f.crt - 3 : 0;
+		look.brightness = 0.5f + 0.05f * (float)f.brightness;
+		look.contrast = 0.5f + 0.05f * (float)f.contrast;
+		look.saturation = 0.5f + 0.05f * (float)f.saturation;
+		look.gamma = 0.5f + 0.05f * (float)f.gamma;
 		const int outW = (int)std::lround(dw), outH = (int)std::lround(dh);
-		void *upscaled = fsr ? display::upscale(texture, w, h, u, v, outW, outH, options::frontend().fsrSharpness)
-				: nullptr;
-		const bool squares = upscaled != nullptr || !options::frontend().linearFilter;
-		if (squares)
-			display::sampling(list, true);
-		// With frame generation the picture drawn is one kept by the display,
-		// or one made between the last two (display::generated).
-		void *shown = upscaled != nullptr ? upscaled : texture;
-		float shownU = upscaled != nullptr ? 1.f : u, shownV = upscaled != nullptr ? 1.f : v;
 		float phase = 1.f;
 		bool fresh = false;
-		if (host::generationPhase(phase, fresh))
+		const bool generating = host::generationPhase(phase, fresh);
+		void *shown = texture;
+		float shownU = u, shownV = v;
+		bool full = false;
+		// With frame generation the picture is one kept by the display, or one
+		// made between the last two (display::generated), at the game's size;
+		// the look comes after it.
+		if (generating)
 		{
-			void *made = display::generated(shown, upscaled != nullptr ? outW : w, upscaled != nullptr ? outH : h, shownU,
-					shownV, fresh, phase, options::frontend().frameGeneration == 2);
+			void *made = display::generated(texture, w, h, u, v, fresh, phase, f.fgQuality, f.fgDebug);
 			if (made != nullptr)
 			{
 				shown = made;
 				shownU = shownV = 1.f;
 			}
 		}
-		if (upscaled != nullptr)
-			list->AddImage((ImTextureID)shown, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH), ImVec2(0, 0),
-					ImVec2(shownU, shownV));
+		void *looked = display::picture(shown, w, h, shownU, shownV, outW, outH, look, full);
+		const bool squares = full || f.scaler == 1;
+		if (squares)
+			display::sampling(list, true);
+		if (looked != nullptr && full)
+			list->AddImage((ImTextureID)looked, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH));
+		else if (looked != nullptr)
+			list->AddImage((ImTextureID)looked, p0, p1);
 		else
 			list->AddImage((ImTextureID)shown, p0, p1, ImVec2(0, 0), ImVec2(shownU, shownV));
 		if (squares)
@@ -682,7 +708,13 @@ void drawGameOverlay()
 	{
 		const double want = host::coreFps();
 		const float got = host::measuredFps();
-		const std::string line = format("%.1f fps  %d%%", got, want > 1 ? (int)std::lround(got / want * 100.0) : 0);
+		std::string line = format("%.1f fps  %d%%", got, want > 1 ? (int)std::lround(got / want * 100.0) : 0);
+		// With frame generation: the pictures the game draws, and what the
+		// screen shows with the made ones.
+		float phase = 1.f;
+		bool fresh = false;
+		if (host::generationPhase(phase, fresh) || options::frontend().frameGeneration != 0)
+			line += format("   %.0f \xe2\x86\x92 %.0f", host::picturesPerSecond(), host::shownPerSecond());
 		const float w = toUnits(measure(line, Bold, 22).x) + 32;
 		const float x = unitsWide() - w - 32;
 		panel(at(x, 28), at(x + w, 68), IM_COL32(10, 12, 20, 190), 10);
@@ -2009,7 +2041,7 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Developer", Developer, std::string("The PS5 port and its interface: ") + Developer + "."));
 	items.push_back(fact("Emulator", format("%s %s", info.library_name != nullptr ? info.library_name : "SwanStation",
 			info.library_version != nullptr ? info.library_version : ""),
-			"SwanStation, the libretro fork of DuckStation, linked into this title with a frontend of its own."));
+			"SwanStation, linked into this title with a frontend of its own."));
 	items.push_back(fact("Graphics", display::deviceName()));
 	items.push_back(fact("Display", format("%d x %d at %.2f Hz", display::width(), display::height(),
 			display::refreshRate())));
@@ -2020,7 +2052,7 @@ void aboutItems(std::vector<Item>& items)
 			gamedb::summary() + ". Descriptions, developers, publishers, release years and genres, and the serial "
 			"numbers of disc images by their Redump names, from the libretro database."));
 	items.push_back(fact("Cheats and patches", cheats::summary(),
-			cheats::summary() + ". The database is the DuckStation project's chtdb; a game's entries are in its "
+			cheats::summary() + ". The database is chtdb, the community cheat collection; a game's entries are in its "
 			"menu while it runs."));
 	items.push_back(fact("Recompiler", jitAvailable() ? "Available" : "Not available",
 			jitAvailable() ? "The console gives the emulator memory it can run generated code from, so the "
@@ -2033,9 +2065,8 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Folder", shownRoot()));
 	items.push_back(header("Licences"));
 	items.push_back(fact("SwanStation", "GPL-3.0",
-			"SwanStation is free software under the GNU General Public License, version 3. It is a fork of "
-			"DuckStation by Connor McLaughlin (stenzek) and its contributors, kept by the libretro team. This "
-			"title's source is the SwanStation source plus the ps5 folder."));
+			"SwanStation is free software under the GNU General Public License, version 3, kept by the libretro team "
+			"and its contributors. This title's source is the SwanStation source plus the ps5 folder."));
 	items.push_back(fact("Mesa RADV", "MIT", "The Vulkan driver, from the PS5 Mesa port."));
 	items.push_back(fact("Dear ImGui", "MIT", "The interface is drawn with Dear ImGui by Omar Cornut."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
@@ -2234,7 +2265,7 @@ void pausePage(Frame& f)
 			on += cheat.enabled;
 		Item item = action(icon::Magic, "Cheats and patches",
 				"Cheat codes and patches (widescreen, 60 frames a second and others) for this game from the "
-				"DuckStation database, and your own from the cheats folder.",
+				"chtdb database, and your own from the cheats folder.",
 				[] { push(Page::Cheats); });
 		item.value = cheats::list().empty() ? "None" : on != 0 ? format("%d on", on)
 				: format("%d", (int)cheats::list().size());
@@ -3894,8 +3925,11 @@ bool generationTest()
 	const int step = (int)(tick % (uint64_t)steps);
 	const float phase = (float)(step + 1) / (float)steps;
 	const Image& picture = pictures[index];
-	void *shown = display::generated(picture.id, picture.width, picture.height, 1.f, 1.f, step == 0, phase,
-			getenv("SWANSTATION_FG_LIGHTER") != nullptr);
+	const char *quality = getenv("SWANSTATION_FG_QUALITY");
+	void *shown = display::generated(picture.id, picture.width, picture.height, 1.f, 1.f, step == 0,
+			getenv("SWANSTATION_FG_AHEAD") != nullptr ? phase + (step == steps - 1 ? 0.f : 1.f) : phase,
+			getenv("SWANSTATION_FG_LIGHTER") != nullptr ? 0 : quality != nullptr ? atoi(quality) : 1,
+			getenv("SWANSTATION_FG_DEBUG") != nullptr);
 	ImDrawList *list = ImGui::GetBackgroundDrawList();
 	list->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, 255));
 	display::sampling(list, true);
@@ -3906,6 +3940,85 @@ bool generationTest()
 			(int)index, phase, shown == nullptr ? " (not made)" : "");
 	return true;
 }
+
+// A test of the picture's looks: the picture SWANSTATION_LOOK_TEST names is
+// drawn as a game's would be (4:3, fitted to the screen), through each look in
+// turn, and each is saved as look-<name>.png.
+bool lookTest()
+{
+	const char *file = getenv("SWANSTATION_LOOK_TEST");
+	if (file == nullptr)
+		return false;
+	static Image picture;
+	static bool ready;
+	static uint64_t started;
+	if (!ready)
+	{
+		picture = image(file);
+		ready = picture.id != nullptr;
+		started = display::frameCount();
+		return true;
+	}
+	struct Case
+	{
+		const char *name;
+		int scaler, sharpness, signal, crt;
+		float brightness, contrast, saturation, gamma;
+	};
+	static const Case cases[] = {
+		{ "plain", 0, 1, 0, 0, 1, 1, 1, 1 },
+		{ "sharp-bilinear", 1, 1, 0, 0, 1, 1, 1, 1 },
+		{ "fsr", 2, 1, 0, 0, 1, 1, 1, 1 },
+		{ "nis", 3, 1, 0, 0, 1, 1, 1, 1 },
+		{ "cas", 4, 2, 0, 0, 1, 1, 1, 1 },
+		{ "undither", 1, 1, 1, 0, 1, 1, 1, 1 },
+		{ "svideo", 1, 1, 2, 0, 1, 1, 1, 1 },
+		{ "composite", 1, 1, 3, 0, 1, 1, 1, 1 },
+		{ "colours", 1, 1, 0, 0, 1.1f, 1.2f, 1.3f, 1.2f },
+		{ "crt-guest", 0, 1, 0, 1, 1, 1, 1, 1 },
+		{ "crt-home", 0, 1, 0, 2, 1, 1, 1, 1 },
+		{ "crt-studio", 0, 1, 0, 3, 1, 1, 1, 1 },
+		{ "crt-arcade", 0, 1, 0, 4, 1, 1, 1, 1 },
+		{ "crt-soft", 0, 1, 0, 5, 1, 1, 1, 1 },
+		{ "crt-composite", 0, 1, 3, 2, 1, 1, 1, 1 },
+	};
+	// Each look for eight refreshes (the tube's afterglow and average settle);
+	// the last of them is saved.
+	const uint64_t tick = display::frameCount() - started;
+	const size_t index = (size_t)(tick / 8);
+	if (tick >= 1 && (tick - 1) % 8 == 7 && (tick - 1) / 8 < std::size(cases))
+		display::saveScreenshot(format("%slook-%s.png", rootDir.c_str(), cases[(tick - 1) / 8].name));
+	if (index >= std::size(cases))
+	{
+		quit = true;
+		return true;
+	}
+	const Case& c = cases[index];
+	display::Look look;
+	look.scaler = c.scaler;
+	look.sharpness = c.sharpness;
+	look.signal = c.signal;
+	look.crt = c.crt;
+	look.brightness = c.brightness;
+	look.contrast = c.contrast;
+	look.saturation = c.saturation;
+	look.gamma = c.gamma;
+	const float H = height(), W = width();
+	const float dh = H, dw = std::min(W, dh * 4.f / 3.f);
+	const ImVec2 p0(std::floor((W - dw) * 0.5f), 0.f), p1(p0.x + dw, dh);
+	ImDrawList *list = ImGui::GetBackgroundDrawList();
+	list->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(0, 0, 0, 255));
+	bool full = false;
+	const int outW = (int)std::lround(dw), outH = (int)std::lround(dh);
+	void *looked = display::picture(picture.id, picture.width, picture.height, 1.f, 1.f, outW, outH, look, full);
+	display::sampling(list, full);
+	if (looked != nullptr && full)
+		list->AddImage((ImTextureID)looked, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH));
+	else
+		list->AddImage((ImTextureID)(looked != nullptr ? looked : picture.id), p0, p1);
+	display::sampling(list, false);
+	return true;
+}
 #endif
 
 void frame()
@@ -3913,7 +4026,7 @@ void frame()
 	widgetsFrame();
 	imagesFrame();
 #if defined(SWANSTATION_HOST)
-	if (generationTest())
+	if (generationTest() || lookTest())
 		return;
 #endif
 	readInput();

@@ -77,7 +77,25 @@ void earlyInit()
 	appDir = rootDir;
 	options::loadFrontend();
 	safeStart = storage::startBegan(appDir);
-	if (options::frontend().outside)
+	const int filesAt = options::frontend().filesAt;
+	if (filesAt == 2)
+	{
+		// A test's "USB drive": the folder SWANSTATION_USB_FILES names.
+		const char *drive = getenv("SWANSTATION_USB_FILES");
+		if (drive == nullptr || safeStart)
+			outsideWhy = safeStart ? "the last start did not finish, so this one stayed in the sandbox"
+					: "no USB drive that can be written to is plugged in";
+		else
+		{
+			std::string folder = std::string(drive) + "/" + storage::UsbFolder + "/";
+			storage::migrate(appDir, folder);
+			rootDir = folder;
+			outsideUsed = true;
+		}
+	}
+	else if (filesAt == 3)
+		outsideUsed = true;
+	else if (filesAt == 1)
 	{
 		const char *outside = getenv("SWANSTATION_OUTSIDE");
 		if (outside == nullptr || safeStart)
