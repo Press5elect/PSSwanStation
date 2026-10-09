@@ -184,6 +184,24 @@ void widgetsFrame()
 	current.faint = IM_COL32(104, 114, 138, 255);
 	current.good = IM_COL32(74, 222, 128, 255);
 	current.bad = IM_COL32(248, 113, 113, 255);
+	if (settings.highContrast)
+	{
+		current.background = IM_COL32(0, 0, 0, 255);
+		current.backgroundLow = IM_COL32(0, 0, 0, 255);
+		current.panel = IM_COL32(10, 12, 18, 250);
+		current.panelHigh = IM_COL32(70, 84, 124, 255);
+		current.accentSoft = withAlpha(accent, 0.42f);
+		current.text = IM_COL32(255, 255, 255, 255);
+		current.dim = IM_COL32(214, 220, 232, 255);
+		current.faint = IM_COL32(168, 176, 196, 255);
+	}
+	// Okabe and Ito's sky blue and orange, told apart with every common
+	// colour blindness.
+	if (settings.colourBlind)
+	{
+		current.good = IM_COL32(86, 180, 233, 255);
+		current.bad = IM_COL32(230, 159, 0, 255);
+	}
 }
 
 float px(float units)

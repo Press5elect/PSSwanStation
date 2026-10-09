@@ -1829,10 +1829,17 @@ void frontendItems(int kind, std::vector<Item>& items)
 					return names;
 				}(),
 				"The colour of the cursor and the highlights.", [](int i) { options::frontend().accent = i; }));
-		items.push_back(choice("Interface size", (f.uiScale - 80) / 10,
-				{ "80%", "90%", "100%", "110%", "120%", "130%" },
-				"Makes the text and everything else of the interface larger or smaller.",
-				[](int i) { options::frontend().uiScale = 80 + i * 10; }));
+		items.push_back(choice("Interface size", std::clamp((f.uiScale - 80) / 10, 0, 6),
+				{ "80%", "90%", "100%", "110%", "120%", "130%", "140%" },
+				"Makes the text and everything else of the interface larger or smaller. At the largest sizes long "
+				"names are cut short.", [](int i) { options::frontend().uiScale = 80 + i * 10; }));
+		items.push_back(toggle("High contrast", &f.highContrast,
+				"Black behind the menus, white text, the dimmer text brighter and the cursor's row stronger: easier to "
+				"read from the sofa or with weaker sight."));
+		items.push_back(toggle("Colour-blind safe colours", &f.colourBlind,
+				"What is good and what is bad (ahead or behind in the speedrun timer, an achievement earned, a check "
+				"that passed) in blue and orange, which are told apart with every common colour blindness, instead "
+				"of green and red."));
 		items.push_back(choice("Animations", f.animations, { "Full", "Reduced", "Off" },
 				"Full: the swan flies from the start-up screen to its corner, looks about while it sits there, "
 				"and flies at the screen when a game starts. Reduced: it stays still, the start-up screen only "
@@ -2129,9 +2136,13 @@ void settingsPage(Frame& f)
 	const float top = 128, bottom = H - 88;
 	const float cx0 = 64, cx1 = 404;
 	panel(at(cx0, top), at(cx1, bottom), t.panel, 16);
-	for (int i = 0; i < count; i++)
+	// As many as fit; when they do not (a large interface size), the list
+	// scrolls with the chosen one.
+	const int fit = std::max(1, (int)((bottom - top - 28) / 58));
+	const int firstShown = count <= fit ? 0 : std::clamp(f.a - fit / 2, 0, count - fit);
+	for (int i = firstShown; i < count && i < firstShown + fit; i++)
 	{
-		const float y = top + 14 + i * 58;
+		const float y = top + 14 + (i - firstShown) * 58;
 		const bool selected = i == f.a;
 		if (selected)
 			panel(at(cx0 + 10, y), at(cx1 - 10, y + 54), t.accentSoft, 12);

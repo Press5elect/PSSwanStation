@@ -1678,7 +1678,7 @@ void gameMarks()
 		const speedrun::State state = speedrun::state();
 		const int64_t elapsed = speedrun::elapsed();
 		const size_t atSplit = speedrun::current();
-		const ImU32 gold = IM_COL32(255, 196, 64, 255);
+		const ImU32 gold = options::frontend().colourBlind ? IM_COL32(240, 228, 66, 255) : IM_COL32(255, 196, 64, 255);
 		const size_t shown = std::min<size_t>(splits.size(), 6);
 		size_t first = 0;
 		if (splits.size() > shown)
