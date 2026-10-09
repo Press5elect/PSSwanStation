@@ -1,6 +1,15 @@
 PSSwanStation - what changed
 ============================
 
+Build 17
+  - Gaps between polygons closed above 1x: the sparkles along their edges
+    (Settings, Enhancement; on at first, off in the Speedrun preset).
+  - A picture larger than the screen is averaged down (8x on 1080p).
+  - CAS and FSR 1 behave at large enlargements.
+  - Frame generation makes nothing across a cut, starts again after a
+    state load.
+  Run on a PC only so far.
+
 Build 16
   - Sleep-safe saving: the game is saved every five minutes and when the
     PS menu opens; the next start offers to continue.

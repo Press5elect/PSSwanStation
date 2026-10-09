@@ -486,7 +486,7 @@ this, does (33.3 and 33.4 dB). Movement told by the emulator itself (from the
 polygons drawn) and depth for what is in front are not done: a PlayStation
 game sends its polygons anew each frame with nothing that says which is
 which, so their movement would have to be guessed as well. An experiment:
-build 12's ran on a console and smeared; build 15's has run on a PC only.
+build 12's ran on a console and smeared; build 15's works on my console.
 
 Sound: "Menu music" plays in the library and the menus: the title's own quiet
 piece, or your file (music/menu.ogg, .mp3 or .wav).
