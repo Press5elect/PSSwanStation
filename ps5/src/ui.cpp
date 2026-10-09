@@ -4155,6 +4155,7 @@ void frame()
 		case Page::SafeStart: safeStartPage(f); break;
 		case Page::Shortcuts: shortcutsPage(f); break;
 		case Page::Memory: memoryPage(f); break;
+		case Page::Speedrun: speedrunPage(f); break;
 		}
 		if (game)
 			drawMessages();

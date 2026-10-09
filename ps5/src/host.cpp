@@ -42,6 +42,7 @@
 #include "netplay.h"
 #include "memsearch.h"
 #include "recorder.h"
+#include "speedrun.h"
 
 #include <libretro.h>
 #include <libretro_vulkan.h>
@@ -1425,6 +1426,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	cheats::loadFor(current.serial, firstDiscSerial);
 	cheats::apply();
 	memsearch::loadFor(current.serial);
+	speedrun::loadFor(current.serial, current.title);
 	pacing = 1.0;
 	ranThisSecond = 0;
 	secondStarted = now();
@@ -1505,6 +1507,7 @@ void stop()
 	audio::clear();
 	cheats::unload();
 	memsearch::unload();
+	speedrun::unload();
 	options::loadGame("");
 	smb::releaseImages();
 	current = GameInfo();
@@ -1564,6 +1567,8 @@ void runOne(bool keep)
 #endif
 	retro_run();
 	emulatedFrames++;
+	if (options::frontend().speedrun)
+		speedrun::frame(av.timing.fps);
 	{
 		// Was that a new picture?
 		const uint32_t changes = coreDisplayChanges();
@@ -1906,6 +1911,8 @@ void setFastForward(bool on)
 	if (on == ffOn)
 		return;
 	ffOn = on;
+	if (on)
+		speedrun::markPractice("fast forward");
 	audio::setMuted(ffOn || rewindOn);
 	pacing = 1.0;
 	clockNext = 0;
@@ -1926,6 +1933,8 @@ void setRewinding(bool on)
 	on = on && isRunning && rewindAllowed();
 	if (on == rewindOn)
 		return;
+	if (on)
+		speedrun::markPractice("rewind");
 	rewindOn = on;
 	rewindDue = 0;
 	rewindDry = false;
@@ -2538,6 +2547,8 @@ bool loadState(int slot)
 		return false;
 	stopRecorder("a state was loaded");
 	const bool ok = applyState(packed);
+	if (ok)
+		speedrun::markPractice("a state was loaded");
 	diag::mark("state: slot %d %s", slot, ok ? "loaded" : "refused by the emulator");
 	if (ok && slot != ResumeSlot)
 		lastSlot = slot;

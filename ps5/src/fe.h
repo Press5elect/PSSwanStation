@@ -347,7 +347,9 @@ struct Frontend
 	// console (rest mode) can be continued at the next start.
 	bool sleepSafe = false;
 	bool verboseLog = false;
-	bool watchOverlay = true;	// the values watched (memsearch) shown over the game	// everything the emulator says into the boot log, and a line about speed every ten seconds
+	bool watchOverlay = true;	// the values watched (memsearch) shown over the game
+	bool speedrun = false;		// the speedrun timer over the game, its shortcuts and its conditions
+	int speedrunClock = 0;		// 0 game time (the emulator's frames), 1 real time	// everything the emulator says into the boot log, and a line about speed every ten seconds
 	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
 	// 4 neGcon, 5 GunCon.
 	int controller[4] = {1, 1, 1, 1};

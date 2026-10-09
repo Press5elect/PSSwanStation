@@ -258,6 +258,8 @@ std::vector<Field> fields()
 		{ "sleep_safe", nullptr, &c.sleepSafe, 0, 1 },
 		{ "verbose_log", nullptr, &c.verboseLog, 0, 1 },
 		{ "watch_overlay", nullptr, &c.watchOverlay, 0, 1 },
+		{ "speedrun", nullptr, &c.speedrun, 0, 1 },
+		{ "speedrun_clock", &c.speedrunClock, nullptr, 0, 1 },
 		{ "controller1", &c.controller[0], nullptr, 0, 5 },
 		{ "controller2", &c.controller[1], nullptr, 0, 5 },
 		{ "controller3", &c.controller[2], nullptr, 0, 5 },
