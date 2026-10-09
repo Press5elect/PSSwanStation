@@ -1599,46 +1599,60 @@ namespace
 // The emulator settings a picture preset sets, for every game. Original: the
 // PlayStation's own picture on a picture tube. Sharp: eight times the
 // resolution, full colour, steady polygons, nothing smoothed. Enhanced: Sharp
-// with smoothed textures and edges.
+// with smoothed textures and edges. Speedrun: the PlayStation's picture as it
+// drew it, nothing added and nothing that changes its timing.
+constexpr int PresetCount = 4;
 struct Preset
 {
 	const char *key;
-	const char *values[3];		// original, sharp, enhanced
+	const char *values[PresetCount];	// original, sharp, enhanced, speedrun; null leaves it as it is
 };
 const Preset presetOptions[] = {
-	{ "swanstation_GPU_ResolutionScale", { "1", "8", "8" } },
-	{ "swanstation_GPU_TextureFilter", { "Nearest", "Nearest", "xBR" } },
-	{ "swanstation_GPU_TrueColor", { "false", "true", "true" } },
-	{ "swanstation_GPU_ScaledDithering", { "false", "true", "true" } },
-	{ "swanstation_GPU_PGXPEnable", { "false", "true", "true" } },
-	{ "swanstation_GPU_PGXPCulling", { "false", "true", "true" } },
-	{ "swanstation_GPU_PGXPTextureCorrection", { "false", "true", "true" } },
-	{ "swanstation_GPU_MSAA", { "1", "1", "4" } },
-	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled" } },
+	{ "swanstation_GPU_ResolutionScale", { "1", "8", "8", "1" } },
+	{ "swanstation_GPU_TextureFilter", { "Nearest", "Nearest", "xBR", "Nearest" } },
+	{ "swanstation_GPU_TrueColor", { "false", "true", "true", "false" } },
+	{ "swanstation_GPU_ScaledDithering", { "false", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPEnable", { "false", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPCulling", { "false", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPTextureCorrection", { "false", "true", "true", "false" } },
+	{ "swanstation_GPU_MSAA", { "1", "1", "4", "1" } },
+	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled", "Disabled" } },
+	{ "swanstation_GPU_WidescreenHack", { nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_GPU_ForceNTSCTimings", { nullptr, nullptr, nullptr, "false" } },
 };
 // And the title's own picture settings each sets: the picture tube, the
-// scaling filter.
+// scaling filter; for Speedrun also what the title adds (frame generation,
+// the signal, the colours, run-ahead). -1 leaves it as it is.
 struct PresetLook
 {
 	const char *name;
-	int values[3];
+	int values[PresetCount];
 };
 const PresetLook presetLook[] = {
-	{ "crt", { 2, 0, 0 } },
-	{ "scaler", { 0, 0, 0 } },
+	{ "crt", { 2, 0, 0, 0 } },
+	{ "scaler", { 0, 0, 0, 1 } },
+	{ "frame_generation", { -1, -1, -1, 0 } },
+	{ "fg_runahead", { -1, -1, -1, 0 } },
+	{ "signal", { -1, -1, -1, 0 } },
+	{ "brightness", { -1, -1, -1, 10 } },
+	{ "contrast", { -1, -1, -1, 10 } },
+	{ "saturation", { -1, -1, -1, 10 } },
+	{ "gamma", { -1, -1, -1, 10 } },
+	{ "black_frames", { -1, -1, -1, 0 } },
 };
 
 // For every game, or for the loaded one alone.
 void applyPreset(int preset, bool forGame)
 {
 	options::setPicture("preset", preset, forGame);
-	if (preset >= 1 && preset <= 3)
+	if (preset >= 1 && preset <= PresetCount)
 	{
 		for (const Preset& option : presetOptions)
-			if (options::find(option.key) != nullptr)
+			if (option.values[preset - 1] != nullptr && options::find(option.key) != nullptr)
 				options::set(option.key, option.values[preset - 1], forGame);
 		for (const PresetLook& look : presetLook)
-			options::setPicture(look.name, look.values[preset - 1], forGame);
+			if (look.values[preset - 1] >= 0)
+				options::setPicture(look.name, look.values[preset - 1], forGame);
 	}
 }
 
@@ -1725,12 +1739,14 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		items.push_back(item);
 	}
 	{
-		Item item = pictureChoice(forGame, "preset", "Picture preset", { "As set", "Original", "Sharp", "Enhanced" },
+		Item item = pictureChoice(forGame, "preset", "Picture preset", { "As set", "Original", "Sharp", "Enhanced", "Speedrun" },
 				std::string(forGame ? "Sets the emulator's picture settings for this game alone, at once."
 				: "Sets the emulator's picture settings for every game at once.") + " Original: the PlayStation's own "
 				"resolution and colours, with the lines of a picture tube. Sharp: eight times the resolution, full "
 				"colour, steadier polygons (PGXP), nothing smoothed. Enhanced: as Sharp, with smoothed textures (xBR) "
-				"and smoothed edges (4x MSAA), which costs speed. Each setting can still be changed "
+				"and smoothed edges (4x MSAA), which costs speed. Speedrun: the picture as the PlayStation drew it, "
+				"with nothing added: its own resolution and colours, square pixels, no PGXP, no picture tube or "
+				"signal, no frame generation or run-ahead, no widescreen or NTSC timing hack. Each setting can still be changed "
 				"by itself (Display, Enhancement)" + (forGame ? "." : "; a game's own settings stay above these."));
 		item.choose = [forGame](int i) { applyPreset(i, forGame); };
 		if (forGame && item.alt)

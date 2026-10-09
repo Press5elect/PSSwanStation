@@ -339,7 +339,7 @@ struct Frontend
 	// crt-guest-advanced with display::crtPresetNames()[crt - 4]
 	int crt = 0;
 	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
-	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced
+	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced, 4 speedrun
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
 	bool autoLoadOnStart = false;	// and start from it
 	// Sleep-safe saving: the resume state is saved every five minutes of play
