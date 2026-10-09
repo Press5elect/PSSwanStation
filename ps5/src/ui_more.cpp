@@ -1028,6 +1028,232 @@ void netplayPage(Frame& f)
 		deferred = [] { resume(); };
 }
 
+// ------------------------------------------------------------- what's new
+
+namespace
+{
+// Moves a box of text `contentH` units high, shown between y0 and y1, with the
+// pad: Up and Down (or the left stick) and the right stick scroll it smoothly,
+// L1 and R1 by a page. Draws a bar at x1 when it does not all fit. The offset,
+// in units.
+float scrollBox(Frame& f, float y0, float y1, float x1, float contentH)
+{
+	const float viewH = y1 - y0;
+	const float most = std::max(contentH - viewH, 0.f);
+	static double last;
+	const double t = clock();
+	const float dt = std::clamp((float)(t - last), 0.f, 0.1f);
+	last = t;
+	float speed = 0;
+	if (in.held & Down)
+		speed += 900;
+	if (in.held & Up)
+		speed -= 900;
+	for (int i = 0; i < MaxPads; i++)
+	{
+		const Pad& p = pad(i);
+		if (p.connected && std::fabs(p.ry) > 0.2f)
+			speed += p.ry * 1400;
+	}
+	float target = f.scrollTarget + speed * dt;
+	if (hit(R1))
+		target += viewH * 0.85f;
+	if (hit(L1))
+		target -= viewH * 0.85f;
+	f.scrollTarget = std::clamp(target, 0.f, most);
+	f.scroll = f.fresh ? f.scrollTarget : approach(f.scroll, f.scrollTarget, 20.f);
+	f.fresh = false;
+	if (most > 0)
+	{
+		const Theme& th = theme();
+		const float barH = std::max(viewH * viewH / contentH, 40.f);
+		const float barY = y0 + (viewH - barH) * (f.scroll / most);
+		panel(at(x1 - 8, y0), at(x1, y1), withAlpha(th.faint, 0.35f), 4);
+		panel(at(x1 - 8, barY), at(x1, barY + barH), th.accent, 4);
+	}
+	return f.scroll;
+}
+
+// CHANGELOG.txt, as the title folder has it, read into lines to draw.
+struct News
+{
+	enum Kind { Build, Section, Bullet, Note };
+	struct Line
+	{
+		Kind kind;
+		std::string text;
+		int section = 0;	// 1 added, 2 changed, 3 fixed
+	};
+	std::vector<Line> lines;
+	int builds = 0, added = 0, changed = 0, fixed = 0, other = 0;
+};
+
+// The builds after `after` (every build when it is 0), up to this one.
+News readNews(int after)
+{
+	News news;
+	std::vector<uint8_t> bytes;
+	if (!readFile(appDir + "CHANGELOG.txt", bytes))
+		return news;
+	const std::string all(bytes.begin(), bytes.end());
+	bool keep = false;
+	int section = 0;
+	size_t at = 0;
+	while (at < all.size())
+	{
+		size_t end = all.find('\n', at);
+		if (end == std::string::npos)
+			end = all.size();
+		std::string line = all.substr(at, end - at);
+		at = end + 1;
+		if (!line.empty() && line.back() == '\r')
+			line.pop_back();
+		if (line.compare(0, 6, "Build ") == 0)
+		{
+			const int build = atoi(line.c_str() + 6);
+			keep = build > 0 && build <= BuildNumber && (after <= 0 || build > after);
+			section = 0;
+			if (keep)
+			{
+				news.lines.push_back({ News::Build, line });
+				news.builds++;
+			}
+			continue;
+		}
+		const std::string bare = trim(line);
+		if (!keep || bare.empty())
+			continue;
+		if (line.compare(0, 4, "    ") == 0 && !news.lines.empty() && news.lines.back().kind == News::Bullet)
+			news.lines.back().text += " " + bare;
+		else if (bare == "Added" || bare == "Changed" || bare == "Fixed")
+		{
+			section = bare == "Added" ? 1 : bare == "Changed" ? 2 : 3;
+			news.lines.push_back({ News::Section, bare, section });
+		}
+		else if (bare.compare(0, 2, "- ") == 0)
+		{
+			news.lines.push_back({ News::Bullet, bare.substr(2), section });
+			(section == 1 ? news.added : section == 2 ? news.changed : section == 3 ? news.fixed : news.other)++;
+		}
+		else
+			news.lines.push_back({ News::Note, bare });
+	}
+	return news;
+}
+
+std::string newsSummary(const News& news)
+{
+	std::string summary;
+	const auto add = [&summary](int count, const char *what) {
+		if (count == 0)
+			return;
+		if (!summary.empty())
+			summary += "  \xc2\xb7  ";
+		summary += format("%d %s", count, what);
+	};
+	add(news.added, "added");
+	add(news.changed, "changed");
+	add(news.fixed, "fixed");
+	add(news.other, news.added + news.changed + news.fixed != 0 ? "more" : "changes");
+	return summary;
+}
+}
+
+void whatsNewPage(Frame& f)
+{
+	const Theme& t = theme();
+	const float W = unitsWide(), H = unitsHigh();
+	static News news;
+	static int readFor = -1;
+	if (readFor != f.a)
+	{
+		news = readNews(f.a);
+		readFor = f.a;
+	}
+	text(at(64, 40), t.text, "What's new", Title, 44);
+	std::string subtitle;
+	if (f.a > 0)
+		subtitle = BuildNumber - f.a == 1 ? format("Build %d, since build %d", BuildNumber, f.a)
+				: format("Builds %d to %d, since build %d", f.a + 1, BuildNumber, f.a);
+	else
+		subtitle = format("Every build, newest first. This is build %d.", BuildNumber);
+	const std::string summary = newsSummary(news);
+	if (!summary.empty())
+		subtitle += "  \xe2\x80\x94  " + summary;
+	textFit(at(66, 100), px(W - 140), t.dim, subtitle, Body, 24);
+
+	const float x0 = 64, x1 = W - 64, top = 150, bottom = H - 88;
+	panel(at(x0, top), at(x1, bottom), t.panel, 16);
+	const float inset = 28, y0 = top + inset, y1 = bottom - inset;
+	const float tx = x0 + 48, bulletX = tx + 34, tw = x1 - 40 - bulletX;
+	const ImU32 sectionColour[4] = { t.accent, t.good, t.accent, IM_COL32(240, 190, 90, 255) };
+	const ImU32 body = IM_COL32(214, 220, 234, 255);
+
+	// Heights first, in units, so the box knows how far it scrolls.
+	std::vector<float> heights(news.lines.size());
+	float total = 0;
+	for (size_t i = 0; i < news.lines.size(); i++)
+	{
+		const News::Line& line = news.lines[i];
+		float h = 0;
+		switch (line.kind)
+		{
+		case News::Build: h = (i == 0 ? 0 : 30) + 52; break;
+		case News::Section: h = 40; break;
+		case News::Bullet: h = toUnits(wrappedHeight(line.text, px(tw), Body, 24)) + 12; break;
+		case News::Note: h = toUnits(wrappedHeight(line.text, px(tw + 34), Body, 22)) + 14; break;
+		}
+		heights[i] = h;
+		total += h;
+	}
+	const float scroll = scrollBox(f, y0, y1, x1 - 20, total);
+
+	draw()->PushClipRect(at(x0, y0), at(x1 - 24, y1), true);
+	if (news.lines.empty())
+		textWrapped(at(tx, y0 + 16), px(x1 - x0 - 96), t.dim, f.a > 0 ? "Nothing is listed for this build."
+				: "The list of changes (CHANGELOG.txt) is missing from the title's folder.", Body, 24);
+	float y = y0 - scroll;
+	for (size_t i = 0; i < news.lines.size(); i++)
+	{
+		const News::Line& line = news.lines[i];
+		const float h = heights[i];
+		if (y + h >= y0 && y <= y1)
+			switch (line.kind)
+			{
+			case News::Build:
+			{
+				const float ly = y + (i == 0 ? 0 : 30);
+				text(at(tx, ly), t.text, line.text, Bold, 34);
+				if (i != 0)
+					panel(at(tx, y + 10), at(x1 - 72, y + 12), withAlpha(t.faint, 0.4f), 1);
+				break;
+			}
+			case News::Section:
+				panel(at(tx, y + 12), at(tx + 6, y + 30), sectionColour[line.section], 3);
+				text(at(tx + 18, y + 10), sectionColour[line.section], line.text == "Added" ? "ADDED"
+						: line.text == "Changed" ? "CHANGED" : "FIXED", Bold, 20);
+				break;
+			case News::Bullet:
+				text(at(tx + 10, y), sectionColour[line.section], "\xe2\x80\xa2", Bold, 24);
+				textWrapped(at(bulletX, y), px(tw), body, line.text, Body, 24);
+				break;
+			case News::Note:
+				textWrapped(at(tx, y + 2), px(tw + 34), t.dim, line.text, Body, 22);
+				break;
+			}
+		y += h;
+	}
+	draw()->PopClipRect();
+
+	std::vector<Hint> hints = { { confirmButton, "OK" } };
+	hintBar(hints, total > y1 - y0 ? "Up and Down, or a stick: scroll  \xc2\xb7  L1, R1: a page" : "");
+	if (hit(confirmButton))
+	{
+		deferred = [] { pop(); };
+		consumeInput();
+	}
+}
+
 // ------------------------------------------------------------------ updates
 
 void updatePage(Frame& f)
@@ -1051,6 +1277,7 @@ void updatePage(Frame& f)
 		y += toUnits(textWrapped(at(tx, y), px(tw), colour, value, font, size)) + 14;
 	};
 	std::vector<Hint> hints;
+	std::string hintText = format("Releases: github.com/%s/PSSwanStation", Developer);
 	bool leave = hit(cancelButton);
 	switch (status.state)
 	{
@@ -1077,8 +1304,16 @@ void updatePage(Frame& f)
 			y += 10;
 			text(at(tx, y), t.accent, "WHAT IS NEW", Bold, 20);
 			y += 36;
-			textWrapped(at(tx, y), px(tw), IM_COL32(200, 208, 226, 255), drawable(status.notes), Body, 22,
-					px(bottom - y - 30));
+			// The release's notes are long: they scroll.
+			const std::string notes = drawable(status.notes);
+			const float boxTop = y, boxBottom = bottom - 30;
+			const float notesH = toUnits(wrappedHeight(notes, px(tw - 24), Body, 22));
+			const float scroll = scrollBox(f, boxTop, boxBottom, x1 - 24, notesH);
+			draw()->PushClipRect(at(tx, boxTop), at(x1 - 30, boxBottom), true);
+			textWrapped(at(tx, boxTop - scroll), px(tw - 24), IM_COL32(200, 208, 226, 255), notes, Body, 22);
+			draw()->PopClipRect();
+			if (notesH > boxBottom - boxTop)
+				hintText = "Up and Down, or a stick: scroll";
 		}
 		hints.push_back({ confirmButton, "Download" });
 		if (hit(confirmButton))
@@ -1137,7 +1372,7 @@ void updatePage(Frame& f)
 	}
 	if (status.state != update::State::Installed && status.state != update::State::Verifying)
 		hints.push_back({ cancelButton, status.state == update::State::Downloading ? "Stop" : "Back" });
-	hintBar(hints, format("Releases: github.com/%s/PSSwanStation", Developer));
+	hintBar(hints, hintText);
 	if (leave)
 	{
 		deferred = [] { pop(); };
@@ -2085,6 +2320,16 @@ void startNotices()
 	if (said)
 		return;
 	said = true;
+	// Pushed first, so that anything more pressing below is seen before it.
+	options::Frontend& settings = options::frontend();
+	if (settings.seenBuild < BuildNumber)
+	{
+		const int before = settings.seenBuild;
+		settings.seenBuild = BuildNumber;
+		options::saveFrontend();
+		if (before > 0)
+			push(Page::WhatsNew, before);
+	}
 	if (startedSafely())
 		inform("A safe start", "The last time PSSwanStation started, it did not get as far as the library. This start was "
 				"made as plainly as can be: inside the sandbox (so without USB drives, and with the files in the title's "

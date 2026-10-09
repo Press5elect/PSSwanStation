@@ -67,6 +67,7 @@ enum class Page
 	Speedrun,		// the speedrun timer and the game's splits
 	Web,			// the web panel: its switch, the address and the QR code
 	Shaders,		// shader presets brought in from a USB drive
+	WhatsNew,		// what changed: a: the build the console had before (0: every build)
 };
 
 struct Frame
@@ -216,6 +217,7 @@ void memoryPage(Frame& f);
 void speedrunPage(Frame& f);
 void webPage(Frame& f);
 void shadersPage(Frame& f);
+void whatsNewPage(Frame& f);
 
 // The keyboard: asks for a text and hands it to `done` when it is confirmed.
 void askText(const std::string& title, const std::string& initial, bool hidden, bool address,

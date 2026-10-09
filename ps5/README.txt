@@ -720,6 +720,13 @@ closes when it is done; start it again from the home screen. With "Ask for
 updates at start" (Interface) the library's header says when a build is out;
 nothing is fetched until you say so.
 
+The first start after an update, however it came (the updater, or a folder
+copied over FTP), opens "What's new": what was added, changed and fixed since
+the build the console had, build by build, with a count of each at the top.
+Up and Down or a stick scroll it, L1 and R1 a page, Cross closes it. Settings,
+About, "What's new" shows every build's changes again. A first install shows
+nothing. The release's notes on the Update page scroll the same way.
+
 Tested on a PC, against a stand-in for GitHub and against the real releases
 page (as build 13 it found build 14, fetched it, checked it and put it in
 place, leaving network.cfg and the games alone); not yet on a console. Should

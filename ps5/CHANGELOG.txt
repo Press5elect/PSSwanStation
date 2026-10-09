@@ -2,15 +2,24 @@ PSSwanStation - what changed
 ============================
 
 Build 17
-  - Gaps between polygons closed above 1x: the sparkles along their edges
-    (Settings, Enhancement; on at first, off in the Speedrun preset).
+  Added
+  - "What's new" after an update: what changed since the build you had.
+  - Card backups sent to the network share, in a folder of each console's.
+  - The manual: ps5/MANUAL.md on GitHub.
+  Changed
+  - Covers on the network share go both ways: a cover set on one console
+    is there for the others.
   - A picture larger than the screen is averaged down (8x on 1080p).
-  - CAS and FSR 1 behave at large enlargements.
-  - Frame generation makes nothing across a cut, starts again after a
-    state load.
+  Fixed
+  - Sparkles along polygon edges above 1x: gaps between polygons closed
+    (Settings, Enhancement; on at first, off in the Speedrun preset).
+  - CAS and FSR 1 at large enlargements.
+  - Frame generation smeared across a cut; it starts again after a state
+    load.
   Run on a PC only so far.
 
 Build 16
+  Added
   - Sleep-safe saving: the game is saved every five minutes and when the
     PS menu opens; the next start offers to continue.
   - Speedrun timer with splits (by hand or by a value in memory) and bests.
@@ -20,25 +29,32 @@ Build 16
   - Debug: recordings of what you press, verbose logging.
   - Picture preset Speedrun (the picture as the PlayStation drew it).
   - Interface up to 140%, high contrast, colour-blind safe colours.
-  - Texture packs read from PSSwanStation/textures/ on a USB drive.
+  Changed
+  - Texture packs read from PSSwanStation/textures/ on a USB drive (the
+    old place still works).
+  Fixed
   - SwanStation upstream: video playback fix, fuzzing fixes.
   Run on a PC only so far.
 
 Build 15
+  Added
   - Picture: a scaling filter of its own - smooth, square pixels, sharp
     bilinear, FSR 1, NIS and CAS - with one sharpening setting. Picture tube
     adds crt-guest-advanced in five kinds. Video signal: dither smoothed,
     S-Video, composite. Brightness, contrast, colour, gamma. All per game.
-  - Frame generation: quality (Performance, Balanced, Quality with a
-    two-way check), pictures ahead of the game's (no delay), up to 60 at
-    120 Hz, videos left out if wanted, one frame of run-ahead, a view of the
-    movement, any rate with pacing by the clock, games counted by whether
-    they drew, uneven cadences evened out. The frame counter shows the
-    game's pictures and the screen's.
   - NFS shares (versions 3 and 4) beside SMB and FTP.
   - Your files on the network share: memory cards shared between consoles,
     covers from the share, or the whole folder; or on a USB drive.
   - Cheats from the libretro database for games chtdb has none for.
+  Changed
+  - Frame generation: quality (Performance, Balanced, Quality with a
+    two-way check), pictures ahead of the game's (no delay), up to 60 at
+    120 Hz, videos left out if wanted, one frame of run-ahead, a view of the
+    movement, any rate with pacing by the clock. The frame counter shows the
+    game's pictures and the screen's.
+  Fixed
+  - Frame generation: games that never swap their picture are counted by
+    whether they drew; uneven cadences are evened out.
   Works on my console; NFS not tried there yet.
 
 Build 14

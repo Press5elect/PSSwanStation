@@ -293,6 +293,7 @@ std::vector<Field> fields()
 		{ "idle_minutes", &c.idleMinutes, nullptr, 0, 60 },
 		{ "clock", nullptr, &c.clock, 0, 1 },
 		{ "files_at", &c.filesAt, nullptr, 0, 3 },
+		{ "seen_build", &c.seenBuild, nullptr, 0, 1000000 },
 		{ "cards_on_share", nullptr, &c.cardsOnShare, 0, 1 },
 		{ "covers_from_share", nullptr, &c.coversFromShare, 0, 1 },
 		{ "card_backups", &c.cardBackups, nullptr, 0, 50 },
@@ -496,10 +497,15 @@ void loadFrontend()
 	FILE *f = fopen((appDir + "frontend.cfg").c_str(), "r");
 	if (f == nullptr)
 	{
+		// A first start: nothing is new to it.
+		current.seenBuild = BuildNumber;
 		std::lock_guard<std::mutex> lock(mutex);
 		takeGeneral();
 		return;
 	}
+	// Settings written before "What's new" was: they are of build 14, the first
+	// published, or one after it.
+	current.seenBuild = 14;
 	const std::vector<Field> known = fields();
 	char key[64];
 	float value;
@@ -815,7 +821,9 @@ void resetGlobal()
 
 void resetFrontend()
 {
+	const int seen = current.seenBuild;
 	current = Frontend();
+	current.seenBuild = seen;
 	{
 		// The games' own picture settings stay, as their other settings do.
 		std::lock_guard<std::mutex> lock(mutex);
