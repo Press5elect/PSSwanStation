@@ -498,6 +498,9 @@ protected:
 
   /// Computes polygon U/V boundaries.
   static void ComputePolygonUVLimits(BatchVertex* vertices, uint32_t num_vertices);
+  // Writes one triangle of a polygon to the batch, its texture coordinates in
+  // sixteenths of a texel; with expand, a quarter of a native pixel larger.
+  void AddPolygonTriangle(const BatchVertex& a, const BatchVertex& b, const BatchVertex& c, bool expand);
 
   /// Sets the depth test flag for PGXP depth buffering.
   void SetBatchDepthBuffer(bool enabled);
@@ -552,6 +555,7 @@ protected:
   GPUTextureFilter m_texture_filtering = GPUTextureFilter::Nearest;
   GPUDownsampleMode m_downsample_mode = GPUDownsampleMode::Disabled;
   bool m_using_uv_limits = false;
+  bool m_close_gaps = false;
   bool m_pgxp_depth_buffer = false;
 
   // Previous-value cache of g_settings.gpu_shader_precompile_mode

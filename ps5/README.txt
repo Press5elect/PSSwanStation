@@ -282,6 +282,13 @@ The picture: the internal resolution starts at 8x. Lower it (Enhancement,
 Internal Resolution Scale) if a game does not hold its speed; "Show frame
 rate" (Interface) tells.
 
+Above 1x, "Close Gaps Between Polygons" (Enhancement, on at first) covers the
+hairline gaps where a game's polygons meet unevenly: the sparkles along their
+edges that flicker as the camera moves. Each solid polygon is drawn a quarter
+of a native pixel larger, so the outlines of 3D objects are that much fuller;
+2D pictures and see-through polygons are left as they are. The Speedrun
+preset switches it off.
+
 Picture (Settings):
   Picture size       fit the screen, whole multiples, or stretch.
   Scaling filter     smooth, square pixels, sharp bilinear, FSR 1, NIS or

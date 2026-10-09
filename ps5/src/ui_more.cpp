@@ -2146,6 +2146,7 @@ const Preset presetOptions[] = {
 	{ "swanstation_GPU_PGXPEnable", { "false", "true", "true", "false" } },
 	{ "swanstation_GPU_PGXPCulling", { "false", "true", "true", "false" } },
 	{ "swanstation_GPU_PGXPTextureCorrection", { "false", "true", "true", "false" } },
+	{ "swanstation_GPU_CloseGaps", { nullptr, "true", "true", "false" } },
 	{ "swanstation_GPU_MSAA", { "1", "1", "4", "1" } },
 	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled", "Disabled" } },
 	{ "swanstation_GPU_WidescreenHack", { nullptr, nullptr, nullptr, "false" } },

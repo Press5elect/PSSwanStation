@@ -162,10 +162,11 @@ void main()
 
 #if defined(TEXTURED)
   // Texture coordinates are packed into a single uint per vertex
-  // (lower 16 bits = U, upper 16 bits = V) and scaled by the upscale
-  // factor to address into the upscaled VRAM atlas.
-  v_tex0 = vec2(float((a_texcoord & 0xFFFFu) * RESOLUTION_SCALE),
-                float((a_texcoord >> 16)     * RESOLUTION_SCALE));
+  // (lower 16 bits = U, upper 16 bits = V), in sixteenths of a texel,
+  // and scaled by the upscale factor to address into the upscaled VRAM
+  // atlas.
+  // In sixteenths of a texel (GPU_HW::AddPolygonTriangle).
+  v_tex0 = vec2(float(a_texcoord & 0xFFFFu), float(a_texcoord >> 16)) * (float(RESOLUTION_SCALE) / 16.0);
 
   // a_texpage is similarly packed:
   //   bits  0..3   page base X  (in 64-texel native units)
