@@ -12,8 +12,14 @@
 	                 is brought here before a game starts, and one played here
 	                 goes there when the game closes. Several consoles at home
 	                 then share their saves.
-	  covers         <files>/covers is read: a cover there that this console
-	                 has not, or has older, is brought into covers/.
+	  covers         <files>/covers, both ways: a cover put there from a PC,
+	                 downloaded or chosen on any console, reaches every console.
+	  card backups   the copies kept of each card (data/saves/backups) are sent
+	                 to <files>/card backups/<this console's name>/, whenever
+	                 the cards are kept there: a copy of them off the console,
+	                 one folder for each console (data/console-name.txt), which
+	                 follows what is kept here (the oldest left out here goes
+	                 there too). Nothing is brought back from it.
 	  everything     with Settings, Games and network, "Where my files are
 	                 kept" on the network share, every folder of the user's
 	                 (bios, covers, cheats, data, textures, music, borders,
@@ -46,6 +52,7 @@
 #include <xxhash.h>
 
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -94,6 +101,35 @@ uint64_t digest(const std::vector<uint8_t>& bytes)
 	return XXH64(bytes.data(), bytes.size(), 0);
 }
 
+// This console's name among those that keep their files on the share: in
+// data/console-name.txt (letters, digits, - and _), made once as
+// "console-" and six letters of chance, and never sent to the share.
+std::string consoleName()
+{
+	const std::string path = rootDir + "data/console-name.txt";
+	std::vector<uint8_t> bytes;
+	std::string name;
+	if (readFile(path, bytes))
+		for (uint8_t c : bytes)
+			if (isalnum(c) || c == '-' || c == '_')
+				name += (char)c;
+			else if (c == '\n' || c == '\r')
+				break;
+	if (name.empty() || name.size() > 40)
+	{
+		static const char letters[] = "abcdefghijkmnpqrstuvwxyz23456789";
+		uint64_t seed = (uint64_t)time(nullptr) ^ ((uint64_t)getpid() << 20) ^ (uint64_t)(uintptr_t)&name;
+		name = "console-";
+		for (int i = 0; i < 6; i++)
+		{
+			seed = seed * 6364136223846793005ull + 1442695040888963407ull;
+			name += letters[(seed >> 33) % (sizeof(letters) - 1)];
+		}
+		writeFile(path, name.data(), name.size());
+	}
+	return name;
+}
+
 // A file that is not the user's: half written, a mark, the lists themselves.
 bool skipped(const std::string& name)
 {
@@ -111,7 +147,7 @@ bool leftOut(const std::string& rel, bool dataFolder)
 {
 	if (!dataFolder)
 		return false;
-	for (const char *prefix : { "cache/", "sync/", "saves/backups/", "safe-param.json" })
+	for (const char *prefix : { "cache/", "sync/", "saves/backups/", "safe-param.json", "console-name.txt" })
 		if (rel.compare(0, strlen(prefix), prefix) == 0)
 			return true;
 	return false;
@@ -298,7 +334,10 @@ struct Report
 	std::string error;
 };
 
-enum class Way { Both, Bring };
+// Both: kept the same both ways. Bring: the share's to here only. Send: this
+// console's to the share only (the share follows it: what this console sent
+// and has since removed goes; what it never sent is left).
+enum class Way { Both, Bring, Send };
 
 // Keeps the folder `local` (a path on this console, ending in '/') and
 // `remote` (a share's folder, without the trailing '/') the same.
@@ -416,7 +455,34 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 			return true;
 		};
 		bool ok = true;
-		if (!lh.empty() && onShare != remoteFiles.end())
+		if (way == Way::Send)
+		{
+			if (!lh.empty())
+			{
+				if (onShare == remoteFiles.end() || unknown || lh != rh)
+					ok = push();
+				else
+					state[rel].base = lh;
+			}
+			else if (onShare != remoteFiles.end() && !base.empty() && !unknown && rh == base)
+			{
+				// Sent from here once, and gone here since.
+				if (smb::remove(remote + "/" + rel))
+				{
+					listed.erase(rel);
+					manifestChanged = true;
+					report.removed++;
+				}
+				state.erase(rel);
+			}
+			else if (onShare == remoteFiles.end())
+			{
+				state.erase(rel);
+				if (listed.erase(rel) != 0)
+					manifestChanged = true;
+			}
+		}
+		else if (!lh.empty() && onShare != remoteFiles.end())
 		{
 			if (unknown)
 			{
@@ -502,7 +568,7 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 		if (!ok)
 			break;
 	}
-	if (manifestChanged && way == Way::Both)
+	if (manifestChanged && way != Way::Bring)
 	{
 		const std::string text = manifestText(listed);
 		std::string error;
@@ -545,8 +611,15 @@ void runOnce(const char *why)
 		if (f.coversFromShare && !report.failed)
 		{
 			say("Covers");
-			syncPair("covers", rootDir + "covers/", files + "/covers", Way::Bring, true, false, report);
+			syncPair("covers", rootDir + "covers/", files + "/covers", Way::Both, true, false, report);
 		}
+	}
+	// The cards' backups, from wherever the cards are kept on the share.
+	if ((f.filesAt == 3 || f.cardsOnShare) && !report.failed)
+	{
+		say("Card backups");
+		syncPair("card-backups", rootDir + "data/saves/backups/", files + "/card backups/" + consoleName(), Way::Send,
+				true, false, report);
 	}
 	std::string summary;
 	if (report.failed)
