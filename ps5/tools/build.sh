@@ -16,6 +16,7 @@
 #   IMGUI_DIR         Dear ImGui v1.92 (default: ../imgui)
 #   LIBSMB2_DIR       libsmb2 (default: ../deps-src/libsmb2)
 #   RCHEEVOS_DIR      rcheevos v12 (default: ../deps-src/rcheevos)
+#   GLSLANG_DIR       glslang 16.6.0 (default: ../deps-src/glslang)
 #   LAPY_HELPER_DIR   a folder holding lapy.elf and lapy-manifest.json: the
 #                     Lapy helper for this title, as ps5-native-app-boilerplate's
 #                     tools/build-lapy-helper.py PPSA99248 builds it (default:
@@ -86,7 +87,8 @@ fi
 mkdir -p "$build"
 cmake -S "$ps5" -B "$build" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$ps5/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
-    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" -DRCHEEVOS_DIR="$rcheevos" > "$build/configure.log" 2>&1 \
+    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" -DRCHEEVOS_DIR="$rcheevos" \
+    ${GLSLANG_DIR:+-DGLSLANG_DIR="$GLSLANG_DIR"} > "$build/configure.log" 2>&1 \
     || { cat "$build/configure.log" >&2; exit 2; }
 cmake --build "$build" --target swanstation --parallel "${JOBS:-$(nproc)}"
 
@@ -180,12 +182,14 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     echo "libnfs:      $(git -C "${LIBNFS_DIR:-$src/../deps-src/libnfs}" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "slang-shaders: $(git -C "$slang" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "rcheevos:    $(git -C "$rcheevos" describe --tags --always 2>/dev/null || echo unknown)"
+    echo "glslang:     $(git -C "${GLSLANG_DIR:-$src/../deps-src/glslang}" describe --tags --always 2>/dev/null || echo unknown)"
     echo "Lapy helper: $(sed -n 's/.*"elf_sha256": "\([0-9a-f]*\)".*/\1/p' "$lapy/lapy-manifest.json") (sha256)"
     echo "eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)"
 } > "$app/BUILD.txt"
 # Every part as data, with the revision it was built from.
 python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$imgui" "$libsmb2" "$rcheevos" "$lapy" \
-    "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}" "${LIBNFS_DIR:-$src/../deps-src/libnfs}" "$slang"
+    "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}" "${LIBNFS_DIR:-$src/../deps-src/libnfs}" "$slang" \
+    "${GLSLANG_DIR:-$src/../deps-src/glslang}"
 # Everything is readable and writable over FTP; the program's own files as the
 # console wants a title's (and as the updater leaves them).
 find "$app" -type d -exec chmod 0777 {} +

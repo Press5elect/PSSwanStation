@@ -26,6 +26,8 @@ bool setParameter(Chain *chain, const std::string& name, float value);
 // What the passes keep from frame to frame (afterglow, average brightness)
 // starts anew: another game.
 void forget(Chain *chain);
+// The game's frame rate, for presets that ask for it (OriginalFPS, FrameTimeDelta).
+void setContentRate(float fps);
 
 // Draws the preset over `input` (a `width` x `height` picture, all of the
 // image) into a picture of `outWidth` x `outHeight`, recorded into `cmd`.

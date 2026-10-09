@@ -55,11 +55,13 @@ def expand(path, seen=None):
         for line in f:
             m = re.match(r'\s*#include\s+"([^"]+)"', line)
             if m:
+                # Every time it is named, as RetroArch does (the files keep
+                # themselves from being read twice with #ifndef); only a file
+                # that includes itself is stopped.
                 inner = os.path.normpath(os.path.join(os.path.dirname(path), m.group(1)))
                 if inner in seen:
                     continue
-                seen.add(inner)
-                out.extend(expand(inner, seen))
+                out.extend(expand(inner, seen | {inner}))
             else:
                 out.append(line.rstrip("\n"))
     return out

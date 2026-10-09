@@ -53,8 +53,13 @@ constexpr uint32_t UboStride = 512;		// the most a pass's uniform block may be, 
 enum Semantic
 {
 	SemNone, SemParam, SemMvp, SemOutputSize, SemSourceSize, SemOriginalSize, SemViewportSize, SemFrameCount,
-	SemFrameDirection, SemOne, SemZero, SemPassOutputSize, SemPassFeedbackSize, SemLutSize
+	SemFrameDirection, SemOne, SemZero, SemPassOutputSize, SemPassFeedbackSize, SemLutSize,
+	SemOriginalFps, SemFrameTimeDelta
 };
+
+// The game's frame rate, for the newer presets that ask for it (OriginalFPS,
+// FrameTimeDelta).
+float contentFps = 60.f;
 enum TexKind { TexOriginal, TexSource, TexPassOutput, TexPassFeedback, TexLut };
 enum Scale { ScaleSource, ScaleViewport, ScaleAbsolute };
 
@@ -308,6 +313,10 @@ void resolve(Chain& c)
 				m.semantic = SemOne;
 			else if (name == "Rotation")
 				m.semantic = SemZero;
+			else if (name == "OriginalFPS")
+				m.semantic = SemOriginalFps;
+			else if (name == "FrameTimeDelta")
+				m.semantic = SemFrameTimeDelta;
 			else if (numbered(name, "PassOutputSize", n))
 			{
 				m.semantic = SemPassOutputSize;
@@ -857,6 +866,12 @@ bool setParameter(Chain *c, const std::string& name, float value)
 	return false;
 }
 
+void setContentRate(float fps)
+{
+	if (fps > 1.f && fps < 1000.f)
+		contentFps = fps;
+}
+
 void forget(Chain *c)
 {
 	if (c == nullptr)
@@ -980,6 +995,20 @@ VkImageView run(Chain *c, VkCommandBuffer cmd, VkImageView input, VkImageLayout 
 				}
 				break;
 			case SemParam: v4[0] = c->params[m.index].value; break;
+			case SemOriginalFps: v4[0] = contentFps; break;
+			case SemFrameTimeDelta:
+			{
+				// RetroArch's: the time from one frame to the next, in microseconds.
+				const uint32_t micro = (uint32_t)std::lround(1e6 / std::max(contentFps, 1.f));
+				if (m.kind == "float")
+					v4[0] = (float)micro;
+				else
+				{
+					memcpy(at, &micro, 4);
+					continue;
+				}
+				break;
+			}
 			default: break;
 			}
 			memcpy(at, v4, m.kind == "vec4" ? 16 : 4);

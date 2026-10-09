@@ -158,6 +158,27 @@ foreach(name ${RCHEEVOS_NAMES})
 endforeach()
 add_library(rcheevos STATIC ${RCHEEVOS_SOURCES})
 target_include_directories(rcheevos PUBLIC "${RCHEEVOS_DIR}/include")
+
+# glslang: a shader preset brought in from a USB drive is compiled on the
+# console (src/slangimport.cpp). Its library alone: GLSL to SPIR-V, no HLSL,
+# no optimiser, no programs.
+set(GLSLANG_DIR "${ROOT}/../deps-src/glslang" CACHE PATH "glslang (16.6.0)")
+set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
+set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
+set(ENABLE_PCH OFF CACHE BOOL "" FORCE)
+set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
+set(GLSLANG_TESTS OFF CACHE BOOL "" FORCE)
+set(GLSLANG_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(ENABLE_SPIRV ON CACHE BOOL "" FORCE)
+if(SWANSTATION_PS5)
+	# The console's threads are in its libc: the probe glslang asks for would
+	# link a test program, which a payload cannot be.
+	set(CMAKE_HAVE_LIBC_PTHREAD 1 CACHE INTERNAL "")
+	set(CMAKE_HAVE_PTHREAD_H 1 CACHE INTERNAL "")
+	set(THREADS_PREFER_PTHREAD_FLAG OFF)
+endif()
+add_subdirectory(${GLSLANG_DIR} glslang EXCLUDE_FROM_ALL)
 target_compile_definitions(rcheevos PUBLIC RC_HASH_NO_ROM RC_HASH_NO_ZIP RC_HASH_NO_ENCRYPTED)
 target_compile_options(rcheevos PRIVATE -w)
 
@@ -169,6 +190,7 @@ set(frontend_sources
 	src/memsearch.cpp
 	src/speedrun.cpp
 	src/web.cpp
+	src/slangimport.cpp
 	third_party/qrcodegen/qrcodegen.cpp
 	src/music.cpp
 	src/memcard.cpp
@@ -230,7 +252,8 @@ set(imgui_sources
 	${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
 
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources} ${imgui_sources})
-target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos)
+target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos
+	glslang glslang-default-resource-limits)
 target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen)

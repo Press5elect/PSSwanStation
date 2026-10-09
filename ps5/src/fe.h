@@ -336,7 +336,8 @@ struct Frontend
 	bool fgRunAhead = false;	// one frame of run-ahead while it is on, to take back its delay
 	bool fgDebug = false;		// the movement shown in colours
 	// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask; 4 on,
-	// crt-guest-advanced with display::crtPresetNames()[crt - 4]
+	// a picture tube preset: display::crtPresetNames()[crt - 4] (crt-guest-advanced's
+	// kinds, then the presets brought in from a USB drive)
 	int crt = 0;
 	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
 	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced, 4 speedrun

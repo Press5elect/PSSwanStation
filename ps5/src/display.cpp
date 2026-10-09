@@ -55,6 +55,7 @@
 */
 #include "display.h"
 #include "chain.h"
+#include "slangimport.h"
 #include "fe.h"
 
 #include "common/vulkan/context.h"
@@ -1809,6 +1810,10 @@ struct LookState
 	// crt-guest-advanced.
 	chain::Chain *crt = nullptr;
 	bool crtTried = false;
+	// A preset brought in from a USB drive (slangimport.cpp), by its name.
+	chain::Chain *imported = nullptr;
+	std::string importedName;
+	bool importedTried = false;
 	int crtPreset = -1, crtMaskSize = 0;
 	VkImageView crtView = VK_NULL_HANDLE;
 	VkDescriptorSet crtSet = VK_NULL_HANDLE;
@@ -2046,6 +2051,41 @@ uint16_t halfBits(float value)
 void *crtRun(VkImageView view, int width, int height, int outWidth, int outHeight, int preset)
 {
 	LookState& l = look;
+	// Past the title's own: one brought in from a USB drive.
+	const int own = (int)crtPresets().size();
+	if (preset >= own)
+	{
+		const std::vector<std::string> names = slangimport::imported();
+		const int index = preset - own;
+		if (index >= (int)names.size())
+			return nullptr;
+		if (names[(size_t)index] != l.importedName)
+		{
+			chain::destroy(l.imported);
+			l.imported = nullptr;
+			l.importedName = names[(size_t)index];
+			l.importedTried = false;
+		}
+		if (!l.importedTried)
+		{
+			l.importedTried = true;
+			l.imported = chain::load(slangimport::folder(l.importedName));
+		}
+		if (l.imported == nullptr)
+			return nullptr;
+		chain::setContentRate((float)host::coreFps());
+		const VkImageView out = chain::run(l.imported, g_vulkan_context->GetCurrentCommandBuffer(), view,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, width, height, outWidth, outHeight);
+		if (out == VK_NULL_HANDLE)
+			return nullptr;
+		if (out != l.crtView)
+		{
+			retire(l.crtSet);
+			l.crtSet = ImGui_ImplVulkan_AddTexture(out, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			l.crtView = out;
+		}
+		return (void *)l.crtSet;
+	}
 	if (!l.crtTried)
 	{
 		l.crtTried = true;
@@ -2083,6 +2123,7 @@ void lookShutdown()
 	LookState& l = look;
 	VkDevice device = g_vulkan_context->GetDevice();
 	chain::destroy(l.crt);
+	chain::destroy(l.imported);
 	retire(l.crtSet);
 	retire(l.nisOutSet);
 	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before })
@@ -2111,6 +2152,9 @@ std::vector<std::string> crtPresetNames()
 	std::vector<std::string> names;
 	for (const CrtPreset& preset : crtPresets())
 		names.push_back(preset.name);
+	// Then the presets brought in from a USB drive.
+	for (const std::string& name : slangimport::imported())
+		names.push_back(name);
 	return names;
 }
 
@@ -2123,6 +2167,8 @@ void forgetPicture()
 {
 	if (look.crt != nullptr)
 		chain::forget(look.crt);
+	if (look.imported != nullptr)
+		chain::forget(look.imported);
 }
 
 void *picture(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, const Look& want, bool& full)
