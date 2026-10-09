@@ -6,7 +6,7 @@ A PlayStation (PS1) emulator as a PS5 homebrew title: SwanStation, the libretro 
 > **Piracy is not condoned.** This release contains no games, no BIOS files, no console firmware and no decryption keys, and none will ever be provided or linked to. Use only **legally obtained backups of games you own**, made yourself from your own discs, and BIOS files dumped from **hardware you own**. Please don't ask for, or post links to, games, BIOS files, firmware or keys in issues or discussions: they will be removed.
 
 > [!WARNING]
-> **A work in progress.** This build has not run on my console yet; build 15 has. "Tested for this release" below says what has been checked where.
+> **A work in progress.** This build works on my console, but not every feature new since build 15 has been tried there one by one. "Tested for this release" below says what has been checked where.
 
 ## What it does
 
@@ -22,6 +22,9 @@ Builds 15 and 16 were not published; this release carries everything since build
 
 ### Build 17
 
+- **What's new, after an update.** The first start of a newer build lists what was added, changed and fixed since the build the console had, with a count of each at the top; it scrolls with the d-pad, the sticks, L1 and R1. Settings, About shows every build's. The release notes on the Update page scroll too, instead of being cut off.
+- **Your files on the NAS, shared between consoles.** Covers on the network share now go both ways, so a cover set on one console is there for the others; memory card backups are sent to the share, in a folder of each console's own (`card backups/<console>/`).
+- **A manual**: `ps5/MANUAL.md` in the repository, every screen and setting, and how to fill in `network.cfg`.
 - **Sparkles along polygon edges.** Above 1x, where a game's polygons meet unevenly, hairlines of the background showed through and flickered as the camera moved. Each solid polygon is now drawn a quarter of a pixel larger to cover them (on my test disc at 8x: 855 such pixels down to 5; not yet seen in a game on the console); 2D pictures and see-through polygons are left as they are. Settings, Enhancement, "Close Gaps Between Polygons", on at first; the Speedrun preset switches it off.
 - **A game drawn larger than the screen** (8x on a 1080p screen) is made smaller with each pixel the average of all that was drawn under it, instead of a bilinear sample of a few.
 - **CAS and FSR 1 at large enlargements.** CAS now sharpens before a large enlargement, where it did almost nothing after it; FSR 1 enlarges twice and the rest smoothly, where it drew thin crossed lines between diagonal pixels.
@@ -51,7 +54,7 @@ Builds 15 and 16 were not published; this release carries everything since build
 
 ## Tested for this release
 
-Build {{BUILD}} has **not run on my console yet**; build 15 works there, all but NFS, which I have not tried there. What I have a result for one by one, and the build it was seen with:
+Build {{BUILD}} works on my console; NFS I have not tried there. What I have a result for one by one, and the build it was seen with:
 
 | What | On the console | Seen with |
 | --- | --- | --- |
@@ -61,13 +64,14 @@ Build {{BUILD}} has **not run on my console yet**; build 15 works there, all but
 | RetroAchievements | works | build 10 |
 | A game's own picture settings, Circle to close, the cheat database fetched | works | build 14 |
 | Scaling filters, picture tube, video signals, colours, frame generation, files on the share and USB drive, libretro cheats | works | build 15 |
+| Starting, the library, What's new after an update | works | build 17 |
 | NFS shares | not tried yet | |
 
 On a PC (the same frontend on the same Vulkan code paths, with the validation layers silent): for build 17, a test disc of textured meshes counted for gaps and stray texels at 1x, 4x and 8x and with PGXP and smoothing; every scaling filter at three sharpness levels, games drawn at 1x, 4x and 8x, 4K and 1080p screens, measured for sharpness, shift and overshoot against the game's own picture; frame generation against pictures of known movement at 60 and 120 Hz, games of 20, 30 and 60 pictures a second, every quality, ahead, the 60 cap and run-ahead, and on a disc with cuts. For build 16: sleep-safe saving with the title killed during a game; a recording played back to the same memory, byte for byte; a value found, watched, frozen and made a cheat; the speedrun timer; the web panel from a phone-sized browser, a wrong key and paths outside the folder refused; slang presets compiled; the interface test and the module tests.
 
 ## Known issues
 
-- Everything new since build 15 is untried on a console. Sleep-safe saving asks the console whether its menu is open over the title, a call no build has made before: if PSSwanStation stops when a game starts, switch it off. The web panel is the first time the title listens on the network for anything but netplay. Compiling a shader preset on the console may take a while and some are too slow at 4K.
+- Not every feature new since build 15 has been tried on a console one by one. Sleep-safe saving asks the console whether its menu is open over the title, a call no build has made before: if PSSwanStation stops when a game starts, switch it off. The web panel is the first time the title listens on the network for anything but netplay. Compiling a shader preset on the console may take a while and some are too slow at 4K.
 - Closing the gaps draws 3D objects' outlines a quarter of a pixel fuller; a polygon edge can still show a single texel of its texture's neighbour where the PlayStation itself shows one.
 - A cut detected in a fade shows the fade without made pictures between its steps (nothing moves in a fade, so nothing is lost).
 - Frame generation: a thin fringe where something moves across a background that moves another way; at 20 pictures a second the made ones outnumber the game's and errors show most.

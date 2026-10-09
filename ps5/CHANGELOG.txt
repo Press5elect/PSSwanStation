@@ -16,7 +16,7 @@ Build 17
   - CAS and FSR 1 at large enlargements.
   - Frame generation smeared across a cut; it starts again after a state
     load.
-  Run on a PC only so far.
+  Works on my console.
 
 Build 16
   Added
