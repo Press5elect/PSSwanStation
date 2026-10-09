@@ -1,6 +1,20 @@
 PSSwanStation - what changed
 ============================
 
+Build 16
+  - Sleep-safe saving: the game is saved every five minutes and when the
+    PS menu opens; the next start offers to continue.
+  - Speedrun timer with splits (by hand or by a value in memory) and bests.
+  - Find in memory: cheat search, watch, freeze, make a cheat.
+  - Phone and web control (port 3311, QR code to scan).
+  - Shader presets (.slangp) from a USB drive, compiled on the console.
+  - Debug: recordings of what you press, verbose logging.
+  - Picture preset Speedrun (the picture as the PlayStation drew it).
+  - Interface up to 140%, high contrast, colour-blind safe colours.
+  - Texture packs read from PSSwanStation/textures/ on a USB drive.
+  - SwanStation upstream: video playback fix, fuzzing fixes.
+  Run on a PC only so far.
+
 Build 15
   - Picture: a scaling filter of its own - smooth, square pixels, sharp
     bilinear, FSR 1, NIS and CAS - with one sharpening setting. Picture tube
@@ -16,7 +30,7 @@ Build 15
   - Your files on the network share: memory cards shared between consoles,
     covers from the share, or the whole folder; or on a USB drive.
   - Cheats from the libretro database for games chtdb has none for.
-  Run on a PC only so far.
+  Works on my console; NFS not tried there yet.
 
 Build 14
   - Picture settings can be a game's own: scaling (FSR 1 too), sharpening,

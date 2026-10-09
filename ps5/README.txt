@@ -229,7 +229,12 @@ Settings
 Every setting of the emulator is in Settings, in the emulator's own sections
 (Console, Enhancement, Display, Port, Advanced), next to the title's own
 (Interface, Picture, Sound, Controllers, Shortcuts and rewind, Games and
-network, RetroAchievements).
+network, RetroAchievements) and Debug (verbose logging and recordings of what
+you press, below).
+
+Interface also has the interface's size (up to 140%), High contrast (white
+text on black, stronger outlines) and Colour-blind safe colours (blue for
+good and orange for bad in place of green and red).
 
 A game's own settings are in its details (Options) and, while it runs, in
 the menu: "Settings" changes them for every game, "Game settings" for this
@@ -527,7 +532,60 @@ play so that OPTIONS and L2 go back through it. It is kept in memory only,
 when the game closes. Fast forward (OPTIONS and R2) runs at 2x to 8x, or as
 fast as the console manages.
 
+Sleep-safe saving (Settings, Games and network; off at first): while a game
+runs, its resume state is saved every five minutes of play and whenever the
+console's own menu (the PS button) opens over it, on a thread of its own and
+without a pause. If the console then closes PSSwanStation (rest mode, or
+closing it from that menu), the next start asks whether to continue the game
+from there. It uses the same state as "Save when a game is closed".
+
 Screenshots and video are the console's own (the Create button).
+
+
+Speedrun timer
+--------------
+
+Menu, "Speedrun timer" while a game runs: a timer at the top right of the
+game, in game time (the emulator's frames, so loading and pauses in the menu
+do not count) or real time. OPTIONS held with Cross splits (and starts), with
+Square takes the last split back, with Triangle stops and resets. Splits have
+names and can split by themselves when a value in the game's memory becomes
+a number (an address found with Find in memory, below), and the timer can
+start by itself the same way. The best run and the best time of each split
+are kept for the game (data/splits/<serial>.txt). A run in which fast
+forward, rewind or a state load was used is marked as practice and is not
+kept as a best.
+
+
+Find in memory
+--------------
+
+Menu, "Find in memory" while a game runs: the classic cheat search. Search
+for a value (a byte, two or four), or for one that went up, down, changed or
+stayed the same since the last search, and narrow it down while you play.
+What is left can be watched (shown at the top left of the game while it
+runs), set, frozen at a value, or made a cheat in the game's own cheat file
+(cheats/<serial>.cht, as a GameShark code, switched on). Watched addresses
+are kept for the game in data/watch/<serial>.txt. Not with RetroAchievements'
+hardcore mode.
+
+
+Recordings and verbose logging
+------------------------------
+
+Settings, Debug. "Record what I press" (with a game running) takes a state of
+the game and keeps every player's buttons, frame by frame, until you stop it,
+load a state, reset or close the game. "Play back a recording" starts the
+game from that state and gives it the recorded presses again, so it runs the
+same way: to show a run to someone, or to bring back the moment something
+went wrong. Recordings are kept in data/recordings/<serial>/ (.psrec); they
+play the same only with the same settings, cheats and build. Rewind waits
+while one is made or played.
+
+"Verbose logging" writes everything the emulator says to the boot log
+(psswanstation-boot.log), not only its warnings and errors, and a line every
+ten seconds about the speed, the pictures, the sound and the free memory.
+Leave it off unless something is wrong: the log grows quickly.
 
 
 Memory cards
@@ -562,6 +620,19 @@ inside a drive's games folder (psx/textures/<serial>/, where build 15 and
 before looked). A game's details, under More, say where the one in use is.
 
 
+Shader presets from USB
+-----------------------
+
+Settings, Picture, "Shader presets from USB" brings in a libretro slang preset
+(.slangp, as RetroArch uses) from PSSwanStation/shaders/ on a USB drive (or
+shaders/ in the title's folder, a few folders deep), with the shader files it
+names beside it as they come in the slang-shaders collection. It is compiled
+on the console with glslang into data/shaders/<name>/ and is then one of the
+Picture tube's choices ("Preset: <name>"), for every game or one. The page can
+remove one again. Not every preset compiles or runs fast enough at 4K; one
+that does not says why.
+
+
 RetroAchievements
 -----------------
 
@@ -585,6 +656,20 @@ cheats, save states, fast forward and rewind are out while it lasts.
 
 This is an experiment. It held 3300 frames in step between two PCs here; it
 has not run between two consoles.
+
+
+Phone and web control
+---------------------
+
+Settings, Games and network, "Phone and web control": switch it on and scan
+the code on that page with a phone's camera, or type the address on a
+computer on the same network (port 3311). The page in the browser starts and
+closes games, resets, saves and loads states, runs the speedrun timer,
+changes some settings, and lists your folders, so a disc or a cover can be
+put in from the computer and a save taken out. The address carries a key
+(kept in data/web.cfg); without it the panel does nothing, and "Make a new
+key" shuts out every device that had the old one. It never gives out
+network.cfg, your RetroAchievements token or the key itself.
 
 
 Updates
