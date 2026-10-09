@@ -127,7 +127,13 @@ def program(colour, moving=0):
     loop = 0x80010000 + len(code) * 4
     code.append(0x08000000 | (loop >> 2) & 0x03FFFFFF)	# j loop
     code.append(0)										# nop
-    text = b"".join(struct.pack("<I", word) for word in code)
+    return executable(code)
+
+
+def executable(code, data=()):
+    """A PS-X EXE of these instructions, loaded at 0x80010000, with these data
+    words after them."""
+    text = b"".join(struct.pack("<I", word) for word in list(code) + list(data))
     text += b"\0" * (-len(text) % 0x800)
     header = bytearray(0x800)
     header[0:8] = b"PS-X EXE"
@@ -140,11 +146,11 @@ def program(colour, moving=0):
     return bytes(header) + text
 
 
-def iso(serial, colour, moving=0):
+def iso(serial, colour, moving=0, exe=None):
     name = serial.replace("-", "_")
     name = name[:8] + "." + name[8:]					# SLUS_005.94
     system = ("BOOT = cdrom:\\%s;1\r\nTCB = 4\r\nEVENT = 10\r\nSTACK = 801FFF00\r\n" % name).encode()
-    exe = program(colour, moving)
+    exe = exe if exe is not None else program(colour, moving)
     disc = pycdlib.PyCdlib()
     disc.new(interchange_level=1, sys_ident="PLAYSTATION", vol_ident="SWANTEST")
     disc.add_fp(io.BytesIO(system), len(system), "/SYSTEM.CNF;1")
@@ -171,6 +177,17 @@ def raw(image):
     return bytes(out)
 
 
+def write(cue, data, serial):
+    # A second of silence after the data, as a pressed disc has.
+    data += b"\0" * (2352 * 150)
+    base = os.path.splitext(cue)[0]
+    with open(base + ".bin", "wb") as f:
+        f.write(data)
+    with open(cue, "w") as f:
+        f.write('FILE "%s" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n' % os.path.basename(base + ".bin"))
+    print("%s: %s, %d sectors" % (cue, serial, len(data) // 2352))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("cue")
@@ -179,15 +196,7 @@ def main():
     parser.add_argument("--moving", type=int, default=0, metavar="BLANKS",
                         help="a moving picture, a new one every so many vertical blanks (2: 30 pictures a second)")
     args = parser.parse_args()
-    data = raw(iso(args.serial, int(args.colour, 16), args.moving))
-    # A second of silence after the data, as a pressed disc has.
-    data += b"\0" * (2352 * 150)
-    base = os.path.splitext(args.cue)[0]
-    with open(base + ".bin", "wb") as f:
-        f.write(data)
-    with open(args.cue, "w") as f:
-        f.write('FILE "%s" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n' % os.path.basename(base + ".bin"))
-    print("%s: %s, %d sectors" % (args.cue, args.serial, len(data) // 2352))
+    write(args.cue, raw(iso(args.serial, int(args.colour, 16), args.moving)), args.serial)
     return 0
 
 
