@@ -346,6 +346,7 @@ struct Frontend
 	// and when the console's menu opens over the game, so a title closed by the
 	// console (rest mode) can be continued at the next start.
 	bool sleepSafe = false;
+	bool verboseLog = false;	// everything the emulator says into the boot log, and a line about speed every ten seconds
 	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
 	// 4 neGcon, 5 GunCon.
 	int controller[4] = {1, 1, 1, 1};
@@ -622,6 +623,17 @@ void rememberGame(const LaunchedGame& game);
 // so not by closing the game): that game, once; false when there is none.
 bool interruptedGame(LaunchedGame& game);
 void forgetInterruptedGame();
+// Debug: recordings of what the players pressed (recorder.cpp). A recording
+// begins from a state of the running game, taken as it starts; playing one
+// back loads that state and gives the game the recorded presses, frame by
+// frame, while the pads are left out. Loading a state, a reset, rewinding,
+// netplay or closing the game ends either.
+bool recordStart();
+void recordStop();
+bool playbackStart(const std::string& file);
+void playbackStop();
+// The folder the running game's recordings are in (<root>data/recordings/<serial>).
+std::string recordingsFolder();
 }
 
 // ---------------------------------------------------------------- rewind.cpp

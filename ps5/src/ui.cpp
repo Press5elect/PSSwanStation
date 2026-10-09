@@ -1758,7 +1758,10 @@ std::vector<SettingsCategory> settingsCategories(bool forGame)
 		list.push_back({ name, category.key, symbol, 10, category.info });
 	}
 	if (!forGame)
+	{
+		list.push_back({ "Debug", "", icon::Wrench, 7, "" });
 		list.push_back({ "About", "", icon::Info, 20, "" });
+	}
 	return list;
 }
 

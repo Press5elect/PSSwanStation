@@ -19,6 +19,7 @@
 #include "display.h"
 #include "memcard.h"
 #include "netplay.h"
+#include "recorder.h"
 #include "update.h"
 
 #include <algorithm>
@@ -1319,6 +1320,20 @@ void gameMarks()
 		if (!mark.empty())
 			symbol = icon::Users;
 	}
+	if (mark.empty() && recorder::mode() != recorder::Off)
+	{
+		const double fps = host::coreFps() > 1.0 ? host::coreFps() : 60.0;
+		if (recorder::mode() == recorder::Recording)
+		{
+			symbol = icon::Camera;
+			mark = format("Recording   %.0f s", (double)recorder::frame() / fps);
+		}
+		else
+		{
+			symbol = icon::Play;
+			mark = format("Playback   %.0f of %.0f s", (double)recorder::frame() / fps, (double)recorder::frames() / fps);
+		}
+	}
 	if (!mark.empty())
 	{
 		const float w = toUnits(measure(mark, Bold, 24).x) + 100;
@@ -1910,6 +1925,77 @@ void moreSettings(int kind, std::vector<Item>& items)
 	options::Frontend& f = options::frontend();
 	switch (kind)
 	{
+	case 7:
+	{
+		items.push_back(toggle("Verbose logging", &f.verboseLog,
+				"Writes everything the emulator says into the boot log (" + shownRoot() + "psswanstation-boot.log), not "
+				"only its warnings and errors, with its log level at Developer; and, while a game runs, a line every "
+				"ten seconds about its speed, the pictures shown, the sound and the free memory. For finding what "
+				"went wrong; the log grows quickly, so leave it off otherwise."));
+		items.push_back(header("Recordings of what you press"));
+		const double fps = host::coreFps() > 1.0 ? host::coreFps() : 60.0;
+		const recorder::Mode mode = recorder::mode();
+		const std::string folder = host::running() ? host::recordingsFolder() : std::string();
+		const std::string shownFolder = folder.compare(0, rootDir.size(), rootDir) == 0
+				? shownRoot() + folder.substr(rootDir.size()) : folder;
+		if (!host::running())
+			items.push_back(fact("Record", "Start a game first",
+					"A recording keeps what you press in a game, frame by frame, from the moment it starts; played back, "
+					"the game runs the same way again. Start a game, then come back here (Menu, Settings, Debug)."));
+		else if (mode == recorder::Recording)
+		{
+			Item item = action(icon::Cross, "Stop recording", "Ends the recording. It is kept in " + shownFolder + ".",
+					[] { host::recordStop(); });
+			item.value = format("%.0f s so far", (double)recorder::frame() / fps);
+			items.push_back(item);
+		}
+		else if (mode == recorder::Playing)
+		{
+			Item item = action(icon::Cross, "Stop playback", "Ends the playback; the pads are the game's again from here.",
+					[] { host::playbackStop(); });
+			item.value = format("%.0f of %.0f s", (double)recorder::frame() / fps, (double)recorder::frames() / fps);
+			items.push_back(item);
+		}
+		else
+			items.push_back(action(icon::Camera, "Record what I press",
+					"Takes a state of the game as it is now and, from there, keeps what each player presses in every "
+					"frame, until you stop it here, load a state, reset or close the game. Played back, the game "
+					"starts from that state and runs the same frames again: to show a run to someone, or to bring "
+					"back the moment something went wrong. Rewind waits meanwhile, and netplay ends it. The game "
+					"goes on at once.", [] {
+						if (host::recordStart())
+							deferred = [] { resume(); };
+					}));
+		if (host::running())
+		{
+			const std::vector<std::string> files = recorder::list(folder);
+			Item item;
+			item.label = "Play back a recording";
+			item.icon = icon::Play;
+			item.enabled = !files.empty() && mode != recorder::Recording;
+			item.value = files.empty() ? "None of this game" : format("%d kept", (int)files.size());
+			item.info = "Starts the game from where a recording began and gives it the presses that were recorded, "
+					"frame by frame, while the pads are left out (OPTIONS still opens the menu). A recording plays "
+					"the same only with the same settings and cheats, and on the same build. Recordings of this game "
+					"are kept in " + shownFolder + ".";
+			item.menu = true;
+			for (const std::string& file : files)
+			{
+				recorder::Info info;
+				const bool ok = recorder::read(file, info);
+				item.choices.push_back(fileTitle(file) + (ok ? format("  (%.0f s)", (double)info.frames / fps)
+						: std::string("  (not readable)")));
+			}
+			item.choose = [files](int index) {
+				if (index >= 0 && index < (int)files.size() && host::playbackStart(files[(size_t)index]))
+					deferred = [] { resume(); };
+			};
+			items.push_back(item);
+		}
+		items.push_back(fact("Boot log", shownRoot() + "psswanstation-boot.log",
+				"What PSSwanStation did, from its start: kept for this run and the two before it (.1.log, .2.log)."));
+		break;
+	}
 	case 0:
 		items.push_back(toggle("Clock", &f.clock, "The time, in the library's header. It is the console's clock; a console "
 				"whose clock was never set shows none."));

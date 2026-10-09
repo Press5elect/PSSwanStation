@@ -256,6 +256,7 @@ std::vector<Field> fields()
 		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },
 		{ "auto_load", nullptr, &c.autoLoadOnStart, 0, 1 },
 		{ "sleep_safe", nullptr, &c.sleepSafe, 0, 1 },
+		{ "verbose_log", nullptr, &c.verboseLog, 0, 1 },
 		{ "controller1", &c.controller[0], nullptr, 0, 5 },
 		{ "controller2", &c.controller[1], nullptr, 0, 5 },
 		{ "controller3", &c.controller[2], nullptr, 0, 5 },

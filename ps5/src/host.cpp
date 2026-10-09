@@ -40,6 +40,7 @@
 #include "display.h"
 #include "memcard.h"
 #include "netplay.h"
+#include "recorder.h"
 
 #include <libretro.h>
 #include <libretro_vulkan.h>
@@ -80,6 +81,8 @@ namespace
 // Sleep-safe saving (with the states, below).
 void waitForResume();
 void sleepSafeStarted();
+// A recording or a playback ends (with the states, below).
+void stopRecorder(const char *why);
 }
 uint32_t coreDrawResolutionScale();
 void nameTextureFolders();
@@ -394,14 +397,60 @@ netplay::Input localInput(int port)
 	return in;
 }
 
+// What each port gives the emulator in the frame being run: taken once, as
+// the frame begins, so every question the emulator asks in it has the same
+// answer, and a recording keeps exactly that (recorder.cpp).
+recorder::PortInput frameInput[recorder::Ports];
+
+// The players' pads as they are now (or, in netplay, both consoles' buttons).
+void takeFrameInput()
+{
+	static_assert(recorder::Ports == platform::MaxPads, "a recording keeps every port");
+	for (int port = 0; port < recorder::Ports; port++)
+	{
+		recorder::PortInput& out = frameInput[port];
+		// In netplay players 1 and 2 are the two consoles, the same on both.
+		const netplay::Input in = netOn ? (port < netplay::Players ? netInputs[port] : netplay::Input()) : localInput(port);
+		const platform::Pad& pad = platform::pad(port);
+		out = recorder::PortInput();
+		out.buttons = in.buttons;
+		out.lx = in.lx;
+		out.ly = in.ly;
+		out.rx = in.rx;
+		out.ry = in.ry;
+		out.connected = !netOn && pad.connected && !inputBlocked ? 1 : 0;
+		if (out.connected)
+		{
+			out.l2 = (int16_t)std::lround(pad.l2 * 32767.f);
+			out.r2 = (int16_t)std::lround(pad.r2 * 32767.f);
+			out.aimX = (int16_t)std::lround(aims[port].x * 32767.f);
+			out.aimY = (int16_t)std::lround(aims[port].y * 32767.f);
+		}
+	}
+}
+
+void playbackEnded(const char *why);
+
+// The frame's inputs: a recording's while one plays, else the pads'; and kept
+// while one is being made.
+void frameInputs()
+{
+	if (recorder::mode() == recorder::Playing)
+	{
+		if (recorder::next(frameInput))
+			return;
+		playbackEnded("it ended");
+	}
+	takeFrameInput();
+	if (recorder::mode() == recorder::Recording)
+		recorder::record(frameInput);
+}
+
 int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id)
 {
 	if (port >= (unsigned)platform::MaxPads)
 		return 0;
-	// In netplay players 1 and 2 are the two consoles, the same on both.
-	const netplay::Input in = netOn ? (port < netplay::Players ? netInputs[port] : netplay::Input())
-			: localInput((int)port);
-	const platform::Pad& pad = platform::pad((int)port);
+	const recorder::PortInput& in = frameInput[port];
 	switch (device & RETRO_DEVICE_MASK)
 	{
 	case RETRO_DEVICE_JOYPAD:
@@ -413,28 +462,27 @@ int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id)
 			return id == RETRO_DEVICE_ID_ANALOG_X ? in.lx : in.ly;
 		if (index == RETRO_DEVICE_INDEX_ANALOG_RIGHT)
 			return id == RETRO_DEVICE_ID_ANALOG_X ? in.rx : in.ry;
-		if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON && !netOn && pad.connected && !inputBlocked)
+		if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON && in.connected)
 		{
 			// How far a button is pressed (the neGcon's I, II and L): the
 			// triggers say; any other button is all the way down or not at all.
 			if (id == RETRO_DEVICE_ID_JOYPAD_R2)
-				return (int16_t)std::lround(pad.r2 * 32767.f);
+				return in.r2;
 			if (id == RETRO_DEVICE_ID_JOYPAD_L2)
-				return (int16_t)std::lround(pad.l2 * 32767.f);
+				return in.l2;
 			return id < 16 && (in.buttons & (1u << id)) != 0 ? 32767 : 0;
 		}
 		return 0;
 	case RETRO_DEVICE_LIGHTGUN:
 	{
-		if (netOn || !pad.connected || inputBlocked)
+		if (!in.connected)
 			return 0;
-		const Aim& aim = aims[port];
 		const uint16_t held = in.buttons;
 		const auto pressed = [held](unsigned button) { return (held & (1u << button)) != 0; };
 		switch (id)
 		{
-		case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X: return (int16_t)std::lround(aim.x * 32767.f);
-		case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y: return (int16_t)std::lround(aim.y * 32767.f);
+		case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X: return in.aimX;
+		case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y: return in.aimY;
 		case RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN: return 0;
 		case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
 			return pressed(RETRO_DEVICE_ID_JOYPAD_R2) || pressed(RETRO_DEVICE_ID_JOYPAD_B) ? 1 : 0;
@@ -498,9 +546,17 @@ void logCallback(retro_log_level level, const char *format, ...)
 	vsnprintf(text, sizeof(text), format, args);
 	va_end(args);
 	fprintf(stderr, "[%s] %s", names[std::min<unsigned>(level, 3)], text);
-	const size_t length = strlen(text);
+	size_t length = strlen(text);
 	if (length == 0 || text[length - 1] != '\n')
 		fputc('\n', stderr);
+	// The emulator's warnings and errors go to the boot log; with verbose
+	// logging (Settings, Debug), everything it says.
+	if (level >= RETRO_LOG_WARN || options::frontend().verboseLog)
+	{
+		while (length > 0 && (text[length - 1] == '\n' || text[length - 1] == '\r'))
+			text[--length] = '\0';
+		diag::mark("core %s: %s", names[std::min<unsigned>(level, 3)], text);
+	}
 	if (level == RETRO_LOG_ERROR)
 	{
 		while (!errorText.empty() && errorText.back() == '\n')
@@ -1412,6 +1468,7 @@ void stop()
 		return;
 	diag::mark("game: stopping");
 	netEnd();
+	stopRecorder("the game was closed");
 	waitForResume();
 	if (options::frontend().autoSaveOnExit && !current.path.empty() && !restricted())
 		saveState(ResumeSlot);
@@ -1461,6 +1518,7 @@ void reset()
 {
 	if (!isRunning)
 		return;
+	stopRecorder("the game was reset");
 	retro_reset();
 	if (!restricted() && !netOn)
 		cheats::apply();
@@ -1475,6 +1533,18 @@ namespace
 void runOne(bool keep)
 {
 	moveAims();
+#if defined(SWANSTATION_HOST)
+	// A test records from frame 60 for SWANSTATION_RECORD_FRAMES frames, or
+	// plays SWANSTATION_PLAY back from frame 60.
+	if (emulatedFrames == 60 && getenv("SWANSTATION_RECORD_FRAMES") != nullptr)
+		recordStart();
+	if (recorder::mode() == recorder::Recording && getenv("SWANSTATION_RECORD_FRAMES") != nullptr
+			&& recorder::frame() >= strtoull(getenv("SWANSTATION_RECORD_FRAMES"), nullptr, 10))
+		recordStop();
+	if (emulatedFrames == 60 && getenv("SWANSTATION_PLAY") != nullptr)
+		playbackStart(getenv("SWANSTATION_PLAY"));
+#endif
+	frameInputs();
 #if defined(SWANSTATION_HOST)
 	// A test reads what the game is given.
 	if (getenv("SWANSTATION_INPUT_LOG") != nullptr && emulatedFrames % 30 == 0)
@@ -1842,6 +1912,11 @@ bool fastForward()
 
 void setRewinding(bool on)
 {
+	if (on && !rewindOn && recorder::mode() != recorder::Off)
+	{
+		addMessage("Rewind waits while a recording is being made or played back.");
+		return;
+	}
 	on = on && isRunning && rewindAllowed();
 	if (on == rewindOn)
 		return;
@@ -2273,17 +2348,13 @@ bool saveState(int slot)
 	return ok;
 }
 
-bool loadState(int slot)
+namespace
 {
-	if (!isRunning || netOn)
-		return false;
-	if (restricted())
-	{
-		addMessage("States are not loaded in hardcore mode (RetroAchievements).", 4.0);
-		return false;
-	}
-	std::vector<uint8_t> packed;
-	if (!readFile(statePath(slot), packed) || packed.size() < sizeof(StateMagic) + 8)
+// A state file's contents into the emulator. False when it is not one, or
+// the emulator refused it.
+bool applyState(const std::vector<uint8_t>& packed)
+{
+	if (packed.size() < sizeof(StateMagic) + 8)
 		return false;
 	uint64_t rawSize = 0, packedSize = 0, extraSize = 0;
 	size_t header = sizeof(StateMagic) + 8;
@@ -2306,22 +2377,164 @@ bool loadState(int slot)
 	mz_ulong got = (mz_ulong)rawSize;
 	if (mz_uncompress(raw.data(), &got, packed.data() + header, (mz_ulong)packedSize) != MZ_OK)
 		return false;
-	const bool ok = retro_unserialize(raw.data(), got);
-	diag::mark("state: slot %d %s", slot, ok ? "loaded" : "refused by the emulator");
-	if (ok)
+	if (!retro_unserialize(raw.data(), got))
+		return false;
+	audio::clear();
+	cheats::apply();
+	rewind::clear();
+	// Achievements in progress are as they were at that moment (a state
+	// from before they were kept starts them afresh).
+	if (extraSize != 0)
+		achievements::loadProgress(packed.data() + header + packedSize, (size_t)extraSize);
+	else
+		achievements::gameReset();
+	return true;
+}
+}
+
+// ------------------------------------------------------------- recordings
+
+std::string recordingsFolder()
+{
+	const std::string name = !current.serial.empty() ? current.serial : fileTitle(current.path);
+	return rootDir + "data/recordings/" + (name.empty() ? std::string("BIOS") : name);
+}
+
+namespace
+{
+void stopRecorder(const char *why)
+{
+	const recorder::Mode mode = recorder::mode();
+	if (mode == recorder::Off)
+		return;
+	const uint64_t frames = recorder::frame();
+	recorder::stop();
+#if defined(SWANSTATION_HOST)
+	// A test compares the emulator's memory at the end of a recording and of
+	// its playback.
 	{
-		audio::clear();
-		cheats::apply();
-		rewind::clear();
-		// Achievements in progress are as they were at that moment (a state
-		// from before they were kept starts them afresh).
-		if (extraSize != 0)
-			achievements::loadProgress(packed.data() + header + packedSize, (size_t)extraSize);
-		else
-			achievements::gameReset();
-		if (slot != ResumeSlot)
-			lastSlot = slot;
+		uint32_t size = 0;
+		const uint8_t *ram = coreRam(size);
+		uint32_t hash = 2166136261u;
+		for (uint32_t i = 0; ram != nullptr && i < size; i++)
+			hash = (hash ^ ram[i]) * 16777619u;
+		diag::mark("recording: memory hash %08x", hash);
 	}
+#endif
+	diag::mark("recording: %s ended (%s) after %llu frames", mode == recorder::Recording ? "recording" : "playback",
+			why, (unsigned long long)frames);
+	const double seconds = (double)frames / (av.timing.fps > 1.0 ? av.timing.fps : 60.0);
+	addMessage(mode == recorder::Recording ? format("Recording stopped (%s): %.0f s kept.", why, seconds)
+			: format("Playback stopped: %s, after %.0f s.", why, seconds), 4.0);
+}
+
+void playbackEnded(const char *why)
+{
+	stopRecorder(why);
+}
+}
+
+bool recordStart()
+{
+	if (!isRunning || netOn)
+	{
+		addMessage(netOn ? "Nothing is recorded during netplay." : "Start a game to record it.");
+		return false;
+	}
+	stopRecorder("a new recording began");
+	const size_t size = retro_serialize_size();
+	std::vector<uint8_t> raw(size);
+	if (size == 0 || !retro_serialize(raw.data(), size))
+	{
+		addMessage("The game's state could not be taken, so nothing is recorded.");
+		return false;
+	}
+	const std::vector<uint8_t> state = packState(raw, achievements::saveProgress());
+	const std::string folder = recordingsFolder();
+	makeDir(folder);
+	const time_t when = time(nullptr) + platform::localTimeOffset();
+	struct tm tm;
+	gmtime_r(&when, &tm);
+	char name[64];
+	strftime(name, sizeof(name), "%Y-%m-%d %H-%M-%S.psrec", &tm);
+	recorder::Info info;
+	info.serial = current.serial;
+	info.title = current.title;
+	info.build = std::to_string(BuildNumber);
+	const std::string path = folder + "/" + name;
+	if (state.empty() || !recorder::startRecording(path, state, info))
+	{
+		addMessage("The recording could not be written to " + folder + ".");
+		return false;
+	}
+	rewindOn = false;
+	diag::mark("recording: began %s", path.c_str());
+	addMessage("Recording what you press. Stop it in Settings, Debug.", 4.0);
+	return true;
+}
+
+void recordStop()
+{
+	if (recorder::mode() == recorder::Recording)
+		stopRecorder("asked");
+}
+
+bool playbackStart(const std::string& file)
+{
+	if (!isRunning || netOn)
+		return false;
+	stopRecorder("a playback began");
+	std::vector<uint8_t> state;
+	recorder::Info info;
+	if (!recorder::startPlayback(file, state, info))
+	{
+		addMessage("That file is not a recording this build can play.");
+		return false;
+	}
+	if (!info.serial.empty() && !current.serial.empty() && info.serial != current.serial)
+	{
+		recorder::stop();
+		addMessage("That recording is of another game (" + info.serial + ").", 4.0);
+		return false;
+	}
+	if (!applyState(state))
+	{
+		recorder::stop();
+		addMessage("The recording's state was refused by the emulator.", 4.0);
+		return false;
+	}
+	rewindOn = false;
+	ffOn = false;
+	diag::mark("recording: playing %s (%llu frames, made by build %s)", file.c_str(), (unsigned long long)info.frames,
+			info.build.c_str());
+	addMessage(format("Playing back %.0f s of play. The pads are left out until it ends.",
+			(double)info.frames / (av.timing.fps > 1.0 ? av.timing.fps : 60.0)), 4.0);
+	return true;
+}
+
+void playbackStop()
+{
+	if (recorder::mode() == recorder::Playing)
+		stopRecorder("asked");
+}
+
+bool loadState(int slot)
+{
+	if (!isRunning || netOn)
+		return false;
+	if (restricted())
+	{
+		addMessage("States are not loaded in hardcore mode (RetroAchievements).", 4.0);
+		return false;
+	}
+	std::vector<uint8_t> packed;
+	if (!readFile(statePath(slot), packed))
+		return false;
+	stopRecorder("a state was loaded");
+	const bool ok = applyState(packed);
+	diag::mark("state: slot %d %s", slot, ok ? "loaded" : "refused by the emulator");
+	if (ok && slot != ResumeSlot)
+		lastSlot = slot;
 	if (slot != ResumeSlot)
 		addMessage(ok ? format("State loaded from slot %d", slot + 1) : "The state could not be loaded.");
 	return ok;
@@ -2421,6 +2634,7 @@ bool netplayHost()
 {
 	if (!isRunning || current.serial.empty() || netOn)
 		return false;
+	stopRecorder("netplay began");
 	if (!netplay::host(netSession(), netHooks()))
 		return false;
 	netBegin();
@@ -2432,6 +2646,7 @@ bool netplayJoin(const std::string& address)
 {
 	if (!isRunning || current.serial.empty() || netOn)
 		return false;
+	stopRecorder("netplay began");
 	if (!netplay::join(address, netSession(), netHooks()))
 		return false;
 	netBegin();
@@ -2508,6 +2723,20 @@ void tick()
 	}
 	platform::padMotion(settings.motion != 0 || gun);
 	sleepSafeTick();
+	// Verbose logging: the emulator says more ("Developer", a level short of
+	// its debugging chatter), and a line about speed goes to the boot log
+	// every ten seconds of play.
+	options::hold("swanstation_Logging_LogLevel", settings.verboseLog ? "Dev" : "");
+	static double reportedAt;
+	if (settings.verboseLog && isRunning && now() - reportedAt >= 10.0)
+	{
+		reportedAt = now();
+		diag::mark("perf: emulator %.2f fps of %.2f, %.1f pictures a second, %.0f shown, sound %.0f%% full, %u underruns, "
+				"free memory %llu MB%s", measuredFps(), coreFps(), picturesPerSecond(), (double)shownPerSecond(),
+				audio::fill() * 100.0, audio::underruns(), (unsigned long long)(platform::freeMemory() >> 20),
+				recorder::mode() == recorder::Recording ? ", recording" : recorder::mode() == recorder::Playing
+				? ", playing back" : "");
+	}
 	if (achievementsStarted)
 	{
 		// With no frame of a game running, the server's answers still come.
