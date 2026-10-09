@@ -168,6 +168,8 @@ set(frontend_sources
 	src/recorder.cpp
 	src/memsearch.cpp
 	src/speedrun.cpp
+	src/web.cpp
+	third_party/qrcodegen/qrcodegen.cpp
 	src/music.cpp
 	src/memcard.cpp
 	src/netplay.cpp
@@ -230,7 +232,8 @@ set(imgui_sources
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources} ${imgui_sources})
 target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos)
 target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
-	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis)
+	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen)
 # ImGui's Vulkan backend draws through the core's function table
 # (dep/vulkan-loader), which is filled from the RADV linked into the title.
 target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKAN_NO_PROTOTYPES

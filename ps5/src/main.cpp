@@ -11,6 +11,7 @@
 #include "fe.h"
 #include "display.h"
 #include "update.h"
+#include "web.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -267,6 +268,8 @@ int main(int, char **)
 		host::tick();
 		ui::frame();
 		display::endFrame();
+		// The web panel's requests, between frames.
+		web::tick();
 		// The library has been on the screen for a while: this start worked.
 		if (display::frameCount() == 180)
 			storage::startCompleted(appDir);
@@ -277,6 +280,7 @@ int main(int, char **)
 	}
 
 	diag::mark("main: closing");
+	web::shutdown();
 	host::shutdown();
 	netfiles::finish();
 	options::saveFrontend();

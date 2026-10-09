@@ -258,6 +258,7 @@ std::vector<Field> fields()
 		{ "sleep_safe", nullptr, &c.sleepSafe, 0, 1 },
 		{ "verbose_log", nullptr, &c.verboseLog, 0, 1 },
 		{ "watch_overlay", nullptr, &c.watchOverlay, 0, 1 },
+		{ "web", nullptr, &c.web, 0, 1 },
 		{ "speedrun", nullptr, &c.speedrun, 0, 1 },
 		{ "speedrun_clock", &c.speedrunClock, nullptr, 0, 1 },
 		{ "controller1", &c.controller[0], nullptr, 0, 5 },
@@ -550,6 +551,38 @@ void loadFrontend()
 	}
 	std::lock_guard<std::mutex> lock(mutex);
 	takeGeneral();
+}
+
+bool frontendValue(const std::string& name, int& value)
+{
+	for (const Field& field : fields())
+		if (name == field.name)
+		{
+			if (pictureField(field.name) != nullptr)
+				value = picture(name, false);
+			else
+				value = field.flag != nullptr ? (int)*field.flag : *field.number;
+			return true;
+		}
+	return false;
+}
+
+bool setFrontendValue(const std::string& name, int value)
+{
+	for (const Field& field : fields())
+		if (name == field.name)
+		{
+			value = std::clamp(value, field.low, field.high);
+			if (pictureField(field.name) != nullptr)
+				setPicture(name, value, false);
+			else if (field.flag != nullptr)
+				*field.flag = value != 0;
+			else
+				*field.number = value;
+			saveFrontend();
+			return true;
+		}
+	return false;
 }
 
 void saveFrontend()

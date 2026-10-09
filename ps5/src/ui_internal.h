@@ -65,6 +65,7 @@ enum class Page
 	Shortcuts,		// what the shortcuts are
 	Memory,			// values found in the game's memory, and watched
 	Speedrun,		// the speedrun timer and the game's splits
+	Web,			// the web panel: its switch, the address and the QR code
 };
 
 struct Frame
@@ -212,6 +213,7 @@ void safeStartPage(Frame& f);
 void shortcutsPage(Frame& f);
 void memoryPage(Frame& f);
 void speedrunPage(Frame& f);
+void webPage(Frame& f);
 
 // The keyboard: asks for a text and hands it to `done` when it is confirmed.
 void askText(const std::string& title, const std::string& initial, bool hidden, bool address,
