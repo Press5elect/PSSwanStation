@@ -2058,8 +2058,9 @@ void moreSettings(int kind, std::vector<Item>& items)
 					: std::string("None for this game")) : std::string("By game"),
 					"Replacement pictures for a game's backgrounds and other 2D art, in the usual vram-write format (files "
 					"named vram-write-<number>.png). They go in " + shownRoot() + "textures/<serial>/ (for one game: "
-					"textures/SLUS-12345/) or, on a USB drive, in a folder named textures inside its games folder "
-					"(psx/textures/SLUS-12345/), and are used when \"Enable VRAM Write Texture Replacement\" is on "
+					"textures/SLUS-12345/) or, on a USB drive, in " + std::string(storage::UsbFolder) + "/textures/<serial>/ at "
+					"the top of the drive (the folder textures inside the drive's games folder, where build 15 looked, "
+					"is still read after it), and are used when \"Enable VRAM Write Texture Replacement\" is on "
 					"(Enhancement). This emulator knows that one kind of pack, not the newer kind that replaces a 3D "
 					"game's textures." + (files > 0 ? "\n\nThis game's is " + where + "." : std::string())));
 		}
@@ -2164,7 +2165,7 @@ void detailsMoreItems(std::vector<Item>& items)
 				"Options or Cheats is opened, or when the game starts.")
 				: files > 0 ? "In " + where + ". Used when \"Enable VRAM Write Texture Replacement\" is on (Options)."
 				: "Replacement pictures for this game go in " + shownRoot() + "textures/" + serial + "/ or, on a USB "
-				"drive, in its games folder's textures/" + serial + "/, and are used when \"Enable VRAM Write Texture "
+				"drive, in " + std::string(storage::UsbFolder) + "/textures/" + serial + "/, and are used when \"Enable VRAM Write Texture "
 				"Replacement\" is on (Options)."));
 	}
 }

@@ -413,6 +413,25 @@ std::vector<std::string> usbGameDirs()
 	return dirs;
 }
 
+std::vector<std::string> usbDrives()
+{
+	// A test's "drive": the folder SWANSTATION_USB_DRIVE names, else the one
+	// SWANSTATION_USB's games folder is in.
+	std::vector<std::string> drives;
+	if (const char *drive = getenv("SWANSTATION_USB_DRIVE"))
+		drives.push_back(drive);
+	else if (const char *dir = getenv("SWANSTATION_USB"))
+	{
+		std::string games = dir;
+		while (games.size() > 1 && games.back() == '/')
+			games.pop_back();
+		const size_t slash = games.rfind('/');
+		if (slash != std::string::npos && slash > 0)
+			drives.push_back(games.substr(0, slash));
+	}
+	return drives;
+}
+
 uint64_t freeMemory()
 {
 	return 0;
