@@ -1789,10 +1789,12 @@ struct LookState
 {
 	bool tried = false, ready = false;
 	VkPipelineLayout layout = VK_NULL_HANDLE;
-	VkPipeline signal = VK_NULL_HANDLE, scale = VK_NULL_HANDLE, cas = VK_NULL_HANDLE;
+	VkPipeline signal = VK_NULL_HANDLE, scale = VK_NULL_HANDLE, cas = VK_NULL_HANDLE, down = VK_NULL_HANDLE;
 	// The picture at its own size, looked after; stretched to the screen's
-	// size; and that sharpened (CAS); the picture NIS starts from.
-	Target staged, stretched, sharpened, before;
+	// size; and that sharpened (CAS); the picture NIS starts from; the picture
+	// sharpened at its own size (CAS, for a large enlargement); the picture
+	// made smaller than its own size (look_down.frag).
+	Target staged, stretched, sharpened, before, sharpenedFirst, reduced;
 	unsigned frame = 0;
 	// NVIDIA Image Scaling.
 	bool nisTried = false, nisReady = false;
@@ -1841,13 +1843,17 @@ bool lookInit()
 	const VkShaderModule signal = shaderModule(look_signal_spirv, sizeof(look_signal_spirv));
 	const VkShaderModule scale = shaderModule(look_scale_spirv, sizeof(look_scale_spirv));
 	const VkShaderModule cas = shaderModule(look_cas_spirv, sizeof(look_cas_spirv));
+	const VkShaderModule down = shaderModule(look_down_spirv, sizeof(look_down_spirv));
 	if (vertex != VK_NULL_HANDLE && signal != VK_NULL_HANDLE && scale != VK_NULL_HANDLE && cas != VK_NULL_HANDLE)
 	{
 		l.signal = fsrPipeline(vertex, signal, l.layout);
 		l.scale = fsrPipeline(vertex, scale, l.layout);
 		l.cas = fsrPipeline(vertex, cas, l.layout);
+		// (Without it a picture larger than the screen is drawn the usual way.)
+		if (down != VK_NULL_HANDLE)
+			l.down = fsrPipeline(vertex, down, l.layout);
 	}
-	for (VkShaderModule module : { vertex, signal, scale, cas })
+	for (VkShaderModule module : { vertex, signal, scale, cas, down })
 		if (module != VK_NULL_HANDLE)
 			vkDestroyShaderModule(device, module, nullptr);
 	l.ready = l.signal != VK_NULL_HANDLE && l.scale != VK_NULL_HANDLE && l.cas != VK_NULL_HANDLE;
@@ -2126,9 +2132,9 @@ void lookShutdown()
 	chain::destroy(l.imported);
 	retire(l.crtSet);
 	retire(l.nisOutSet);
-	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before })
+	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before, &l.sharpenedFirst, &l.reduced })
 		destroyTarget(*target);
-	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis })
+	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis, l.down })
 		if (pipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(device, pipeline, nullptr);
 	for (VkPipelineLayout layout : { l.layout, l.nisLayout })
@@ -2174,7 +2180,10 @@ void forgetPicture()
 void *picture(void *texture, int width, int height, float u, float v, int outWidth, int outHeight, const Look& want, bool& full)
 {
 	full = false;
-	if (texture == nullptr || !frameOpen || want.plain() || width < 8 || height < 8 || width > 8192 || height > 8192 || u <= 0
+	// A picture larger than its place on the screen is made smaller here, even
+	// with nothing else to do to it (below).
+	const bool larger = width > outWidth || height > outHeight;
+	if (texture == nullptr || !frameOpen || (want.plain() && !larger) || width < 8 || height < 8 || width > 8192 || height > 8192 || u <= 0
 			|| v <= 0 || outWidth < 8 || outHeight < 8 || outWidth > 8192 || outHeight > 8192 || !lookInit())
 		return nullptr;
 	LookState& l = look;
@@ -2213,9 +2222,27 @@ void *picture(void *texture, int width, int height, float u, float v, int outWid
 		result = crtRun(staged, width, height, outWidth, outHeight, want.crt - 1);
 		said = "crt-guest-advanced";
 	}
+	else if (larger && l.down != VK_NULL_HANDLE)
+	{
+		// Larger than the screen (a game drawn at 8x on a 1080p screen): each
+		// pixel the average of what is under it, whichever scaling filter is
+		// chosen (they enlarge; a bilinear sample here would leave out most of
+		// what was drawn, and shimmer).
+		if (ensureTarget(l.reduced, outWidth, outHeight, swapFormat, shaderPass))
+		{
+			LookConstants s{};
+			s.a[0] = (float)width;
+			s.a[1] = (float)height;
+			s.b[0] = (float)outWidth;
+			s.b[1] = (float)outHeight;
+			fsrPass(l.reduced, l.down, l.layout, staged, readable, &s, sizeof(s));
+			result = (void *)l.reduced.set;
+		}
+		said = "made smaller, averaged";
+	}
 	else if (want.scaler != 0 && (width < outWidth || height < outHeight))
 	{
-		auto stretch = [&](Target& target, int w, int h, bool sharp) {
+		auto stretchFrom = [&](Target& target, VkImageView from, int w, int h, bool sharp) {
 			if (!ensureTarget(target, w, h, swapFormat, shaderPass))
 				return false;
 			LookConstants s{};
@@ -2225,9 +2252,10 @@ void *picture(void *texture, int width, int height, float u, float v, int outWid
 			s.b[0] = (float)w;
 			s.b[1] = (float)h;
 			s.b[2] = sharp ? 1.f : 0.f;
-			fsrPass(target, l.scale, l.layout, staged, readable, &s, sizeof(s));
+			fsrPass(target, l.scale, l.layout, from, readable, &s, sizeof(s));
 			return true;
 		};
+		auto stretch = [&](Target& target, int w, int h, bool sharp) { return stretchFrom(target, staged, w, h, sharp); };
 		switch (want.scaler)
 		{
 		case 1:
@@ -2236,7 +2264,18 @@ void *picture(void *texture, int width, int height, float u, float v, int outWid
 			said = "sharp bilinear";
 			break;
 		case 2:
-			result = upscaleView(staged, readable, width, height, 1.f, 1.f, outWidth, outHeight, want.sharpness);
+			if (outWidth > width * 2 || outHeight > height * 2)
+			{
+				// FSR 1 is made for enlarging up to twice each way; further, its
+				// edges draw thin crossed lines between diagonal pixels. So it
+				// makes the picture twice its size, and that is stretched the
+				// rest of the way.
+				if (upscaleView(staged, readable, width, height, 1.f, 1.f, width * 2, height * 2, want.sharpness) != nullptr
+						&& stretchFrom(l.stretched, fsr.rcasTarget.texture.GetView(), outWidth, outHeight, false))
+					result = (void *)l.stretched.set;
+			}
+			else
+				result = upscaleView(staged, readable, width, height, 1.f, 1.f, outWidth, outHeight, want.sharpness);
 			said = "FSR 1";
 			break;
 		case 3:
@@ -2258,17 +2297,33 @@ void *picture(void *texture, int width, int height, float u, float v, int outWid
 			break;
 		}
 		case 4:
-			if (stretch(l.stretched, outWidth, outHeight, false) && ensureTarget(l.sharpened, outWidth, outHeight, swapFormat, shaderPass))
+		{
+			static const float strength[3] = { 0.2f, 0.6f, 1.f };
+			const float sharp = -1.f / (8.f + (5.f - 8.f) * strength[std::clamp(want.sharpness, 0, 2)]);
+			const uint32_t k[8] = { floatBits(1.f), floatBits(1.f), floatBits(0.f), floatBits(0.f), floatBits(sharp),
+				(uint32_t)halfBits(sharp), floatBits(8.f), 0 };
+			if (outWidth > width * 2 || outHeight > height * 2)
 			{
-				static const float strength[3] = { 0.2f, 0.6f, 1.f };
-				const float sharp = -1.f / (8.f + (5.f - 8.f) * strength[std::clamp(want.sharpness, 0, 2)]);
-				uint32_t k[8] = { floatBits(1.f), floatBits(1.f), floatBits(0.f), floatBits(0.f), floatBits(sharp),
-					(uint32_t)halfBits(sharp), floatBits(8.f), 0 };
+				// More than twice as large: CAS sharpens the picture at its own
+				// size, then it is stretched. (Sharpened after a large
+				// stretch, it would find only gentle slopes and do nearly
+				// nothing.)
+				if (ensureTarget(l.sharpenedFirst, width, height, swapFormat, shaderPass))
+				{
+					fsrPass(l.sharpenedFirst, l.cas, l.layout, staged, readable, k, sizeof(k));
+					if (stretchFrom(l.stretched, l.sharpenedFirst.texture.GetView(), outWidth, outHeight, false))
+						result = (void *)l.stretched.set;
+				}
+			}
+			else if (stretch(l.stretched, outWidth, outHeight, false)
+					&& ensureTarget(l.sharpened, outWidth, outHeight, swapFormat, shaderPass))
+			{
 				fsrPass(l.sharpened, l.cas, l.layout, l.stretched.texture.GetView(), readable, k, sizeof(k));
 				result = (void *)l.sharpened.set;
 			}
 			said = "CAS";
 			break;
+		}
 		}
 	}
 	if (result != nullptr)
