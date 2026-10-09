@@ -9,6 +9,9 @@ title; SwanStation is the emulator inside it.
 It contains no games and no original BIOS. Use games you own, from your own
 discs.
 
+The full manual, with every screen and setting, is ps5/MANUAL.md in the
+repository: https://github.com/Press5elect/PSSwanStation/blob/ps5-port/ps5/MANUAL.md
+
 
 Installing
 ----------
