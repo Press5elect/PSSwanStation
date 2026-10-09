@@ -173,7 +173,14 @@ example
   path = 192.168.1.10/Games/PSX
   path = nfs://192.168.1.10/volume1/games/psx
   path = ftp://192.168.1.10/games/psx
-with the server by its IP address, and restart PSSwanStation. NFS: version 3
+with the server by its IP address (a name is refused), and restart
+PSSwanStation. The file is written at the first start with every line
+explained; a line starting with # is switched off. SMB shares are asked with
+the account of the "user", "password" and (if the server wants one)
+"domain" lines, one account for every SMB share; "user = guest" with an
+empty password is an open share. SMB is versions 2 and 3: a NAS that offers
+SMB 1 only needs SMB 2 switched on. An SMB path may also be written
+smb://server/share/folder or with backslashes. NFS: version 3
 when the server offers it (the export is found from the path, the longest
 that matches), else version 4. The title asks as user and group 0 unless
 the path names others, which a NAS that checks users wants:
