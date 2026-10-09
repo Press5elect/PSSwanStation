@@ -255,6 +255,38 @@ TickCount DMA::GetTransferHaltTicks() const
 
 bool DMA::TransferChannel(Channel channel)
 {
+  if (m_transfer_in_progress)
+  {
+    m_transfer_deferred = true;
+    return true;
+  }
+
+  m_transfer_in_progress = true;
+  bool result = DoTransferChannel(channel);
+  m_transfer_in_progress = false;
+
+  /* A request raised during a transfer has no later edge, so every transferable channel runs again,
+   * including this one (MDEC in resumes once MDEC out has drained the decoder). */
+  while (result && m_transfer_deferred)
+  {
+    m_transfer_deferred = false;
+    for (uint32_t i = 0; i < NUM_CHANNELS && result; i++)
+    {
+      if (!CanTransferChannel(static_cast<Channel>(i), false))
+        continue;
+
+      m_transfer_in_progress = true;
+      result = DoTransferChannel(static_cast<Channel>(i));
+      m_transfer_in_progress = false;
+    }
+  }
+
+  m_transfer_deferred = false;
+  return result;
+}
+
+bool DMA::DoTransferChannel(Channel channel)
+{
   ChannelState& cs = m_state[static_cast<uint32_t>(channel)];
   const uint32_t mask = GetAddressMask();
 
@@ -404,7 +436,8 @@ void DMA::HaltTransfer(TickCount duration)
 
 void DMA::UnhaltTransfer(TickCount ticks)
 {
-  m_halt_ticks_remaining -= ticks;
+  /* The event can run late (a long block ran in between); a negative remainder would re-arm it in the past. */
+  m_halt_ticks_remaining = std::max<TickCount>(m_halt_ticks_remaining - ticks, 0);
   m_unhalt_event->Deactivate();
 
   // TODO: Use channel priority. But doing it in ascending order is probably good enough.
@@ -482,6 +515,9 @@ TickCount DMA::TransferMemoryToDevice(Channel channel, uint32_t address, uint32_
 TickCount DMA::TransferDeviceToMemory(Channel channel, uint32_t address, uint32_t increment, uint32_t word_count)
 {
   const uint32_t mask = GetAddressMask();
+  /* Lowest word the transfer writes, for code invalidation. */
+  const uint32_t lowest_address =
+    (static_cast<int32_t>(increment) < 0) ? ((address - (word_count - 1) * 4) & mask) : address;
 
   if (channel == Channel::OTC)
   {
@@ -544,6 +580,6 @@ TickCount DMA::TransferDeviceToMemory(Channel channel, uint32_t address, uint32_
     }
   }
 
-  CPU::CodeCache::InvalidateCodePages(address, word_count);
+  CPU::CodeCache::InvalidateCodePages(lowest_address, word_count);
   return Bus::GetDMARAMTickCount(word_count);
 }

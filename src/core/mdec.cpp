@@ -118,7 +118,7 @@ void MDEC::DMARead(uint32_t* words, uint32_t word_count)
 
 void MDEC::DMAWrite(const uint32_t* words, uint32_t word_count)
 {
-  const uint32_t halfwords_to_write = std::min(word_count * 2, m_data_in_fifo.GetSpace() & ~uint32_t(2));
+  const uint32_t halfwords_to_write = std::min(word_count * 2, m_data_in_fifo.GetSpace() & ~uint32_t(1));
   m_data_in_fifo.PushRange(reinterpret_cast<const uint16_t*>(words), halfwords_to_write);
   Execute();
 }
@@ -179,6 +179,11 @@ uint32_t MDEC::ReadDataRegister()
     if (!HasPendingBlockCopyOut())
       return UINT32_C(0xFFFFFFFF);
     CPU::AddPendingTicks(m_block_copy_out_event->GetTicksUntilNextExecution());
+
+    /* The copy-out event only runs with the next events; run it now so there is data to pop. */
+    m_block_copy_out_event->InvokeEarly(true);
+    if (m_data_out_fifo.IsEmpty())
+      return UINT32_C(0xFFFFFFFF);
   }
 
   const uint32_t value = m_data_out_fifo.Pop();
@@ -192,6 +197,10 @@ uint32_t MDEC::ReadDataRegister()
 
 void MDEC::WriteCommandRegister(uint32_t value)
 {
+  /* Writes to a full data-in FIFO are dropped. */
+  if (m_data_in_fifo.GetSpace() < 2)
+    return;
+
   m_data_in_fifo.Push(static_cast<uint16_t>(value));
   m_data_in_fifo.Push(static_cast<uint16_t>(value >> 16));
 

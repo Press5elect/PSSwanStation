@@ -951,8 +951,12 @@ bool HostInterface::retro_unserialize(const void* data, size_t size)
                        ctx == RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_BINARY);
   }
 
+  /* Runahead and netplay states come from this core; only a state from elsewhere (a file, normal context)
+   * can be rejected part way through, so only those pay for a copy of the running state to fall back to. */
+  const bool restore_on_failure = !is_memory_state && ctx != RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY;
+
   std::unique_ptr<ByteStream> stream = ByteStream_CreateReadOnlyMemoryStream(data, static_cast<uint32_t>(size));
-  return System::LoadState(stream.get(), is_memory_state);
+  return System::LoadState(stream.get(), is_memory_state, restore_on_failure);
 }
 
 void* HostInterface::retro_get_memory_data(unsigned id)
@@ -2335,6 +2339,21 @@ bool HostInterface::DiskControlSetInitialImage(unsigned index, const char* path)
    * compare it with the value supplied here) */
   P_THIS->m_disk_control_info.initial_image_index = index;
   return true;
+}
+
+bool HostInterface::IsKnownMediaPath(const std::string& path) const
+{
+  size_t i;
+  if (path.empty())
+    return false;
+  if (m_disk_control_info.has_sub_images && path == m_disk_control_info.sub_images_parent_path)
+    return true;
+  for (i = 0; i < m_disk_control_info.image_paths.size(); i++)
+  {
+    if (path == m_disk_control_info.image_paths[i])
+      return true;
+  }
+  return false;
 }
 
 bool HostInterface::DiskControlGetImagePath(unsigned index, char* path, size_t len)

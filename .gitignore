@@ -55,3 +55,6 @@ Generated Files
 !ps5/smb/host/config.h
 !ps5/nfs/config.h
 !ps5/nfs/host/config.h
+
+# test harness
+__pycache__/
