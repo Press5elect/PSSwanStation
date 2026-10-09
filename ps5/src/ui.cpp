@@ -4168,6 +4168,7 @@ void frame()
 		case Page::Memory: memoryPage(f); break;
 		case Page::Speedrun: speedrunPage(f); break;
 		case Page::Web: webPage(f); break;
+		case Page::Shaders: shadersPage(f); break;
 		}
 		if (game)
 			drawMessages();

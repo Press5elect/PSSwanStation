@@ -12,6 +12,9 @@
 #include "display.h"
 #include "update.h"
 #include "web.h"
+#if defined(SWANSTATION_HOST)
+#include "slangimport.h"
+#endif
 
 #include <algorithm>
 #include <cerrno>
@@ -226,6 +229,16 @@ int main(int, char **)
 	// network.cfg is read: the files kept on the share are brought up to date.
 	netfiles::startUp();
 #if defined(SWANSTATION_HOST)
+	// The PC test: a shader preset brought in as on the console, then out.
+	if (const char *preset = getenv("SWANSTATION_IMPORT_TEST"))
+	{
+		std::string error;
+		const double began = now();
+		const bool ok = slangimport::importNow(preset, fileTitle(preset), error);
+		printf("import %s: %s in %.2f s\n", preset, ok ? "brought in" : error.c_str(), now() - began);
+		fflush(stdout);
+		_exit(ok ? 0 : 1);
+	}
 	if (const char *spec = getenv("SWANSTATION_NET_TEST"))
 	{
 		const int result = smb::selfTest(spec);

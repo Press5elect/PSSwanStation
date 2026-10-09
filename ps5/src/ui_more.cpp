@@ -23,6 +23,7 @@
 #include "recorder.h"
 #include "speedrun.h"
 #include "web.h"
+#include "slangimport.h"
 #include "qrcodegen.hpp"
 #include "update.h"
 
@@ -1557,6 +1558,54 @@ void webPage(Frame& f)
 	}
 }
 
+// ------------------------------------------------- shader presets from USB
+
+void shadersPage(Frame& f)
+{
+	// What the drives hold is looked at when the page opens and after each
+	// preset is brought in, not every frame.
+	static std::vector<slangimport::Found> found;
+	static bool wasWorking;
+	const bool working = slangimport::working();
+	if (f.fresh || (wasWorking && !working))
+		found = slangimport::find();
+	wasWorking = working;
+	std::vector<Item> items;
+	const std::string status = slangimport::status();
+	if (!status.empty())
+		items.push_back(fact(working ? "Working" : "Last", status, status));
+	items.push_back(header("On the USB drives"));
+	if (found.empty())
+		items.push_back(fact("None found", "", std::string("Put libretro slang presets (.slangp, with the .slang files and pictures "
+				"they use, as the collection has them) in ") + storage::UsbFolder + "/shaders on a USB drive, or in "
+				+ shownRoot() + "shaders. USB drives need \"USB drives\" on (Games and network)."));
+	for (const slangimport::Found& preset : found)
+	{
+		Item item = action(icon::Download, preset.name, "Compiles this preset on the console and adds it to the picture "
+				"tube's list (Picture, Picture tube). From " + preset.path + ".", [preset] { slangimport::start(preset); },
+				!working);
+		item.value = preset.imported ? "Brought in" : "";
+		items.push_back(item);
+	}
+	const std::vector<std::string> imported = slangimport::imported();
+	items.push_back(header("Brought in"));
+	if (imported.empty())
+		items.push_back(fact("None yet", "", "A preset brought in is kept in " + shownRoot() + "data/shaders and offered "
+				"under Picture tube after the title's own."));
+	for (const std::string& name : imported)
+	{
+		Item item;
+		item.label = name;
+		item.info = "Kept in " + shownRoot() + "data/shaders/" + name + ". A preset made for a PC's graphics card may be "
+				"slow at 4K on the console.";
+		item.menu = true;
+		item.choices = { "Remove it" };
+		item.choose = [name](int) { slangimport::remove(name); };
+		items.push_back(item);
+	}
+	standardHints(menuPage(f, "Shader presets", "From a USB drive", items, 900));
+}
+
 void shortcutsPage(Frame& f)
 {
 	std::vector<Item> items;
@@ -2240,8 +2289,10 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	}
 	{
 		std::vector<std::string> tubes = { "Off", "Soft scanlines", "Scanlines", "Scanlines and mask" };
-		for (const std::string& name : display::crtPresetNames())
-			tubes.push_back("CRT: " + name);
+		const std::vector<std::string> names = display::crtPresetNames();
+		const size_t own = names.size() - std::min(names.size(), slangimport::imported().size());
+		for (size_t i = 0; i < names.size(); i++)
+			tubes.push_back((i < own ? "CRT: " : "Preset: ") + names[i]);
 		items.push_back(pictureChoice(forGame, "crt", "Picture tube", tubes,
 				"The look of a television's picture tube, which these games were made for. The first three draw the "
 				"dark between its lines over the picture, the mask adds its fine vertical stripes. The CRT kinds are "
@@ -2250,7 +2301,10 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"curved set with a shadow mask. Studio monitor: a flat, sharp professional monitor with an aperture "
 				"grille. Arcade monitor: curved, bright, with a slot mask. Soft: gentle lines, little mask. Guest's own: "
 				"the shader as its author set it. These take the place of the scaling filter, and ask more of the "
-				"graphics processor than the rest."));
+				"graphics processor than the rest. The presets after them were brought in from a USB drive (below)."));
+		items.push_back(action(icon::Download, "Shader presets from USB", "Brings in a libretro slang preset (.slangp) "
+				"from a USB drive's " + std::string(storage::UsbFolder) + "/shaders folder: it is compiled on the console "
+				"and offered under Picture tube.", [] { push(Page::Shaders); }));
 	}
 	items.push_back(pictureChoice(forGame, "signal", "Video signal",
 			{ "As it is", "Dither smoothed", "S-Video", "Composite" },

@@ -250,7 +250,7 @@ std::vector<Field> fields()
 		{ "fg_mode", &c.fgMode, nullptr, 0, 1 },
 		{ "fg_runahead", nullptr, &c.fgRunAhead, 0, 1 },
 		{ "fg_debug", nullptr, &c.fgDebug, 0, 1 },
-		{ "crt", &c.crt, nullptr, 0, 8 },
+		{ "crt", &c.crt, nullptr, 0, 72 },
 		{ "border", &c.border, nullptr, 0, 3 },
 		{ "preset", &c.preset, nullptr, 0, 4 },
 		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },

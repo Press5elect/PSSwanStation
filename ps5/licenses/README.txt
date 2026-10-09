@@ -45,6 +45,11 @@ libretro-common              MIT              MIT.txt                  github.co
 Vulkan headers               Apache-2.0       Apache-2.0.txt           github.com/KhronosGroup/Vulkan-Headers
                                                                        v1.4.360 (dep/vulkan-loader/include)
 rcheevos (RetroAchievements) MIT              rcheevos-LICENSE.txt     github.com/RetroAchievements/rcheevos
+glslang (compiles the shader BSD-3-Clause,    glslang-LICENSE.txt      github.com/KhronosGroup/glslang 16.6.0:
+presets brought in from USB) parts BSD-2,                              the library alone (no HLSL, no optimiser)
+                             MIT, Apache-2.0,
+                             GPL-3.0+Bison
+                             exception
 FidelityFX Super Resolution  MIT              FSR-LICENSE.txt          github.com/GPUOpen-Effects/FidelityFX-FSR
 1.0 (the FSR 1 scaling)                                                (AMD), its two shader headers unmodified
 FidelityFX CAS (sharpening)  MIT              CAS-LICENSE.txt          github.com/GPUOpen-Effects/FidelityFX-CAS

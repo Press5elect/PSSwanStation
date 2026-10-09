@@ -35,6 +35,7 @@ def main():
     app, src, vulkan, sdk, imgui, libsmb2, rcheevos, lapy, database = (Path(a) for a in sys.argv[1:10])
     libnfs = Path(sys.argv[10]) if len(sys.argv) > 10 else src.parent / "deps-src/libnfs"
     slang = Path(sys.argv[11]) if len(sys.argv) > 11 else src.parent / "deps-src/slang-shaders"
+    glslang = Path(sys.argv[12]) if len(sys.argv) > 12 else src.parent / "deps-src/glslang"
     parts = []
     title = at(src, "https://github.com/Press5elect/PSSwanStation")
     parts.append(dict(
@@ -76,6 +77,9 @@ def main():
                       artifacts=["eboot.bin"], source=at(libnfs)))
     parts.append(dict(id="rcheevos", name="rcheevos (RetroAchievements)", licence="MIT", artifacts=["eboot.bin"],
                       source=at(rcheevos)))
+    parts.append(dict(id="glslang", name="glslang (shader presets brought in from a USB drive are compiled with it)",
+                      licence="BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache-2.0 and GPL-3.0-or-later with the "
+                              "Bison exception (licenses/glslang-LICENSE.txt)", artifacts=["eboot.bin"], source=at(glslang)))
     note = (lapy / "SOURCE.txt").read_text() if (lapy / "SOURCE.txt").exists() else ""
     remote = re.search(r"^remote: (\S+)", note, re.M)
     rev = re.search(r"^revision: ([0-9a-f]{40})", note, re.M)
