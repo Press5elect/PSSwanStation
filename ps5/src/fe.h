@@ -378,6 +378,8 @@ struct Frontend
 	int musicVolume = 60;
 	int animations = 0;			// 0 everything moves, 1 little does, 2 nothing does
 	int uiScale = 100;			// percent
+	bool highContrast = false;	// black behind the menus, white text, brighter dim text
+	bool colourBlind = false;	// good and bad in blue and orange instead of green and red
 	int accent = 0;
 	int sort = 0;				// library: 0 name, 1 last played, 2 most played, 3 year, 4 size
 	int filter = 0;				// 0 all, 1 favourites, 2 not played yet, 3 hidden

@@ -283,6 +283,8 @@ std::vector<Field> fields()
 		{ "music_volume", &c.musicVolume, nullptr, 0, 100 },
 		{ "animations", &c.animations, nullptr, 0, 2 },
 		{ "ui_scale", &c.uiScale, nullptr, 75, 150 },
+		{ "high_contrast", nullptr, &c.highContrast, 0, 1 },
+		{ "colour_blind", nullptr, &c.colourBlind, 0, 1 },
 		{ "accent", &c.accent, nullptr, 0, 7 },
 		{ "sort", &c.sort, nullptr, 0, 4 },
 		{ "filter", &c.filter, nullptr, 0, 3 },
