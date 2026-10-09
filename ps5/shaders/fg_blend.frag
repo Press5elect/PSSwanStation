@@ -13,10 +13,13 @@
 layout (set = 0, binding = 0) uniform sampler2D before;
 layout (set = 0, binding = 1) uniform sampler2D now;
 layout (set = 0, binding = 2) uniform sampler2D chosen;
+// One pixel: r is 1 where the two pictures are of different scenes (fg_cut.frag).
+layout (set = 0, binding = 3) uniform sampler2D cut;
 layout (push_constant) uniform pushBlock
 {
 	vec4 size;		// xy: one over the target's size
-	vec4 blend;		// x: the phase, 0 the frame before, 1 this one, up to 2 ahead of it; y: 1 to show the movement
+	vec4 blend;		// x: the phase, 0 the frame before, 1 this one, up to 2 ahead of it; y: 1 to show the movement;
+					// z: 1 when `cut` says whether there was a cut
 } pc;
 layout (location = 0) out vec4 FragColor;
 
@@ -32,6 +35,9 @@ void main()
 	vec2 at = early ? uv - v * phase : uv + v * (1.0 - phase);
 	float believed = choice.z;
 	if (at.x < 0.0 || at.y < 0.0 || at.x > 1.0 || at.y > 1.0)
+		believed = 0.0;
+	// A cut: nothing is believed, the nearer picture is shown as it is.
+	if (pc.blend.z > 0.5 && texelFetch(cut, ivec2(0, 0), 0).r > 0.5)
 		believed = 0.0;
 	vec3 moved = early ? texture(before, at).rgb : texture(now, at).rgb;
 	vec3 nearest = early ? texture(before, uv).rgb : texture(now, uv).rgb;

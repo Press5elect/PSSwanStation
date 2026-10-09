@@ -1331,7 +1331,7 @@ struct Generation
 	VkSampler sampler = VK_NULL_HANDLE;
 	VkPipelineLayout layout = VK_NULL_HANDLE;
 	VkPipeline copy = VK_NULL_HANDLE, luma = VK_NULL_HANDLE, search = VK_NULL_HANDLE, tidy = VK_NULL_HANDLE,
-			choose = VK_NULL_HANDLE, blend = VK_NULL_HANDLE, check = VK_NULL_HANDLE;
+			choose = VK_NULL_HANDLE, blend = VK_NULL_HANDLE, check = VK_NULL_HANDLE, cut = VK_NULL_HANDLE;
 	VkPipeline copyFloat = VK_NULL_HANDLE;		// the copy into a picture of floats
 	// A set is written each time it is used: they go round, and none comes
 	// round again while a frame under way reads it.
@@ -1349,8 +1349,10 @@ struct Generation
 	// The quality kind's two-way check: the movement found from each frame's
 	// side alone, and the tidied movement with what they disagree on marked.
 	Target fromBefore, fromNow, checked;
+	// Whether the two pictures are of different scenes (fg_cut.frag), one pixel.
+	Target cutFound;
 	int now = 0;				// which of the two is this frame's
-	bool haveNow = false, haveBefore = false, haveMovement = false, useChecked = false;
+	bool haveNow = false, haveBefore = false, haveMovement = false, useChecked = false, haveCut = false;
 	uint64_t keptAt = 0;		// the display frame this frame's was kept in
 	int saidW = 0, saidH = 0;
 } generation;
@@ -1368,8 +1370,8 @@ bool generationInit()
 		return g.ready;
 	g.tried = true;
 	VkDevice device = g_vulkan_context->GetDevice();
-	VkDescriptorSetLayoutBinding bindings[3] = {};
-	for (uint32_t i = 0; i < 3; i++)
+	VkDescriptorSetLayoutBinding bindings[4] = {};
+	for (uint32_t i = 0; i < 4; i++)
 	{
 		bindings[i].binding = i;
 		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1377,9 +1379,9 @@ bool generationInit()
 		bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	}
 	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	layoutInfo.bindingCount = 3;
+	layoutInfo.bindingCount = 4;
 	layoutInfo.pBindings = bindings;
-	VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Generation::Sets * 3 };
+	VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Generation::Sets * 4 };
 	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	poolInfo.maxSets = Generation::Sets;
 	poolInfo.poolSizeCount = 1;
@@ -1428,6 +1430,12 @@ bool generationInit()
 		g.check = fsrPipeline(vertex, check, g.layout, floatPass);
 		vkDestroyShaderModule(device, check, nullptr);
 	}
+	const VkShaderModule cut = shaderModule(fg_cut_spirv, sizeof(fg_cut_spirv));
+	if (cut != VK_NULL_HANDLE)
+	{
+		g.cut = fsrPipeline(vertex, cut, g.layout, floatPass);
+		vkDestroyShaderModule(device, cut, nullptr);
+	}
 	if (vertex != VK_NULL_HANDLE && copy != VK_NULL_HANDLE && luma != VK_NULL_HANDLE && search != VK_NULL_HANDLE
 			&& tidy != VK_NULL_HANDLE && choose != VK_NULL_HANDLE && blend != VK_NULL_HANDLE)
 	{
@@ -1450,21 +1458,23 @@ bool generationInit()
 
 // One pass: up to three pictures through a pipeline, over the whole of a target.
 void generationPass(Target& target, VkPipeline pipeline, VkImageView first, VkImageLayout firstLayout,
-		VkImageView second, VkImageView third, const GenerationConstants& constants)
+		VkImageView second, VkImageView third, const GenerationConstants& constants, VkImageView fourth = VK_NULL_HANDLE)
 {
 	Generation& g = generation;
 	VkDevice device = g_vulkan_context->GetDevice();
 	const VkDescriptorSet set = g.sets[g.next++ % Generation::Sets];
-	// A pass that reads fewer than three is given the first again.
-	VkDescriptorImageInfo images[3] = {
+	// A pass that reads fewer than four is given the first again.
+	VkDescriptorImageInfo images[4] = {
 		{ g.sampler, first, firstLayout },
 		{ g.sampler, second != VK_NULL_HANDLE ? second : first,
 				second != VK_NULL_HANDLE ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : firstLayout },
 		{ g.sampler, third != VK_NULL_HANDLE ? third : first,
 				third != VK_NULL_HANDLE ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : firstLayout },
+		{ g.sampler, fourth != VK_NULL_HANDLE ? fourth : first,
+				fourth != VK_NULL_HANDLE ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : firstLayout },
 	};
-	VkWriteDescriptorSet writes[3] = {};
-	for (uint32_t i = 0; i < 3; i++)
+	VkWriteDescriptorSet writes[4] = {};
+	for (uint32_t i = 0; i < 4; i++)
 	{
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = set;
@@ -1473,7 +1483,7 @@ void generationPass(Target& target, VkPipeline pipeline, VkImageView first, VkIm
 		writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		writes[i].pImageInfo = &images[i];
 	}
-	vkUpdateDescriptorSets(device, 3, writes, 0, nullptr);
+	vkUpdateDescriptorSets(device, 4, writes, 0, nullptr);
 
 	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
 	VkClearValue clear{};
@@ -1516,7 +1526,8 @@ void generationShutdown()
 	destroyTarget(g.fromBefore);
 	destroyTarget(g.fromNow);
 	destroyTarget(g.checked);
-	for (VkPipeline pipeline : { g.copy, g.copyFloat, g.luma, g.search, g.tidy, g.choose, g.blend, g.check })
+	destroyTarget(g.cutFound);
+	for (VkPipeline pipeline : { g.copy, g.copyFloat, g.luma, g.search, g.tidy, g.choose, g.blend, g.check, g.cut })
 		if (pipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(device, pipeline, nullptr);
 	if (g.layout != VK_NULL_HANDLE)
@@ -1696,6 +1707,20 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 						g.fromBefore.texture.GetView(), g.fromNow.texture.GetView(), c);
 				g.useChecked = true;
 			}
+			// And whether the two are of different scenes.
+			g.haveCut = false;
+			if (g.cut != VK_NULL_HANDLE && ensureTarget(g.cutFound, 1, 1, FloatFormat, floatPass, false))
+			{
+				const int smallest = Generation::Levels - 1;
+				c = GenerationConstants();
+				c.size[0] = (float)levelW[smallest];
+				c.size[1] = (float)levelH[smallest];
+				c.more[0] = 0.5f;	// a part changed when half of it did
+				c.more[1] = 5.f;	// a cut when five parts of nine did
+				generationPass(g.cutFound, g.cut, g.bright[now ^ 1][smallest].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+						g.bright[now][smallest].texture.GetView(), VK_NULL_HANDLE, c);
+				g.haveCut = true;
+			}
 			g.haveMovement = true;
 		}
 		else
@@ -1735,8 +1760,10 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 	c.size[1] = 1.f / (float)height;
 	c.more[0] = phase;
 	c.more[1] = debug ? 1.f : 0.f;
+	c.more[2] = g.haveCut ? 1.f : 0.f;
 	generationPass(g.between, g.blend, g.kept[g.now ^ 1].texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			g.kept[g.now].texture.GetView(), g.chosen.texture.GetView(), c);
+			g.kept[g.now].texture.GetView(), g.chosen.texture.GetView(), c,
+			g.haveCut ? g.cutFound.texture.GetView() : VK_NULL_HANDLE);
 	return (void *)g.between.set;
 }
 

@@ -7,7 +7,7 @@ and draws two rectangles), under whatever serial number the test asks for, so
 the library, the serial detection, the cheat database and the save states
 all have something to work on.
 
-  make-test-disc.py OUT.cue [--serial SLUS-00594] [--moving BLANKS]
+  make-test-disc.py OUT.cue [--serial SLUS-00594] [--moving BLANKS [--cuts PICTURES]]
 
 Needs pycdlib.
 
@@ -22,7 +22,7 @@ import sys
 import pycdlib
 
 
-def program(colour, moving=0):
+def program(colour, moving=0, cuts=0):
     code = []
 
     def li(reg, value):
@@ -79,7 +79,17 @@ def program(colour, moving=0):
         gp0()												# to 319, s1 + 239
         command(0xE500, 11)									# drawing offset 0, s1
         gp0()
-        li(T1, 0x02000000 | colour)							# fill the buffer
+        T3, T4 = 11, 12
+        if cuts:
+            # A cut every `cuts` pictures: another colour, the posts elsewhere.
+            code.append(0x30000000 | S0 << 21 | T3 << 16 | cuts)	# andi t3, s0, cuts
+            li(T1, 0x02000000 | colour)
+            code.append(0x10000000 | T3 << 21 | 2)				# beq t3, zero, past the other colour
+            code.append(0)
+            li(T1, 0x02000000 | 0x206030)
+            code.append(T3 << 16 | T4 << 11 | 2 << 6)			# sll t4, t3, 2: the posts' jump
+        else:
+            li(T1, 0x02000000 | colour)							# fill the buffer
         gp0()
         code.append(S1 << 16 | T1 << 11 | 16 << 6)			# sll t1, s1, 16: its top left
         gp0()
@@ -92,6 +102,8 @@ def program(colour, moving=0):
             code.append(S0 << 16 | T1 << 11 | 1 << 6)			# sll t1, s0, 1
             code.append(T1 << 11 | T1 << 16 | 0x23 | 0 << 21)	# subu t1, zero, t1
             code.append(0x24000000 | T1 << 21 | T1 << 16 | (200 + k * 90))	# addiu
+            if cuts:
+                code.append(T1 << 21 | T4 << 16 | T1 << 11 | 0x21)	# addu t1, t1, t4
             code.append(0x30000000 | T1 << 21 | T1 << 16 | 0xFF)	# andi t1, t1, 255
             code.append(0x3C000000 | T2 << 16 | y)
             code.append(T1 << 21 | T2 << 16 | T1 << 11 | 0x25)
@@ -146,11 +158,11 @@ def executable(code, data=()):
     return bytes(header) + text
 
 
-def iso(serial, colour, moving=0, exe=None):
+def iso(serial, colour, moving=0, exe=None, cuts=0):
     name = serial.replace("-", "_")
     name = name[:8] + "." + name[8:]					# SLUS_005.94
     system = ("BOOT = cdrom:\\%s;1\r\nTCB = 4\r\nEVENT = 10\r\nSTACK = 801FFF00\r\n" % name).encode()
-    exe = exe if exe is not None else program(colour, moving)
+    exe = exe if exe is not None else program(colour, moving, cuts)
     disc = pycdlib.PyCdlib()
     disc.new(interchange_level=1, sys_ident="PLAYSTATION", vol_ident="SWANTEST")
     disc.add_fp(io.BytesIO(system), len(system), "/SYSTEM.CNF;1")
@@ -195,8 +207,10 @@ def main():
     parser.add_argument("--colour", default="804020", help="the screen's colour, as BBGGRR")
     parser.add_argument("--moving", type=int, default=0, metavar="BLANKS",
                         help="a moving picture, a new one every so many vertical blanks (2: 30 pictures a second)")
+    parser.add_argument("--cuts", type=int, default=0, metavar="PICTURES", choices=(0, 8, 16, 32, 64),
+                        help="with --moving: a cut every so many pictures (another colour, the posts elsewhere)")
     args = parser.parse_args()
-    write(args.cue, raw(iso(args.serial, int(args.colour, 16), args.moving)), args.serial)
+    write(args.cue, raw(iso(args.serial, int(args.colour, 16), args.moving, cuts=args.cuts)), args.serial)
     return 0
 
 

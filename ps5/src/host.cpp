@@ -2397,6 +2397,9 @@ bool applyState(const std::vector<uint8_t>& packed)
 	audio::clear();
 	cheats::apply();
 	rewind::clear();
+	// Frame generation starts again from the next picture: nothing is made
+	// between the moment left and the one loaded.
+	display::forgetGenerated();
 	// Achievements in progress are as they were at that moment (a state
 	// from before they were kept starts them afresh).
 	if (extraSize != 0)
