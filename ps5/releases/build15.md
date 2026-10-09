@@ -6,7 +6,7 @@ A PlayStation (PS1) emulator as a PS5 homebrew title: SwanStation, the libretro 
 > **Piracy is not condoned.** This release contains no games, no BIOS files, no console firmware and no decryption keys, and none will ever be provided or linked to. Use only **legally obtained backups of games you own**, made yourself from your own discs, and BIOS files dumped from **hardware you own**. Please don't ask for, or post links to, games, BIOS files, firmware or keys in issues or discussions: they will be removed.
 
 > [!WARNING]
-> **A work in progress.** This build has not run on my console yet; earlier builds have. "Tested for this release" below says what has been checked where.
+> **A work in progress.** This build works on my console; NFS shares have not been tried there yet. "Tested for this release" below says what has been checked where.
 
 ## What it does
 
@@ -27,7 +27,7 @@ A PlayStation (PS1) emulator as a PS5 homebrew title: SwanStation, the libretro 
 
 ## Tested for this release
 
-Build {{BUILD}} has **not run on my console yet**. What I have a result for one by one, and the build it was seen with:
+Build {{BUILD}} **works on my console**, all but NFS, which I have not tried there yet. What I have a result for one by one, and the build it was seen with:
 
 | What | On the console | Seen with |
 | --- | --- | --- |
@@ -37,12 +37,14 @@ Build {{BUILD}} has **not run on my console yet**. What I have a result for one 
 | RetroAchievements | works | build 10 |
 | A game's own picture settings, Circle to close, the cheat database fetched | works | build 14 |
 | Frame generation | ran, and smeared; reworked in build 13 | build 12 |
+| The scaling filters, picture tube, video signals and colours, frame generation's new settings, files on the share and the USB drive, the libretro cheats | works | build 15 |
+| NFS shares | not tried yet | |
 
 On a PC (the same frontend on the same Vulkan code paths, with the validation layers silent): every scaling filter, the five CRT kinds and the three signals on a test picture; frame generation against pictures of known movement (Balanced 25.8 dB from the true pictures, Quality 25.5, ahead 21.4; the game's picture shown twice is 13.5); NFS versions 3 and 4 against nfs-ganesha (library, starting a game, streamed and read into memory); memory cards shared between two title folders over NFS and SMB, with a conflict and a removal; covers from the share; the whole folder on the share and on a USB drive; the libretro cheats for a disc chtdb lacks; the interface test and the module tests.
 
 ## Known issues
 
-- Most of what is new in this build has not run on a console yet. NFS has met no console socket yet; the files on the share, the USB drive's files, the CRT shaders' speed at 4K and frame generation's Quality kind are untried there.
+- NFS has not been tried on a console yet.
 - Frame generation: a thin fringe where something moves across a background that moves another way; stripes can break; at 20 pictures a second the made ones outnumber the game's and errors show most. Ahead of the game's pictures makes more mistakes where movement turns or stops. Movement told by the emulator itself (from the polygons) and depth for overlaps are not done: a PlayStation game gives nothing that says which polygon is which from one frame to the next.
 - Composite shows strong colour fringes on one-pixel checkerboards, as composite does.
 - A card changed on two consoles before they met keeps the newer one without asking (the other is kept beside it as `.conflict-<date>`). An FTP server can hold games but not your files.
