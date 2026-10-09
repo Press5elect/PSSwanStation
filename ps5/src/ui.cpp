@@ -189,6 +189,17 @@ void begin(const library::Game& game, int slot, int disc)
 		if (!read.empty())
 			serial = read;
 	}
+	{
+		host::LaunchedGame launched;
+		launched.path = game.path;
+		launched.name = game.name;
+		launched.fileTitle = game.fileTitle;
+		launched.region = game.region;
+		launched.discs = game.discs;
+		launched.source = game.source;
+		launched.disc = disc;
+		host::rememberGame(launched);
+	}
 	if (host::start(game.path, slot, disc, serial))
 	{
 		stack.clear();
@@ -1943,6 +1954,12 @@ void frontendItems(int kind, std::vector<Item>& items)
 		items.push_back(toggle("Continue where I left off", &f.autoLoadOnStart,
 				"Starts a game from the state kept when it was last closed, when there is one. The game's details "
 				"page (Triangle) can still start it from the beginning."));
+		items.push_back(toggle("Sleep-safe saving", &f.sleepSafe,
+				"Saves the game's resume state every five minutes of play and whenever the console's own menu (the PS "
+				"button) opens over it, quietly and without a pause. When the console closes PSSwanStation (rest "
+				"mode, or closing it from the console's menu) the next start offers to continue from there. It uses "
+				"the same state as \"Save when a game is closed\". Not yet tried on a console: if PSSwanStation "
+				"stops when a game starts with this on, switch it off."));
 		items.push_back(toggle("Load network games into memory", &f.ramCache,
 				"Reads a game from the network share completely before it starts, so the game never waits for the "
 				"network while it runs. Off starts sooner and reads as the game asks."));

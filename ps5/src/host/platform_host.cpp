@@ -432,6 +432,15 @@ std::vector<std::string> usbDrives()
 	return drives;
 }
 
+int systemUiOverlaid()
+{
+	// A test's "menu": open while the file SWANSTATION_OVERLAY names exists.
+	const char *file = getenv("SWANSTATION_OVERLAY");
+	if (file == nullptr)
+		return -1;
+	return fileExists(file) ? 1 : 0;
+}
+
 uint64_t freeMemory()
 {
 	return 0;
