@@ -21,6 +21,7 @@
 #include "memsearch.h"
 #include "netplay.h"
 #include "recorder.h"
+#include "speedrun.h"
 #include "update.h"
 
 #include <algorithm>
@@ -1382,6 +1383,131 @@ void memoryPage(Frame& f)
 	standardHints(menuPage(f, "Find in memory", host::game().title, items, 900));
 }
 
+// ---------------------------------------------------------- the speedrun timer
+
+namespace
+{
+// A condition from one of the watched values: "<address> u<bits> == <value>".
+std::string conditionFromWatch(const memsearch::Watch& watch, uint32_t value)
+{
+	return memsearch::addressText(watch.address) + format(" u%d == %u", watch.size * 8, value);
+}
+
+}
+
+void speedrunPage(Frame& f)
+{
+	if (!host::running())
+	{
+		pop();
+		return;
+	}
+	options::Frontend& settings = options::frontend();
+	std::vector<Item> items;
+	items.push_back(toggle("Timer over the game", &settings.speedrun,
+			"A timer with the game's splits in the top right corner while it runs, and the shortcuts below. A split "
+			"turns green when it is ahead of your personal best, red when behind, gold when that segment was the "
+			"fastest ever done."));
+	items.push_back(choice("Clock", settings.speedrunClock, { "Game time", "Real time" },
+			"Game time counts the emulator's frames: it is the same on every console and stops while a menu is open. "
+			"Real time is the clock's, menus and all.", [](int i) { options::frontend().speedrunClock = i; }));
+	if (settings.hotkeys)
+		items.push_back(fact("Shortcuts", "OPTIONS held, and",
+				"Cross starts the run, then splits. Square takes the last split back. Triangle passes a split by. Circle "
+				"stops the run, ready to start again."));
+	const speedrun::State state = speedrun::state();
+	items.push_back(action(icon::Play, state == speedrun::Running ? "Split" : "Start", "The same as OPTIONS and Cross.",
+			[] { speedrun::startOrSplit(); }, settings.speedrun));
+	items.push_back(action(icon::Undo, "Take the last split back", "", [] { speedrun::undo(); },
+			settings.speedrun && state != speedrun::Idle));
+	items.push_back(action(icon::Power, "Stop and reset", "", [] { speedrun::reset(); },
+			settings.speedrun && state != speedrun::Idle));
+	items.push_back(fact("Time", speedrun::timeText(speedrun::elapsed()) + (speedrun::practice() ? "  practice" : ""),
+			"A run in which a state is loaded, or rewind or fast forward is used, is practice: it sets no record."));
+	std::vector<speedrun::Split>& splits = speedrun::splits();
+	items.push_back(header("Splits"));
+	const std::vector<memsearch::Watch>& watches = memsearch::watches();
+	for (size_t i = 0; i < splits.size(); i++)
+	{
+		const speedrun::Split& split = splits[i];
+		Item item;
+		item.label = split.name;
+		item.value = (split.when.empty() ? std::string() : "auto  ") + "best " + speedrun::timeText(split.best);
+		item.info = (split.when.empty() ? std::string("Split by hand.") : "Splits by itself when " + split.when + ".")
+				+ "\n\nPersonal best at this split: " + speedrun::timeText(split.best) + ". Fastest this segment was done: "
+				+ speedrun::timeText(split.gold) + ".";
+		item.menu = true;
+		item.choices = { "Rename it", "Remove it", "Split by hand only" };
+		for (const memsearch::Watch& watch : watches)
+			item.choices.push_back("Split when " + (watch.name.empty() ? memsearch::addressText(watch.address) : watch.name)
+					+ " becomesâ¦");
+		item.choose = [i](int what) {
+			if (what == 0)
+			{
+				const std::vector<speedrun::Split>& list = speedrun::splits();
+				askText("The split's name", i < list.size() ? list[i].name : "", false, false,
+						[i](const std::string& name) { speedrun::renameSplit(i, name); });
+			}
+			else if (what == 1)
+				speedrun::removeSplit(i);
+			else if (what == 2)
+				speedrun::setWhen(i, "");
+			else
+			{
+				const size_t w = (size_t)(what - 3);
+				const std::vector<memsearch::Watch>& list = memsearch::watches();
+				if (w >= list.size())
+					return;
+				const memsearch::Watch watch = list[w];
+				askNumber("Split when it becomes", memsearch::read(watch.address, watch.size), [i, watch](uint32_t value) {
+					speedrun::setWhen(i, conditionFromWatch(watch, value));
+				});
+			}
+		};
+		items.push_back(item);
+	}
+	items.push_back(action(icon::List, "Add a split", "A new split at the end, named as you type it.", [] {
+		askText("The new split's name", "", false, false, [](const std::string& name) { speedrun::addSplit(name); });
+	}));
+	{
+		Item item;
+		item.label = "Start by itself";
+		item.icon = icon::Bolt;
+		item.value = speedrun::startWhen().empty() ? "By hand" : speedrun::startWhen();
+		item.info = "The run can start when a watched value becomes a number (a new game's first frame of play), "
+				"instead of with the shortcut.";
+		item.menu = true;
+		item.choices = { "By hand only" };
+		for (const memsearch::Watch& watch : watches)
+			item.choices.push_back("When " + (watch.name.empty() ? memsearch::addressText(watch.address) : watch.name)
+					+ " becomesâ¦");
+		item.choose = [](int what) {
+			if (what == 0)
+			{
+				speedrun::setStartWhen("");
+				return;
+			}
+			const size_t w = (size_t)(what - 1);
+			const std::vector<memsearch::Watch>& list = memsearch::watches();
+			if (w >= list.size())
+				return;
+			const memsearch::Watch watch = list[w];
+			askNumber("Start when it becomes", memsearch::read(watch.address, watch.size), [watch](uint32_t value) {
+				speedrun::setStartWhen(conditionFromWatch(watch, value));
+			});
+		};
+		items.push_back(item);
+	}
+	items.push_back(action(icon::Trash, "Forget the personal best", "The best times and the fastest segments go; the "
+			"splits stay.", [] { speedrun::forgetBest(); }, !splits.empty()));
+	const std::string file = speedrun::file();
+	items.push_back(fact("The splits file", file.compare(0, rootDir.size(), rootDir) == 0
+			? shownRoot() + file.substr(rootDir.size()) : file,
+			"The splits are kept here, and can be written by hand: \"split NAME\", \"split NAME | when 0x8007A3B4 u8 == 3\", "
+			"\"start when ...\". The values come from Find in memory."));
+	standardHints(menuPage(f, "Speedrun timer", host::game().title, items, 900));
+}
+
 void shortcutsPage(Frame& f)
 {
 	std::vector<Item> items;
@@ -1467,6 +1593,20 @@ bool gameShortcuts()
 		else
 			host::loadState(host::quickSlot());
 	}
+	else if (settings.speedrun && hit(Cross | Square | Triangle | Circle))
+	{
+		// The speedrun timer: start and split, take a split back, pass one
+		// by, start again.
+		usedAsKey = true;
+		if (hit(Cross))
+			speedrun::startOrSplit();
+		else if (hit(Square))
+			speedrun::undo();
+		else if (hit(Triangle))
+			speedrun::skip();
+		else
+			speedrun::reset();
+	}
 	else if (hit(Left | Right))
 	{
 		usedAsKey = true;
@@ -1530,6 +1670,76 @@ void gameMarks()
 		panel(at(x, 30), at(x + w, 82), IM_COL32(10, 12, 20, 215), 26);
 		text(at(x + 26, 43), t.accent, symbol, Body, 24);
 		text(at(x + 70, 42), t.text, mark, Bold, 24);
+	}
+	// The speedrun timer and the splits, top right.
+	if (options::frontend().speedrun)
+	{
+		const std::vector<speedrun::Split>& splits = speedrun::splits();
+		const speedrun::State state = speedrun::state();
+		const int64_t elapsed = speedrun::elapsed();
+		const size_t atSplit = speedrun::current();
+		const ImU32 gold = IM_COL32(255, 196, 64, 255);
+		const size_t shown = std::min<size_t>(splits.size(), 6);
+		size_t first = 0;
+		if (splits.size() > shown)
+			first = std::min(atSplit > 2 ? atSplit - 2 : 0, splits.size() - shown);
+		const float w = 440, x1 = W - 30, x0 = x1 - w;
+		const float rowH = 34, top = 30;
+		const float h = 58 + shown * rowH + 66;
+		panel(at(x0, top), at(x1, top + h), IM_COL32(10, 12, 20, 210), 16);
+		text(at(x0 + 22, top + 14), t.dim, speedrun::practice() ? "Practice (" + speedrun::practiceReason() + ")"
+				: options::frontend().speedrunClock == 1 ? "Real time" : "Game time", Body, 20);
+		int64_t previous = 0;
+		for (size_t i = 0; i < first; i++)
+			if (splits[i].time >= 0)
+				previous = splits[i].time;
+		for (size_t r = 0; r < shown; r++)
+		{
+			const size_t i = first + r;
+			const speedrun::Split& split = splits[i];
+			const float y = top + 48 + r * rowH;
+			const bool current = state == speedrun::Running && i == atSplit;
+			if (current)
+				panel(at(x0 + 10, y - 3), at(x1 - 10, y + rowH - 3), withAlpha(t.accent, 0.18f), 8);
+			textFit(at(x0 + 22, y), px(w - 210), current ? t.text : t.dim, split.name, current ? Bold : Body, 22);
+			std::string right;
+			ImU32 colour = t.dim;
+			if (split.time >= 0)
+			{
+				const int64_t segment = split.time - previous;
+				previous = split.time;
+				if (split.best >= 0)
+				{
+					right = speedrun::deltaText(split.time - split.best);
+					colour = split.gold >= 0 && segment <= split.gold ? gold : split.time <= split.best ? t.good : t.bad;
+				}
+				else
+				{
+					right = speedrun::timeText(split.time);
+					colour = t.text;
+				}
+			}
+			else if (current && split.best >= 0 && elapsed > split.best)
+			{
+				right = speedrun::deltaText(elapsed - split.best);
+				colour = t.bad;
+			}
+			else
+				right = speedrun::timeText(split.best);
+			const float rw = toUnits(measure(right, Body, 22).x);
+			text(at(x1 - 22 - rw, y), colour, right, Body, 22);
+		}
+		const std::string clockText = speedrun::timeText(elapsed);
+		ImU32 clockColour = t.text;
+		if (state == speedrun::Running && atSplit < splits.size() && splits[atSplit].best >= 0 && elapsed > splits[atSplit].best)
+			clockColour = t.bad;
+		else if (state == speedrun::Finished && !splits.empty() && splits.back().best >= 0 && elapsed <= splits.back().best
+				&& !speedrun::practice())
+			clockColour = t.good;
+		else if (state == speedrun::Idle)
+			clockColour = t.dim;
+		const float cw = toUnits(measure(clockText, Bold, 44).x);
+		text(at(x1 - 22 - cw, top + h - 62), clockColour, clockText, Bold, 44);
 	}
 	// The values watched (Find in memory), top left.
 	if (options::frontend().watchOverlay && !memsearch::watches().empty() && !host::restricted())
@@ -2524,6 +2734,8 @@ void pauseMoreItems(std::vector<Item>& items)
 	if (options::frontend().hotkeys)
 		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
 				"menu: what to hold.", [] { push(Page::Shortcuts); }));
+	items.push_back(action(icon::Clock, "Speedrun timer", "A timer with splits over the game, started and split by hand "
+			"or by the game's memory, with your personal best.", [] { push(Page::Speedrun); }));
 	{
 		Item item = action(icon::Search, "Find in memory", "Looks for a number in the game's memory (the lives, the "
 				"money) step by step, as cheats are found; what is found can be watched over the game, held at a value, "
