@@ -282,9 +282,13 @@ Picture (Settings):
   Scaling filter     smooth, square pixels, sharp bilinear, FSR 1, NIS or
                      CAS (below); "Sharpening" for the last three.
   Picture preset     Original (the PlayStation's own resolution, with a picture
-                     tube's lines), Sharp (8x, full colour, PGXP) or Enhanced
-                     (Sharp with xBR textures and 4x MSAA), set for every game
-                     at once; each setting can still be changed by itself.
+                     tube's lines), Sharp (8x, full colour, PGXP), Enhanced
+                     (Sharp with xBR textures and 4x MSAA) or Speedrun (the
+                     picture as the PlayStation drew it: its own resolution
+                     and colours, square pixels, no PGXP, picture tube,
+                     signal, frame generation, run-ahead, widescreen or NTSC
+                     timing hack), set for every game at once; each setting
+                     can still be changed by itself.
   Picture tube       scanlines over the game's picture, soft or full, and the
                      tube's mask; or a whole tube, crt-guest-advanced, in five
                      kinds (below).

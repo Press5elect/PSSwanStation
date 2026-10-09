@@ -252,7 +252,7 @@ std::vector<Field> fields()
 		{ "fg_debug", nullptr, &c.fgDebug, 0, 1 },
 		{ "crt", &c.crt, nullptr, 0, 8 },
 		{ "border", &c.border, nullptr, 0, 3 },
-		{ "preset", &c.preset, nullptr, 0, 3 },
+		{ "preset", &c.preset, nullptr, 0, 4 },
 		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },
 		{ "auto_load", nullptr, &c.autoLoadOnStart, 0, 1 },
 		{ "sleep_safe", nullptr, &c.sleepSafe, 0, 1 },
@@ -379,14 +379,11 @@ void migrateGame(std::map<std::string, std::string>& values)
 		if (values.count("picture_fg_quality") == 0)
 			values["picture_fg_quality"] = "0";
 	}
-	// A build 15 made before its release had a scaler (6) and a preset (4) that
-	// are gone: back to the plain picture, not to the nearest one.
+	// A build 15 made before its release had a scaler (6) that is gone: back
+	// to the plain picture, not to the nearest one.
 	const auto scaler = values.find("picture_scaler");
 	if (scaler != values.end() && scaler->second == "6")
 		scaler->second = "0";
-	const auto preset = values.find("picture_preset");
-	if (preset != values.end() && preset->second == "4")
-		preset->second = "0";
 }
 
 // The loaded game's own value of a picture setting, if it has one. Called
@@ -515,12 +512,9 @@ void loadFrontend()
 			if (i != 0 && current.filesAt == 0)
 				current.filesAt = 1;
 		}
-		// A build 15 made before its release had a scaler (6) and a preset (4)
-		// that are gone.
+		// A build 15 made before its release had a scaler (6) that is gone.
 		else if (!strcmp(key, "scaler") && i == 6)
 			current.scaler = 0;
-		else if (!strcmp(key, "preset") && i == 4)
-			current.preset = 0;
 		else
 			for (const Field& field : known)
 				if (!strcmp(key, field.name))
