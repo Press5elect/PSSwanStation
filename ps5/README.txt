@@ -545,15 +545,17 @@ go back to one.
 Texture packs
 -------------
 
-Replacement pictures for a game's 2D art, as made for DuckStation (files named
-vram-write-<number>.png), go in textures/<serial>/ and are used when "Enable
-VRAM Write Texture Replacement" is on (Enhancement). This emulator knows that
-one kind of pack, not the newer kind that replaces a 3D game's textures.
+Replacement pictures for a game's 2D art, in the usual vram-write format
+(files named vram-write-<number>.png), go in textures/<serial>/ and are used
+when "Enable VRAM Write Texture Replacement" is on (Enhancement). This emulator
+knows that one kind of pack, not the newer kind that replaces a 3D game's
+textures.
 
-They can stay on a USB drive: a folder named textures inside the drive's games
-folder, as psx/textures/<serial>/ (with "USB drives" on). A game's pack in the
-title's own textures/ comes first; a game's details, under More, say where
-the one in use is.
+They can stay on a USB drive, in PSSwanStation/textures/<serial>/ at the top
+of the drive (with "USB drives" on). A game's pack in the title's own
+textures/ comes first, then the USB drives', then a folder named textures
+inside a drive's games folder (psx/textures/<serial>/, where build 15 and
+before looked). A game's details, under More, say where the one in use is.
 
 
 RetroAchievements

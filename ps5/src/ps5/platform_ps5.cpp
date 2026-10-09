@@ -398,6 +398,20 @@ std::vector<std::string> usbGameDirs()
 	return usbDirs;
 }
 
+std::vector<std::string> usbDrives()
+{
+	std::vector<std::string> drives;
+	if (!elevated)
+		return drives;
+	for (int i = 0; i < 8; i++)
+	{
+		const std::string drive = "/mnt/usb" + std::to_string(i);
+		if (dirExists(drive))
+			drives.push_back(drive);
+	}
+	return drives;
+}
+
 uint64_t freeMemory()
 {
 	int64_t start = 0;

@@ -155,6 +155,9 @@ bool startedSafely();
 // USB drives: whether they can be read at all, and the folders found on them.
 bool usbAvailable();
 std::vector<std::string> usbGameDirs();
+// The top of each USB drive that is plugged in and can be read (/mnt/usb0),
+// without a trailing '/'.
+std::vector<std::string> usbDrives();
 
 // Free memory, for the About page: bytes, or 0 when unknown.
 uint64_t freeMemory();
@@ -588,8 +591,9 @@ bool restricted();
 bool netplayHost();
 bool netplayJoin(const std::string& address);
 void netplayStop();
-// Where texture packs are looked for: <root>textures, then a folder named
-// textures in each USB drive's games folder. A game's pack is <folder>/<serial>/.
+// Where texture packs are looked for: <root>textures, then PSSwanStation/textures
+// on each USB drive, then (where build 15 and before looked) a folder named
+// textures in a USB drive's games folder. A game's pack is <folder>/<serial>/.
 std::vector<std::string> textureFolders();
 // How many files a game's pack holds, in the first of those folders that has
 // one (`where`: which).

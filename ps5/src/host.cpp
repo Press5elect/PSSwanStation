@@ -2018,10 +2018,22 @@ void nameTextureFolders()
 
 std::vector<std::string> textureFolders()
 {
-	std::vector<std::string> folders = { rootDir + "textures" };
-	// On a USB drive: a folder named textures in its games folder.
+	std::vector<std::string> folders;
+	const auto add = [&folders](std::string folder) {
+		while (folder.size() > 1 && folder.back() == '/')
+			folder.pop_back();
+		if (std::find(folders.begin(), folders.end(), folder) == folders.end())
+			folders.push_back(folder);
+	};
+	add(rootDir + "textures");
+	// On a USB drive: the title's own folder there, PSSwanStation/textures
+	// (the same folder as above when the files are kept on the drive).
+	for (const std::string& drive : platform::usbDrives())
+		add(drive + "/" + storage::UsbFolder + "/textures");
+	// Where build 15 and before looked: a folder named textures in a drive's
+	// games folder. Still read, after the others.
 	for (const std::string& games : platform::usbGameDirs())
-		folders.push_back(games + "/textures");
+		add(games + "/textures");
 	return folders;
 }
 
