@@ -40,6 +40,7 @@
 #include "display.h"
 #include "memcard.h"
 #include "netplay.h"
+#include "memsearch.h"
 #include "recorder.h"
 
 #include <libretro.h>
@@ -1423,6 +1424,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	options::loadGame(current.serial);
 	cheats::loadFor(current.serial, firstDiscSerial);
 	cheats::apply();
+	memsearch::loadFor(current.serial);
 	pacing = 1.0;
 	ranThisSecond = 0;
 	secondStarted = now();
@@ -1502,6 +1504,7 @@ void stop()
 	softwareTexture = nullptr;
 	audio::clear();
 	cheats::unload();
+	memsearch::unload();
 	options::loadGame("");
 	smb::releaseImages();
 	current = GameInfo();
@@ -1545,6 +1548,9 @@ void runOne(bool keep)
 		playbackStart(getenv("SWANSTATION_PLAY"));
 #endif
 	frameInputs();
+	// Values frozen in the game's memory (Find in memory) are written back.
+	if (!netOn && !restricted())
+		memsearch::frame();
 #if defined(SWANSTATION_HOST)
 	// A test reads what the game is given.
 	if (getenv("SWANSTATION_INPUT_LOG") != nullptr && emulatedFrames % 30 == 0)
@@ -2602,6 +2608,7 @@ bool setDisc(int index)
 			options::loadGame(serial);
 			cheats::loadFor(serial, firstDiscSerial);
 			cheats::apply();
+			memsearch::loadFor(serial);
 		}
 		if (options::frontend().achievements)
 			achievements::discChanged(trayPath());
