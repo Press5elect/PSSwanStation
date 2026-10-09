@@ -166,6 +166,7 @@ set(frontend_sources
 	src/storage.cpp
 	src/rewind.cpp
 	src/recorder.cpp
+	src/memsearch.cpp
 	src/music.cpp
 	src/memcard.cpp
 	src/netplay.cpp

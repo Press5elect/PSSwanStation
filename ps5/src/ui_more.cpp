@@ -18,6 +18,7 @@
 #include "achievements.h"
 #include "display.h"
 #include "memcard.h"
+#include "memsearch.h"
 #include "netplay.h"
 #include "recorder.h"
 #include "update.h"
@@ -1193,6 +1194,194 @@ void safeStartPage(Frame& f)
 
 // ---------------------------------------------------------- the shortcuts
 
+// ------------------------------------------------- values in the game's memory
+
+namespace
+{
+uint32_t memoryValue;
+
+// A value typed: decimal, or hexadecimal after 0x.
+void askNumber(const std::string& title, uint32_t initial, std::function<void(uint32_t)> done)
+{
+	askText(title, std::to_string(initial), false, false, [done](const std::string& typed) {
+		const std::string clean = trim(typed);
+		if (clean.empty())
+			return;
+		char *end = nullptr;
+		const unsigned long value = strtoul(clean.c_str(), &end, 0);
+		if (end == clean.c_str())
+			return;
+		done((uint32_t)value);
+	});
+}
+
+std::string valueText(uint32_t value, int bytes)
+{
+	const int digits = bytes * 2;
+	return format("%u (0x%0*X)", value, digits, value);
+}
+
+// The value kept at the address as an entry of the game's own cheat file,
+// switched on.
+void makeCheat(uint32_t address, int bytes, uint32_t value, const std::string& name)
+{
+	const std::string serial = host::game().serial;
+	if (serial.empty())
+	{
+		message("No cheat was made", "This game has no serial number to name its cheat file by.");
+		return;
+	}
+	const std::string folder = rootDir + "cheats";
+	makeDir(folder);
+	const std::string path = folder + "/" + serial + ".cht";
+	std::vector<uint8_t> old;
+	readFile(path, old);
+	std::string text(old.begin(), old.end());
+	if (!text.empty() && text.back() != '\n')
+		text += "\n";
+	const std::string title = name.empty() ? memsearch::addressText(address) + " = " + std::to_string(value) : name;
+	text += "\n[" + title + "]\nType = Gameshark\nActivation = EndFrame\nDescription = Found in the game's memory with "
+			"PSSwanStation: " + memsearch::addressText(address) + " kept at " + valueText(value, bytes) + ".\n"
+			+ memsearch::gameSharkCode(address, bytes, value) + "\n";
+	if (!writeFile(path, text.data(), text.size()))
+	{
+		message("No cheat was made", "The cheat file " + path + " could not be written.");
+		return;
+	}
+	cheats::loadFor(serial);
+	std::vector<cheats::Cheat>& list = cheats::list();
+	for (size_t i = 0; i < list.size(); i++)
+		if (list[i].name == title && !list[i].patch)
+		{
+			cheats::setEnabled(i, true);
+			break;
+		}
+	host::addMessage("Cheat made and switched on: " + title, 4.0);
+}
+}
+
+void memoryPage(Frame& f)
+{
+	std::vector<Item> items;
+	if (!host::running())
+	{
+		pop();
+		return;
+	}
+	if (host::restricted() || netplay::active())
+	{
+		items.push_back(fact("Not now", "", host::restricted() ? "RetroAchievements' hardcore mode allows no changes to the "
+				"game's memory." : "Netplay keeps both consoles' memory the same, so nothing is changed in it meanwhile."));
+		standardHints(menuPage(f, "Find in memory", host::game().title, items, 900));
+		return;
+	}
+	const int bytes = memsearch::size();
+	items.push_back(header("Search"));
+	items.push_back(choice("Size of the value", bytes == 4 ? 2 : bytes == 2 ? 1 : 0,
+			{ "1 byte (0 to 255)", "2 bytes (0 to 65535)", "4 bytes" },
+			"How large the number looked for is. Most games keep lives, health and money in one or two bytes. Changing "
+			"it starts the search again.", [](int i) { memsearch::setSize(i == 2 ? 4 : i == 1 ? 2 : 1); }));
+	{
+		Item item;
+		item.label = "Value";
+		item.value = valueText(memoryValue, bytes);
+		item.info = "The number the steps that compare with a value use. Left and Right change it by one; Cross types "
+				"it (0x before it for hexadecimal).";
+		item.adjust = [](int step) { memoryValue = (uint32_t)((int64_t)memoryValue + step); };
+		item.activate = [] { askNumber("The value", memoryValue, [](uint32_t value) { memoryValue = value; }); };
+		items.push_back(item);
+	}
+	items.push_back(action(icon::Search, memsearch::searching() ? "Start again" : "Start a search",
+			"Every place in the game's memory becomes a candidate, as it is now. Then play on, and come back to narrow "
+			"them: by a value you know (the lives shown), or by what happened (it went down, it stayed the same).",
+			[] { memsearch::begin(); }));
+	for (int how = 0; how < memsearch::CompareCount; how++)
+	{
+		const memsearch::Compare compare = (memsearch::Compare)how;
+		const bool value = memsearch::compareNeedsValue(compare);
+		items.push_back(action(icon::Check, memsearch::compareName(compare),
+				value ? "Keeps the candidates that are so against the value above, now."
+				: "Keeps the candidates that are so against what they were at the last step (when the search began, or "
+				"was last narrowed).", [compare] { memsearch::narrow(compare, memoryValue); },
+				memsearch::searching() || value));
+	}
+	items.push_back(fact("Candidates", memsearch::searching() ? format("%llu", (unsigned long long)memsearch::count())
+			: std::string("No search yet"), memsearch::searching() ? format("After %d step%s. A handful left is when to "
+			"look at them: each can be watched, set or made a cheat.", memsearch::steps(), memsearch::steps() == 1 ? "" : "s")
+			: std::string("Start a search first.")));
+	if (memsearch::searching() && memsearch::count() > 0)
+	{
+		const size_t most = 40;
+		items.push_back(header(memsearch::count() > most ? format("The first %zu of them", most) : std::string("Found")));
+		for (const memsearch::Result& result : memsearch::results(most))
+		{
+			Item item;
+			item.label = memsearch::addressText(result.address);
+			item.value = format("%u  (was %u)", result.value, result.previous);
+			item.info = item.label + " holds " + valueText(result.value, bytes) + "; at the last step it held "
+					+ valueText(result.previous, bytes) + ".";
+			item.menu = true;
+			item.choices = { "Watch it", "Set a value", "Make a cheat that keeps this value" };
+			const uint32_t address = result.address, now = result.value;
+			item.choose = [address, bytes, now](int what) {
+				if (what == 0)
+					memsearch::addWatch(address, bytes);
+				else if (what == 1)
+					askNumber("The new value", now, [address, bytes](uint32_t value) { memsearch::write(address, bytes, value); });
+				else
+					makeCheat(address, bytes, now, "");
+			};
+			items.push_back(item);
+		}
+	}
+	std::vector<memsearch::Watch>& watches = memsearch::watches();
+	items.push_back(header("Watched"));
+	if (watches.empty())
+		items.push_back(fact("Nothing yet", "", "A value found above can be watched: it is then shown here and, if you "
+				"want, over the game, and can be frozen (held at one value). The list is kept for this game."));
+	for (size_t i = 0; i < watches.size(); i++)
+	{
+		const memsearch::Watch& watch = watches[i];
+		const uint32_t now = memsearch::read(watch.address, watch.size);
+		Item item;
+		item.icon = watch.frozen ? icon::Lock : nullptr;
+		item.label = watch.name.empty() ? memsearch::addressText(watch.address) : watch.name;
+		item.value = valueText(now, watch.size) + (watch.frozen ? "  frozen" : "");
+		item.info = memsearch::addressText(watch.address) + format(", %d byte%s. ", watch.size, watch.size == 1 ? "" : "s")
+				+ (watch.frozen ? "Frozen: written back as " + valueText(watch.frozenValue, watch.size)
+				+ " every frame, so the game cannot change it." : std::string("Not frozen."));
+		item.menu = true;
+		item.choices = { watch.frozen ? "Unfreeze" : "Freeze at this value", "Set a value",
+			"Make a cheat that keeps this value", "Name it", "Stop watching" };
+		item.choose = [i, now](int what) {
+			std::vector<memsearch::Watch>& list = memsearch::watches();
+			if (i >= list.size())
+				return;
+			if (what == 0)
+				memsearch::setFrozen(i, !list[i].frozen);
+			else if (what == 1)
+				askNumber("The new value", now, [i](uint32_t value) { memsearch::setWatchValue(i, value); });
+			else if (what == 2)
+				makeCheat(list[i].address, list[i].size, now, list[i].name);
+			else if (what == 3)
+				askText("A name for it", list[i].name, false, false, [i](const std::string& name) {
+					std::vector<memsearch::Watch>& again = memsearch::watches();
+					if (i < again.size())
+					{
+						again[i].name = trim(name);
+						memsearch::save();
+					}
+				});
+			else
+				memsearch::removeWatch(i);
+		};
+		items.push_back(item);
+	}
+	items.push_back(toggle("Show them over the game", &options::frontend().watchOverlay,
+			"The watched values, in a corner over the running game."));
+	standardHints(menuPage(f, "Find in memory", host::game().title, items, 900));
+}
+
 void shortcutsPage(Frame& f)
 {
 	std::vector<Item> items;
@@ -1341,6 +1530,25 @@ void gameMarks()
 		panel(at(x, 30), at(x + w, 82), IM_COL32(10, 12, 20, 215), 26);
 		text(at(x + 26, 43), t.accent, symbol, Body, 24);
 		text(at(x + 70, 42), t.text, mark, Bold, 24);
+	}
+	// The values watched (Find in memory), top left.
+	if (options::frontend().watchOverlay && !memsearch::watches().empty() && !host::restricted())
+	{
+		const std::vector<memsearch::Watch>& watches = memsearch::watches();
+		const size_t rows = std::min<size_t>(watches.size(), 10);
+		float widest = 0;
+		std::vector<std::string> lines;
+		for (size_t i = 0; i < rows; i++)
+		{
+			const memsearch::Watch& watch = watches[i];
+			const uint32_t value = memsearch::read(watch.address, watch.size);
+			lines.push_back((watch.name.empty() ? memsearch::addressText(watch.address) : watch.name) + "   "
+					+ std::to_string(value) + (watch.frozen ? "  \xe2\x80\xa2" : ""));
+			widest = std::max(widest, toUnits(measure(lines.back(), Body, 22).x));
+		}
+		panel(at(30, 30), at(30 + widest + 40, 30 + 20 + rows * 32.f), IM_COL32(10, 12, 20, 200), 14);
+		for (size_t i = 0; i < rows; i++)
+			text(at(50, 40 + i * 32.f), watches[i].frozen ? t.accent : t.text, lines[i], Body, 22);
 	}
 	// A light gun's aim, unless the emulator draws one itself.
 	const char *own = options::get("swanstation_Controller_ShowCrosshair");
@@ -2316,6 +2524,14 @@ void pauseMoreItems(std::vector<Item>& items)
 	if (options::frontend().hotkeys)
 		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
 				"menu: what to hold.", [] { push(Page::Shortcuts); }));
+	{
+		Item item = action(icon::Search, "Find in memory", "Looks for a number in the game's memory (the lives, the "
+				"money) step by step, as cheats are found; what is found can be watched over the game, held at a value, "
+				"or made a cheat.", [] { push(Page::Memory); }, !host::restricted());
+		if (!memsearch::watches().empty())
+			item.value = format("%d watched", (int)memsearch::watches().size());
+		items.push_back(item);
+	}
 }
 
 }
