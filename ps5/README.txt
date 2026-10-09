@@ -341,13 +341,17 @@ and blends only the step between two, so pixels stay even and crisp at any
 size. FSR 1 (AMD FidelityFX Super Resolution 1) and NIS (NVIDIA Image
 Scaling, its scaler with NVIDIA's own filter tables) enlarge with filters
 that follow edges, then sharpen; CAS (AMD Contrast Adaptive Sharpening)
-enlarges smoothly and then sharpens fine detail without halos. NIS grows a
-picture at most twice each way, so a larger step starts from the picture
-made half the screen's size with sharp bilinear. FSR and NIS are worth most
-with a lower Internal Resolution Scale (Enhancement): 3x or 4x with them
-looks close to a higher scale and leaves the console more time for
-everything else. A picture already as large as the screen is left alone. This is FSR 1, the kind that works on one finished
-picture. FSR 2 and 3 rebuild a picture from several frames and need each
+sharpens fine detail without halos and enlarges smoothly (above twice the
+size it sharpens the picture at its own size first, where the detail is).
+FSR and NIS are made to enlarge at most twice each way: further, FSR
+enlarges twice and the rest is smooth, and NIS starts from the picture made
+half the screen's size with sharp bilinear. FSR and NIS are worth most with
+a lower Internal Resolution Scale (Enhancement): 3x or 4x with them looks
+close to a higher scale and leaves the console more time for everything
+else. A picture already as large as the screen is left alone, and one
+larger than the screen (8x on a 1080p screen) is made smaller with each
+pixel the average of all that was drawn under it, whichever filter is
+chosen. This is FSR 1, the kind that works on one finished picture. FSR 2 and 3 rebuild a picture from several frames and need each
 pixel's depth and movement, which an emulated PlayStation does not give.
 
 The picture tube's CRT kinds are crt-guest-advanced, by guest(r), from the
