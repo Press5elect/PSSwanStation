@@ -215,8 +215,9 @@ Then, in Settings, Games and network:
   "Memory cards on the network share"  each game's card is kept in the
         share's "memory cards" folder as well, and brought up to date both
         ways: several consoles in one home play on the same cards.
-  "Covers from the network share"      covers in the share's "covers" folder
-        are brought to this console.
+  "Covers on the network share"        the covers are kept in the share's
+        "covers" folder too, both ways: a cover put there from a PC, or
+        downloaded or chosen on any console, reaches every console.
   "Bring my files up to date now"      does it at once.
 It happens when PSSwanStation starts, when a game closes, and when asked;
 games wait while it runs. A card changed on two consoles since they last met
@@ -224,6 +225,15 @@ keeps the newer one, and the other is kept beside it as
 <name>.conflict-<date>-<time>, so nothing is lost. A card removed on one
 console is removed on the others (the removed copy is kept in
 data/sync/removed/).
+
+The cards' backups (Card backups) are sent to the share as well, whenever the
+cards are kept there: into "card backups/<this console's name>/", one folder
+for each console, so that consoles never write over each other's. The share
+follows the console (a backup it no longer keeps goes there too), and nothing
+is brought back from it: to restore one on a new console, copy it from there
+into data/saves/backups/<card>/. The console's name is in
+data/console-name.txt, made at the first sync; change it there (letters,
+digits, - and _) to tell your consoles apart.
 
 Covers: a cover is looked for in covers/ by the game's file name. With
 "Download covers" on, missing ones are fetched from the libretro thumbnails

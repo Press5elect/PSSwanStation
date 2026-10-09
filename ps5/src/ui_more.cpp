@@ -2660,7 +2660,9 @@ void moreSettings(int kind, std::vector<Item>& items)
 						"played on another console brings its card here before it starts, and one played here sends its "
 						"card there when it closes, so every console at home has the same saves. Should two consoles have "
 						"played the same game on their own copies, the one played last is used and the other is kept beside "
-						"it (.conflict-<date>).",
+						"it (.conflict-<date>). The copies kept of each card (Card backups) are sent there too, into \"card "
+						"backups\", in a folder of this console's own (its name is in data/console-name.txt): a copy off the "
+						"console, should it ever be lost.",
 						[] { netfiles::now(); });
 				if (noShare)
 				{
@@ -2676,10 +2678,11 @@ void moreSettings(int kind, std::vector<Item>& items)
 				items.push_back(item);
 			}
 			{
-				Item item = toggle("Covers from the network share", &f.coversFromShare,
-						"Brings the covers of the share's \"files\" folder (its \"covers\" folder, named as the games' "
-						"files are) into this console's covers, where it has none or another one: put covers there once, "
-						"from a PC, and every console has them.",
+				Item item = toggle("Covers on the network share", &f.coversFromShare,
+						"Keeps the covers in the share's \"files\" folder too (its \"covers\" folder, named as the games' "
+						"files are), both ways: a cover put there from a PC, or downloaded or chosen on any console, is on "
+						"every console. A cover removed on one is removed on the others (this console keeps it in "
+						"data/sync/removed).",
 						[] { netfiles::now(); });
 				if (noShare)
 				{
