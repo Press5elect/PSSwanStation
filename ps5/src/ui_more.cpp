@@ -22,6 +22,8 @@
 #include "netplay.h"
 #include "recorder.h"
 #include "speedrun.h"
+#include "web.h"
+#include "qrcodegen.hpp"
 #include "update.h"
 
 #include <algorithm>
@@ -1508,6 +1510,53 @@ void speedrunPage(Frame& f)
 	standardHints(menuPage(f, "Speedrun timer", host::game().title, items, 900));
 }
 
+// ------------------------------------------------------------- the web panel
+
+void webPage(Frame& f)
+{
+	const Theme& t = theme();
+	options::Frontend& settings = options::frontend();
+	std::vector<Item> items;
+	items.push_back(toggle("Phone and web control", &settings.web,
+			"Lets a phone, a tablet or a computer on the same network control PSSwanStation in its web browser: start "
+			"and close games, save and load states, the speedrun timer, some settings, and your files - put a disc "
+			"straight into the library from the computer. Scan the code with the phone's camera."));
+	const std::string url = web::url();
+	items.push_back(fact("Address", web::listening() && !url.empty() ? format("http://%s", url.substr(7, url.find('/', 7) - 7).c_str())
+			: std::string("Not listening"), web::status() + ". The address in the code carries the key; without it the "
+			"panel does nothing, so another device on the network cannot use it."));
+	items.push_back(fact("Key", web::key(), "Part of the address in the code. Make a new one if someone should no longer "
+			"reach the panel."));
+	items.push_back(action(icon::Sync, "Make a new key", "The old address stops working at once; scan the new code.",
+			[] { web::newKey(); }));
+	standardHints(menuPage(f, "Phone and web control", "", items, 780));
+	if (!web::listening() || url.empty())
+		return;
+	// The code, on white, with its quiet edge, in the space on the right.
+	try
+	{
+		const qrcodegen::QrCode code = qrcodegen::QrCode::encodeText(url.c_str(), qrcodegen::QrCode::Ecc::MEDIUM);
+		const int n = code.getSize();
+		const float W = unitsWide();
+		const float side = std::min(W - 64 - (64 + 780 + 24) - 40, 470.f);
+		const float x0 = 64 + 780 + 24 + ((W - 64) - (64 + 780 + 24) - side) * 0.5f, y0 = 420;
+		const float module = side / (float)(n + 8);
+		ImDrawList *list = draw();
+		list->AddRectFilled(at(x0, y0), at(x0 + side, y0 + side), IM_COL32(255, 255, 255, 255), px(12));
+		for (int y = 0; y < n; y++)
+			for (int x = 0; x < n; x++)
+				if (code.getModule(x, y))
+				{
+					const float mx = x0 + (x + 4) * module, my = y0 + (y + 4) * module;
+					list->AddRectFilled(at(mx, my), at(mx + module + 0.25f, my + module + 0.25f), IM_COL32(0, 0, 0, 255));
+				}
+		textFit(at(x0, y0 + side + 16), px(side), t.dim, url, Body, 20);
+	}
+	catch (...)
+	{
+	}
+}
+
 void shortcutsPage(Frame& f)
 {
 	std::vector<Item> items;
@@ -2472,6 +2521,12 @@ void moreSettings(int kind, std::vector<Item>& items)
 				"can call, none that this title knows of gives it. The console's own control centre (the PS button) shows it."));
 		break;
 	case 4:
+		{
+			Item item = action(icon::Network, "Phone and web control", "Control PSSwanStation from a phone or a computer "
+					"on the same network, in its browser: scan the code this opens.", [] { push(Page::Web); });
+			item.value = web::listening() ? "On" : "Off";
+			items.push_back(item);
+		}
 		{
 			Item item = action(icon::Card, "Memory cards", "What is saved on each card: copy, delete, bring in, put out, "
 					"and go back to an earlier copy.", [] { push(Page::Cards); }, !host::running());

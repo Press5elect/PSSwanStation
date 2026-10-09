@@ -54,6 +54,8 @@ NVIDIA Image Scaling         MIT              NIS-LICENSE.txt          github.co
 crt-guest-advanced           GPL-2.0-or-      GPL-3.0.txt              github.com/libretro/slang-shaders, by
 (the picture tube)           later                                     guest(r): compiled to SPIR-V, used under
                                                                        GPL-3.0 as its licence allows
+QR Code generator (the web   MIT              MIT.txt                  github.com/nayuki/QR-Code-generator
+panel's code)                                                          (Project Nayuki), cpp/ unmodified
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,
                              domain                                    github.com/mackron/dr_libs
 Roboto (font)                Apache-2.0       Apache-2.0.txt           Google

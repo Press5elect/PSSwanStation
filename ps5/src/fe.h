@@ -348,6 +348,7 @@ struct Frontend
 	bool sleepSafe = false;
 	bool verboseLog = false;
 	bool watchOverlay = true;	// the values watched (memsearch) shown over the game
+	bool web = false;			// the web panel for a phone or a computer (web.cpp), on port 3311
 	bool speedrun = false;		// the speedrun timer over the game, its shortcuts and its conditions
 	int speedrunClock = 0;		// 0 game time (the emulator's frames), 1 real time	// everything the emulator says into the boot log, and a line about speed every ten seconds
 	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
@@ -463,6 +464,11 @@ void setVisible(const std::string& key, bool visible);
 // values stay), and the frontend's own likewise.
 void resetGlobal();
 void resetFrontend();
+// One of the frontend's settings by its name in frontend.cfg, as a whole
+// number (a switch 0 or 1; a picture setting's value for every game). False
+// when there is no such setting. Setting it saves frontend.cfg.
+bool frontendValue(const std::string& name, int& value);
+bool setFrontendValue(const std::string& name, int value);
 }
 
 // ------------------------------------------------------------------ host.cpp
