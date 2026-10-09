@@ -2065,6 +2065,8 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Build", format("%d  \xc2\xb7  work in progress  \xc2\xb7  %s", BuildNumber, BuildDate),
 			format("Build %d of %s. A work in progress: not everything has been run on a console yet.", BuildNumber,
 			BuildDate)));
+	items.push_back(action(icon::Star, "What's new", "What was added, changed and fixed in every build, newest first.",
+			[] { push(Page::WhatsNew); }));
 	items.push_back(fact("Developer", Developer, std::string("The PS5 port and its interface: ") + Developer + "."));
 	items.push_back(fact("Emulator", format("%s %s", info.library_name != nullptr ? info.library_name : "SwanStation",
 			info.library_version != nullptr ? info.library_version : ""),
@@ -4169,6 +4171,7 @@ void frame()
 		case Page::Speedrun: speedrunPage(f); break;
 		case Page::Web: webPage(f); break;
 		case Page::Shaders: shadersPage(f); break;
+		case Page::WhatsNew: whatsNewPage(f); break;
 		}
 		if (game)
 			drawMessages();

@@ -393,6 +393,8 @@ struct Frontend
 	// the console). 1 and 2 need the sandbox left; 3's copy is kept as 1 is where
 	// it can be, else in the title's folder.
 	int filesAt = 0;
+	// The newest build whose "What's new" has been shown on this console.
+	int seenBuild = 0;
 	bool cardsOnShare = false;		// copies of the memory cards in the share's "files" folder
 	bool coversFromShare = false;	// covers brought from the share's "files" folder
 	int cardBackups = 10;		// copies kept of each memory card that changed; 0 none

@@ -29,6 +29,8 @@ Copy the `PPSA99248` folder to the console and let your homebrew loader register
 
 **Updating.** Copying a newer build over the old folder keeps your games, saves, states, covers and settings: the ZIP holds only the program's files. From the title itself, Menu, "Update" asks the project's GitHub releases for a newer build, shows what changed, fetches it, checks it and replaces the program's files. PSSwanStation closes when it is done; start it again. If an update stops half way, the next start puts the earlier files back. With "Ask for updates at start" (Settings, Interface) the library's header tells you when a build is out.
 
+**What's new.** The first start after an update, by the updater or by copying the folder over, opens a list of what was added, changed and fixed since the build you had, build by build, with a count of each at the top. Up and Down or a stick scroll it, L1 and R1 a page at a time, and Cross closes it. Settings, About, "What's new" shows every build's changes again. A first install skips it.
+
 **Safe start.** Hold L1 and R1 while PSSwanStation starts. The display goes back to 60 Hz for the next start, and a page offers to turn off leaving the sandbox (USB drives and files kept outside), or to put the interface's or the emulator's settings back to the usual. If a start never reaches the library, the next start does this by itself, once, and says so.
 
 **Cheats and patches, once.** A release does not carry the cheat database. Settings, Games and network, "Fetch the newest cheat database" downloads it from its project when you want it.
