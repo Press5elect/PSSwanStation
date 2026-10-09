@@ -2,7 +2,8 @@
 
 This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a native title (`PPSA99248`) for a jailbroken PS5, drawing with Vulkan through the RADV driver, with a library for the controller, every setting of the emulator, save states, cheats, RetroAchievements and more. The work is on the branch `ps5-port`.
 
-- **Latest release: [build 14](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console, with the source of every part)
+- **Latest release: [build 17](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console, with the source of every part)
+- The manual, every screen and setting: [`ps5/MANUAL.md`](ps5/MANUAL.md)
 - What it does and how to use it: [`ps5/README.txt`](ps5/README.txt)
 - What changed in each build: [`ps5/CHANGELOG.txt`](ps5/CHANGELOG.txt)
 - How it is built: the head of [`ps5/tools/build.sh`](ps5/tools/build.sh); a release is made by [`ps5/tools/release.py`](ps5/tools/release.py)
