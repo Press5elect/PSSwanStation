@@ -482,6 +482,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
      {NULL, NULL},
    },
    "false"},
+  {"swanstation_GPU_CloseGaps",
+   "Close Gaps Between Polygons",
+   NULL,
+   "Above the console's own resolution, draws each solid polygon a quarter of a pixel larger, so the hairline gaps "
+   "where polygons meet unevenly (the sparkles along their edges) are covered. The picture is otherwise unchanged; "
+   "nothing changes at 1x.",
+   NULL,
+   "enhancement",
+   {
+     {"true", "Enabled"},
+     {"false", "Disabled"},
+     {NULL, NULL},
+   },
+   "true"},
   {"swanstation_GPU_PGXPEnable",
    "PGXP Geometry Correction",
    NULL,

@@ -239,8 +239,8 @@ std::string GPU_HW_ShaderGen::GenerateBatchVertexShader(bool textured)
 
   v_col0 = a_col0;
   #if TEXTURED
-    v_tex0 = float2(float((a_texcoord & 0xFFFFu) * RESOLUTION_SCALE),
-                    float((a_texcoord >> 16) * RESOLUTION_SCALE));
+    // In sixteenths of a texel (GPU_HW::AddPolygonTriangle).
+    v_tex0 = float2(float(a_texcoord & 0xFFFFu), float(a_texcoord >> 16)) * (float(RESOLUTION_SCALE) / 16.0);
 
     // base_x,base_y,palette_x,palette_y
     v_texpage.x = (a_texpage & 15u) * 64u * RESOLUTION_SCALE;

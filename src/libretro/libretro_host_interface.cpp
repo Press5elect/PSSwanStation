@@ -1163,6 +1163,8 @@ bool HostInterface::UpdateCoreOptionsDisplay(bool controller)
   g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
   option_display.key = "swanstation_GPU_PGXPEnable";
   g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+  option_display.key = "swanstation_GPU_CloseGaps";
+  g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
 
   option_display.visible = !hardware_renderer;
   option_display.key = "swanstation_GPU_UseThread";

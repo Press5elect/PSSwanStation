@@ -20,10 +20,17 @@ ALWAYS_INLINE static constexpr std::tuple<T, T> MinMax(T v1, T v2)
 }
 
 
-ALWAYS_INLINE static bool ShouldUseUVLimits()
+ALWAYS_INLINE static bool ShouldCloseGaps(uint32_t resolution_scale)
 {
-  // We only need UV limits if PGXP is enabled, or texture filtering is enabled.
-  return g_settings.gpu_pgxp_enable || g_settings.gpu_texture_filter != GPUTextureFilter::Nearest;
+  return g_settings.gpu_close_gaps && resolution_scale > 1;
+}
+
+ALWAYS_INLINE static bool ShouldUseUVLimits(uint32_t resolution_scale)
+{
+  // We only need UV limits if PGXP is enabled, or texture filtering is enabled; or when polygons are
+  // drawn larger to close the gaps between them, so the part added takes the polygon's own texels.
+  return g_settings.gpu_pgxp_enable || g_settings.gpu_texture_filter != GPUTextureFilter::Nearest ||
+         ShouldCloseGaps(resolution_scale);
 }
 
 ALWAYS_INLINE static bool ShouldDisableColorPerspective()
@@ -57,7 +64,8 @@ bool GPU_HW::Initialize(HostDisplay* host_display)
   m_true_color = g_settings.gpu_true_color;
   m_scaled_dithering = g_settings.gpu_scaled_dithering;
   m_texture_filtering = g_settings.gpu_texture_filter;
-  m_using_uv_limits = ShouldUseUVLimits();
+  m_using_uv_limits = ShouldUseUVLimits(m_resolution_scale);
+  m_close_gaps = ShouldCloseGaps(m_resolution_scale);
   m_chroma_smoothing = g_settings.gpu_24bit_chroma_smoothing;
   m_downsample_mode = GetDownsampleMode(m_resolution_scale);
   m_disable_color_perspective = m_supports_disable_color_perspective && ShouldDisableColorPerspective();
@@ -170,7 +178,7 @@ void GPU_HW::UpdateHWSettings(bool* framebuffer_changed, bool* shaders_changed,
   const uint32_t multisamples = std::min(m_max_multisamples, g_settings.gpu_multisamples);
   const bool per_sample_shading = g_settings.gpu_per_sample_shading && m_supports_per_sample_shading;
   const GPUDownsampleMode downsample_mode = GetDownsampleMode(resolution_scale);
-  const bool use_uv_limits = ShouldUseUVLimits();
+  const bool use_uv_limits = ShouldUseUVLimits(resolution_scale);
   const bool disable_color_perspective = m_supports_disable_color_perspective && ShouldDisableColorPerspective();
 
   *framebuffer_changed =
@@ -318,6 +326,7 @@ void GPU_HW::UpdateHWSettings(bool* framebuffer_changed, bool* shaders_changed,
   m_scaled_dithering = g_settings.gpu_scaled_dithering;
   m_texture_filtering = g_settings.gpu_texture_filter;
   m_using_uv_limits = use_uv_limits;
+  m_close_gaps = ShouldCloseGaps(resolution_scale);
   m_chroma_smoothing = g_settings.gpu_24bit_chroma_smoothing;
   m_downsample_mode = downsample_mode;
   m_disable_color_perspective = disable_color_perspective;
@@ -518,6 +527,85 @@ void GPU_HW::ComputePolygonUVLimits(BatchVertex* vertices, uint32_t num_vertices
 
   for (uint32_t i = 0; i < num_vertices; i++)
     vertices[i].uv_limits = BatchVertex::PackUVLimits(min_u, max_u, min_v, max_v);
+}
+
+// PSSwanStation: closing the gaps between polygons.
+//
+// Where a game's polygons meet at a T-junction (a corner of one lying on the edge of another, as where
+// nearer, finer detail meets coarser), the corner is a whole pixel and so lies a little off the edge it
+// should touch, and a sliver of whatever is behind shows through. At the console's own resolution the
+// sliver is a few stray pixels; drawn larger, it is a hairline along the edge that flickers as the camera
+// moves. Drawing each solid polygon a quarter of a native pixel larger on every side closes slivers up to
+// half a pixel wide (each of the two polygons covers half), which is the most a whole-pixel corner can be
+// off. The texture coordinates are carried out to the new corners and kept within the polygon's own
+// texels (the UV limits), so the part added shows the polygon's edge as it was.
+void GPU_HW::AddPolygonTriangle(const BatchVertex& a, const BatchVertex& b, const BatchVertex& c, bool expand)
+{
+  BatchVertex out[3] = {a, b, c};
+  const BatchVertex* in[3] = {&a, &b, &c};
+  const float e1x = b.x - a.x, e1y = b.y - a.y, e2x = c.x - a.x, e2y = c.y - a.y;
+  const float area = e1x * e2y - e1y * e2x;
+  if (expand && std::fabs(area) > 0.25f)
+  {
+    constexpr float distance = 0.25f;	// native pixels
+    constexpr float miter = 2.0f;		// a sharp corner moves at most this many times as far
+    const float sign = (area > 0.0f) ? 1.0f : -1.0f;
+    float nx[3], ny[3];
+    for (int k = 0; k < 3; k++)
+    {
+      // The outward normal of the edge from corner k to corner k + 1.
+      const BatchVertex& p = *in[k];
+      const BatchVertex& q = *in[(k + 1) % 3];
+      const float ex = q.x - p.x, ey = q.y - p.y;
+      const float len = std::sqrt(ex * ex + ey * ey);
+      nx[k] = (len > 0.0f) ? sign * ey / len : 0.0f;
+      ny[k] = (len > 0.0f) ? -sign * ex / len : 0.0f;
+    }
+    // How the texture coordinates change across the screen, from the triangle as the game drew it.
+    const float t1u = float(b.u) - float(a.u), t1v = float(b.v) - float(a.v);
+    const float t2u = float(c.u) - float(a.u), t2v = float(c.v) - float(a.v);
+    const float dudx = (t1u * e2y - t2u * e1y) / area, dudy = (t2u * e1x - t1u * e2x) / area;
+    const float dvdx = (t1v * e2y - t2v * e1y) / area, dvdy = (t2v * e1x - t1v * e2x) / area;
+    const float min_u = float(std::min({a.u, b.u, c.u})), max_u = float(std::max({a.u, b.u, c.u}));
+    const float min_v = float(std::min({a.v, b.v, c.v})), max_v = float(std::max({a.v, b.v, c.v}));
+    for (int k = 0; k < 3; k++)
+    {
+      // Corner k is where the two edges beside it, each moved out, meet.
+      const int before = (k + 2) % 3;
+      const float det = nx[before] * ny[k] - ny[before] * nx[k];
+      if (std::fabs(det) < 1e-4f)
+      {
+        // Parallel edges (a sliver): the corner stays.
+        out[k].u = static_cast<uint16_t>(in[k]->u << 4);
+        out[k].v = static_cast<uint16_t>(in[k]->v << 4);
+        continue;
+      }
+      float dx = distance * (ny[k] - ny[before]) / det;
+      float dy = distance * (nx[before] - nx[k]) / det;
+      const float moved = std::sqrt(dx * dx + dy * dy);
+      if (moved > miter * distance)
+      {
+        dx *= miter * distance / moved;
+        dy *= miter * distance / moved;
+      }
+      out[k].x += dx;
+      out[k].y += dy;
+      const float u = std::clamp(float(in[k]->u) + dudx * dx + dudy * dy, min_u, max_u);
+      const float v = std::clamp(float(in[k]->v) + dvdx * dx + dvdy * dy, min_v, max_v);
+      out[k].u = static_cast<uint16_t>(std::lround(u * 16.0f));
+      out[k].v = static_cast<uint16_t>(std::lround(v * 16.0f));
+    }
+  }
+  else
+  {
+    for (BatchVertex& v : out)
+    {
+      v.u = static_cast<uint16_t>(v.u << 4);
+      v.v = static_cast<uint16_t>(v.v << 4);
+    }
+  }
+  std::memcpy(m_batch_current_vertex_ptr, out, sizeof(out));
+  m_batch_current_vertex_ptr += 3;
 }
 
 void GPU_HW::SetBatchDepthBuffer(bool enabled)
@@ -743,6 +831,34 @@ void GPU_HW::LoadVertices()
       if (!IsDrawingAreaIsValid())
         return;
 
+      // Solid polygons are drawn a little larger above 1x, to close the gaps between them; not those that
+      // are blended (an overlap would show twice), nor a 2D picture's rectangles (axis-aligned, whole pixels:
+      // they meet exactly).
+      bool expand = m_close_gaps && !rc.transparency_enable;
+      if (expand)
+      {
+        bool aligned = true;
+        for (uint32_t i = 0; i < num_vertices && aligned; i++)
+        {
+          const BatchVertex& p = vertices[i];
+          const BatchVertex& q = vertices[(i + 1) % num_vertices];
+          aligned = (p.x == q.x || p.y == q.y) && p.x == std::floor(p.x) && p.y == std::floor(p.y);
+        }
+        if (!aligned && num_vertices == 4)
+        {
+          // A quad's corners go 0 1 2 3 as a Z: its sides are 0-1, 1-3, 3-2, 2-0.
+          static constexpr uint32_t order[4] = {0, 1, 3, 2};
+          aligned = true;
+          for (uint32_t i = 0; i < 4 && aligned; i++)
+          {
+            const BatchVertex& p = vertices[order[i]];
+            const BatchVertex& q = vertices[order[(i + 1) % 4]];
+            aligned = (p.x == q.x || p.y == q.y) && p.x == std::floor(p.x) && p.y == std::floor(p.y);
+          }
+        }
+        expand = !aligned;
+      }
+
       // Cull polygons which are too large.
       const auto [min_x_12, max_x_12] = MinMax(native_vertex_positions[1][0], native_vertex_positions[2][0]);
       const auto [min_y_12, max_y_12] = MinMax(native_vertex_positions[1][1], native_vertex_positions[2][1]);
@@ -768,8 +884,7 @@ void GPU_HW::LoadVertices()
                              native_vertex_positions[2][0], native_vertex_positions[2][1], rc.shading_enable,
                              rc.texture_enable, rc.transparency_enable);
 
-        std::memcpy(m_batch_current_vertex_ptr, vertices.data(), sizeof(BatchVertex) * 3);
-        m_batch_current_vertex_ptr += 3;
+        AddPolygonTriangle(vertices[0], vertices[1], vertices[2], expand);
       }
 
       // quads
@@ -799,9 +914,7 @@ void GPU_HW::LoadVertices()
                                native_vertex_positions[3][0], native_vertex_positions[3][1], rc.shading_enable,
                                rc.texture_enable, rc.transparency_enable);
 
-          AddVertex(vertices[2]);
-          AddVertex(vertices[1]);
-          AddVertex(vertices[3]);
+          AddPolygonTriangle(vertices[2], vertices[1], vertices[3], expand);
         }
       }
 
@@ -887,13 +1000,16 @@ void GPU_HW::LoadVertices()
           const uint16_t tex_right = tex_left + static_cast<uint16_t>(quad_width);
           const uint32_t uv_limits = BatchVertex::PackUVLimits(tex_left, tex_right - 1, tex_top, tex_bottom - 1);
 
-          AddNewVertex(quad_start_x, quad_start_y, depth, 1.0f, color, texpage, tex_left, tex_top, uv_limits);
-          AddNewVertex(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, tex_right, tex_top, uv_limits);
-          AddNewVertex(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, tex_left, tex_bottom, uv_limits);
+          // Texture coordinates go to the batch in sixteenths of a texel (AddPolygonTriangle).
+          const uint16_t l16 = static_cast<uint16_t>(tex_left << 4), r16 = static_cast<uint16_t>(tex_right << 4);
+          const uint16_t t16 = static_cast<uint16_t>(tex_top << 4), b16 = static_cast<uint16_t>(tex_bottom << 4);
+          AddNewVertex(quad_start_x, quad_start_y, depth, 1.0f, color, texpage, l16, t16, uv_limits);
+          AddNewVertex(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, r16, t16, uv_limits);
+          AddNewVertex(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, l16, b16, uv_limits);
 
-          AddNewVertex(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, tex_left, tex_bottom, uv_limits);
-          AddNewVertex(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, tex_right, tex_top, uv_limits);
-          AddNewVertex(quad_end_x, quad_end_y, depth, 1.0f, color, texpage, tex_right, tex_bottom, uv_limits);
+          AddNewVertex(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, l16, b16, uv_limits);
+          AddNewVertex(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, r16, t16, uv_limits);
+          AddNewVertex(quad_end_x, quad_end_y, depth, 1.0f, color, texpage, r16, b16, uv_limits);
 
           x_offset += quad_width;
           tex_left = 0;
