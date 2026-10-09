@@ -159,6 +159,9 @@ std::vector<std::string> usbGameDirs();
 // without a trailing '/'.
 std::vector<std::string> usbDrives();
 
+// Whether the console's own menu (the PS button's) is over the title: 1 it
+// is, 0 it is not, -1 the console does not say.
+int systemUiOverlaid();
 // Free memory, for the About page: bytes, or 0 when unknown.
 uint64_t freeMemory();
 // Whether memory can be made executable (the recompiler needs it).
@@ -339,6 +342,10 @@ struct Frontend
 	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
 	bool autoLoadOnStart = false;	// and start from it
+	// Sleep-safe saving: the resume state is saved every five minutes of play
+	// and when the console's menu opens over the game, so a title closed by the
+	// console (rest mode) can be continued at the next start.
+	bool sleepSafe = false;
 	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
 	// 4 neGcon, 5 GunCon.
 	int controller[4] = {1, 1, 1, 1};
@@ -602,6 +609,19 @@ int texturePackFiles(const std::string& serial, std::string *where = nullptr);
 std::string biosSummary();
 // Memory card 1 as libretro save RAM, when that card type is chosen.
 void flushSaveRam();
+// Sleep-safe saving: the game that is being started, as the library has it
+// (kept with the resume state, to start it again).
+struct LaunchedGame
+{
+	std::string path, name, fileTitle, region;
+	std::vector<std::string> discs;
+	int source = 0, disc = 0;
+};
+void rememberGame(const LaunchedGame& game);
+// The title was closed while a game ran, after a sleep-safe save of it (and
+// so not by closing the game): that game, once; false when there is none.
+bool interruptedGame(LaunchedGame& game);
+void forgetInterruptedGame();
 }
 
 // ---------------------------------------------------------------- rewind.cpp

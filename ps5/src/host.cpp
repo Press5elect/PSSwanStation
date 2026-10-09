@@ -50,6 +50,7 @@
 #include <miniz.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -73,6 +74,13 @@ const uint8_t *coreBios(uint32_t& size);
 uint32_t coreDisplayChanges();
 uint32_t coreDrawCommands();
 uint32_t coreVideoBlocks();
+
+namespace
+{
+// Sleep-safe saving (with the states, below).
+void waitForResume();
+void sleepSafeStarted();
+}
 uint32_t coreDrawResolutionScale();
 void nameTextureFolders();
 
@@ -1337,6 +1345,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 		return false;
 	}
 	isRunning = true;
+	sleepSafeStarted();
 	if (hwRenderSet && hwRender.context_reset != nullptr)
 	{
 		diag::mark("game: hardware renderer");
@@ -1403,8 +1412,11 @@ void stop()
 		return;
 	diag::mark("game: stopping");
 	netEnd();
+	waitForResume();
 	if (options::frontend().autoSaveOnExit && !current.path.empty() && !restricted())
 		saveState(ResumeSlot);
+	// Closed by the player: nothing to offer at the next start.
+	forgetInterruptedGame();
 	achievements::gameStopped();
 	ffOn = rewindOn = false;
 	audio::setMuted(false);
@@ -2069,6 +2081,164 @@ bool gunAim(int port, float& x, float& y)
 	return true;
 }
 
+namespace
+{
+// A state file: the magic, the sizes, the emulator's state compressed (its
+// buffer is a fixed 11 MiB, mostly unused), then RetroAchievements' progress.
+// Empty when it could not be compressed. Any thread.
+std::vector<uint8_t> packState(const std::vector<uint8_t>& raw, const std::vector<uint8_t>& extra)
+{
+	mz_ulong packedSize = mz_compressBound((mz_ulong)raw.size());
+	constexpr size_t Header = sizeof(StateMagic2) + 24;
+	std::vector<uint8_t> packed(Header + packedSize + extra.size());
+	if (mz_compress2(packed.data() + Header, &packedSize, raw.data(), (mz_ulong)raw.size(), 1) != MZ_OK)
+		return {};
+	memcpy(packed.data(), StateMagic2, sizeof(StateMagic2));
+	const uint64_t sizes[3] = { raw.size(), packedSize, extra.size() };
+	memcpy(packed.data() + sizeof(StateMagic2), sizes, 24);
+	if (!extra.empty())
+		memcpy(packed.data() + Header + packedSize, extra.data(), extra.size());
+	packed.resize(Header + packedSize + extra.size());
+	return packed;
+}
+
+// ---------------------------------------------------------- sleep-safe saving
+// The resume state is saved now and then while a game runs: the emulator's
+// state is taken on this thread (a copy of its memory), and compressed and
+// written on another, so the game does not stop for it. A file says which
+// game it was; closing the game removes it, so one that is there at the next
+// start was left by a title the console closed.
+LaunchedGame launchedGame;
+std::thread resumeThread;
+std::atomic<bool> resumeWriting{false};
+double resumeSavedAt = 0;
+int overlayBefore = 0;
+unsigned overlayCountdown = 0;
+
+std::string interruptedFile()
+{
+	return rootDir + "data/interrupted.txt";
+}
+
+void waitForResume()
+{
+	if (resumeThread.joinable())
+		resumeThread.join();
+}
+
+void sleepSafeSave(const char *why)
+{
+	if (!isRunning || netOn || current.path.empty() || restricted() || resumeWriting)
+		return;
+	const size_t size = retro_serialize_size();
+	auto raw = std::make_shared<std::vector<uint8_t>>(size);
+	if (size == 0 || !retro_serialize(raw->data(), size))
+		return;
+	std::vector<uint8_t> extra = achievements::saveProgress();
+	std::string marker = "path=" + launchedGame.path + "\nname=" + launchedGame.name + "\nfile=" + launchedGame.fileTitle
+			+ "\nregion=" + launchedGame.region + "\nsource=" + std::to_string(launchedGame.source) + "\ndisc="
+			+ std::to_string(discCount() > 1 ? discIndex() : launchedGame.disc) + "\n";
+	for (const std::string& disc : launchedGame.discs)
+		marker += "discs=" + disc + "\n";
+	// The game the library started; a test's game started some other way is
+	// kept by its path alone.
+	if (launchedGame.path != current.path)
+		marker = "path=" + current.path + "\nname=" + current.title + "\nfile=" + fileTitle(current.path) + "\n";
+	const std::string path = statePath(ResumeSlot);
+	const std::string reason = why;
+	waitForResume();
+	resumeWriting = true;
+	resumeSavedAt = now();
+	resumeThread = std::thread([raw, extra, path, marker, reason] {
+		const std::vector<uint8_t> packed = packState(*raw, extra);
+		const bool ok = !packed.empty() && writeFile(path, packed.data(), packed.size());
+		if (ok)
+			writeFile(interruptedFile(), marker.data(), marker.size());
+		diag::mark("state: sleep-safe save (%s) %s (%zu KiB)", reason.c_str(), ok ? "written" : "could not be written",
+				packed.size() >> 10);
+		resumeWriting = false;
+	});
+}
+
+void sleepSafeStarted()
+{
+	resumeSavedAt = now();
+	overlayBefore = 0;
+}
+
+// Once a frame: five minutes of play, or the console's menu over the game.
+void sleepSafeTick()
+{
+	if (!options::frontend().sleepSafe || !isRunning)
+	{
+		overlayBefore = 0;
+		return;
+	}
+	// The console is asked twice a second.
+	if (overlayCountdown == 0)
+	{
+		overlayCountdown = 30;
+		const int overlay = platform::systemUiOverlaid();
+		if (overlay == 1 && overlayBefore != 1)
+			sleepSafeSave("the console's menu opened");
+		overlayBefore = overlay;
+	}
+	else
+		overlayCountdown--;
+	if (!isPaused && !ffOn && !rewindOn && now() - resumeSavedAt >= 300.0)
+		sleepSafeSave("five minutes of play");
+}
+}
+
+void rememberGame(const LaunchedGame& game)
+{
+	launchedGame = game;
+}
+
+bool interruptedGame(LaunchedGame& game)
+{
+	std::vector<uint8_t> raw;
+	if (!readFile(interruptedFile(), raw))
+		return false;
+	game = LaunchedGame();
+	size_t begin = 0;
+	const std::string text(raw.begin(), raw.end());
+	while (begin < text.size())
+	{
+		size_t end = text.find('\n', begin);
+		if (end == std::string::npos)
+			end = text.size();
+		const std::string line = text.substr(begin, end - begin);
+		begin = end + 1;
+		const size_t equals = line.find('=');
+		if (equals == std::string::npos)
+			continue;
+		const std::string key = line.substr(0, equals), value = line.substr(equals + 1);
+		if (key == "path")
+			game.path = value;
+		else if (key == "name")
+			game.name = value;
+		else if (key == "file")
+			game.fileTitle = value;
+		else if (key == "region")
+			game.region = value;
+		else if (key == "source")
+			game.source = atoi(value.c_str());
+		else if (key == "disc")
+			game.disc = atoi(value.c_str());
+		else if (key == "discs")
+			game.discs.push_back(value);
+	}
+	if (game.name.empty())
+		game.name = fileTitle(game.path);
+	return !game.path.empty();
+}
+
+void forgetInterruptedGame()
+{
+	unlink(interruptedFile().c_str());
+}
+
 bool saveState(int slot)
 {
 	if (!isRunning || netOn)
@@ -2080,21 +2250,13 @@ bool saveState(int slot)
 		addMessage("The state could not be saved.");
 		return false;
 	}
-	// The emulator's buffer is a fixed 11 MiB, mostly unused: compressed.
-	mz_ulong packedSize = mz_compressBound((mz_ulong)size);
-	const std::vector<uint8_t> extra = achievements::saveProgress();
-	constexpr size_t Header = sizeof(StateMagic2) + 24;
-	std::vector<uint8_t> packed(Header + packedSize + extra.size());
-	if (mz_compress2(packed.data() + Header, &packedSize, raw.data(), (mz_ulong)size, 1) != MZ_OK)
+	if (slot == ResumeSlot)
+		waitForResume();
+	const std::vector<uint8_t> packed = packState(raw, achievements::saveProgress());
+	if (packed.empty())
 		return false;
-	memcpy(packed.data(), StateMagic2, sizeof(StateMagic2));
-	const uint64_t sizes[3] = { size, packedSize, extra.size() };
-	memcpy(packed.data() + sizeof(StateMagic2), sizes, 24);
-	if (!extra.empty())
-		memcpy(packed.data() + Header + packedSize, extra.data(), extra.size());
-	const bool ok = writeFile(statePath(slot), packed.data(), Header + packedSize + extra.size());
-	diag::mark("state: slot %d %s (%zu KiB)", slot, ok ? "saved" : "could not be written",
-			(Header + (size_t)packedSize + extra.size()) >> 10);
+	const bool ok = writeFile(statePath(slot), packed.data(), packed.size());
+	diag::mark("state: slot %d %s (%zu KiB)", slot, ok ? "saved" : "could not be written", packed.size() >> 10);
 	if (ok)
 	{
 		// What the game showed, kept beside the state for the lists.
@@ -2345,6 +2507,7 @@ void tick()
 		gun = gun || settings.controller[i] == 5;
 	}
 	platform::padMotion(settings.motion != 0 || gun);
+	sleepSafeTick();
 	if (achievementsStarted)
 	{
 		// With no frame of a game running, the server's answers still come.

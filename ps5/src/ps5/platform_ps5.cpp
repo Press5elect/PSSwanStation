@@ -42,6 +42,9 @@ extern "C"
 {
 int sceSystemServiceHideSplashScreen(void);
 int sceSystemServiceLoadExec(const char *path, const char *const *argv);
+// SceSystemServiceStatus: an int (events waiting), then whether the system's
+// menu is over the title, whether it runs in the background, and room.
+int sceSystemServiceGetStatus(void *status);
 int sceKernelAvailableFlexibleMemorySize(size_t *size);
 int sceKernelAvailableDirectMemorySize(int64_t searchStart, int64_t searchEnd, size_t alignment, int64_t *physAddrOut,
 		size_t *sizeOut);
@@ -410,6 +413,23 @@ std::vector<std::string> usbDrives()
 			drives.push_back(drive);
 	}
 	return drives;
+}
+
+int systemUiOverlaid()
+{
+	// The structure is 0x84 bytes; room for more, in case.
+	alignas(8) uint8_t status[512] = {};
+	const int result = sceSystemServiceGetStatus(status);
+	static bool told;
+	if (!told)
+	{
+		told = true;
+		diag::mark("system service status: %d (menu over the title %d, in the background %d)", result, status[4],
+				status[5]);
+	}
+	if (result != 0)
+		return -1;
+	return status[4] != 0 ? 1 : 0;
 }
 
 uint64_t freeMemory()

@@ -1567,6 +1567,29 @@ void startNotices()
 				+ ", and this start cannot use them: " + outsideProblem() + ". Until that is put right, PSSwanStation "
 				"uses the files in its own folder (" + shownApp() + "), which are as they were when the files moved. "
 				"A game started now saves there, not where your files are kept.");
+	// Sleep-safe saving: the console closed the title while a game ran.
+	host::LaunchedGame interrupted;
+	if (host::interruptedGame(interrupted))
+	{
+		host::forgetInterruptedGame();
+		std::string when;
+		if (host::stateExistsFor(interrupted.path, host::ResumeSlot, &when))
+		{
+			library::Game game;
+			game.path = interrupted.path;
+			game.name = interrupted.name;
+			game.fileTitle = interrupted.fileTitle.empty() ? fileTitle(interrupted.path) : interrupted.fileTitle;
+			game.region = interrupted.region;
+			game.discs = interrupted.discs;
+			game.source = interrupted.source;
+			const int disc = interrupted.disc;
+			push(Page::Confirm, 0, 0, "Continue " + game.name + "?",
+					"PSSwanStation was closed while " + game.name + " was running: the console went to rest mode, "
+					"or closed it. Its sleep-safe save is from " + when + ". Continue from there?\n\nThe state stays "
+					"with the game's other states either way (Continue, in its details).",
+					[game, disc] { launch(game, host::ResumeSlot, disc); });
+		}
+	}
 }
 
 // ----------------------------------------------------- rows for other pages
