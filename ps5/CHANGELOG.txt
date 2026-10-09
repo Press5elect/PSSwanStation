@@ -9,6 +9,7 @@ Build 18
   - The updater: it fetched and checked a new build, then said "The
     unpacked update is no longer there" and changed nothing. Builds before
     18 are updated by copying the folder over by FTP.
+  Works on my console.
 
 Build 17
   Added
