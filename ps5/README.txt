@@ -727,10 +727,20 @@ Up and Down or a stick scroll it, L1 and R1 a page, Cross closes it. Settings,
 About, "What's new" shows every build's changes again. A first install shows
 nothing. The release's notes on the Update page scroll the same way.
 
-Tested on a PC, against a stand-in for GitHub and against the real releases
-page (as build 13 it found build 14, fetched it, checked it and put it in
-place, leaving network.cfg and the games alone); not yet on a console. Should
-an update go wrong half way, the next start puts the earlier files back.
+When this is already the newest build, Square on the Update page ("Install
+again") fetches it again and puts it in place: a damaged title folder mended,
+the settings and games left as they are.
+
+On the console, builds 14 to 17 fetched and checked an update and then said
+"The unpacked update is no longer there", and nothing was changed: they looked
+at the files they had unpacked in a way the console does not answer. From
+build 18 they are looked at as the rest of the title looks at its files. A
+build before 18 is updated by copying the new folder over it (FTP).
+
+Tested on a PC, against a stand-in for GitHub (also with that way of looking
+at files refused, as the console refuses it) and against the real releases
+page. Should an update go wrong half way, the next start puts the earlier
+files back.
 
 
 Keeping your files outside the title folder

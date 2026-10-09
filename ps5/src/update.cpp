@@ -196,17 +196,49 @@ std::string parentOf(const std::string& path)
 	return slash == std::string::npos ? "" : path.substr(0, slash);
 }
 
+// Whether the path is a link. open() with O_NOFOLLOW refuses a link (ELOOP,
+// or EMLINK as FreeBSD has it) whatever lstat() does; lstat() is asked only
+// when open() cannot tell. On the console, build 16's updater, which asked
+// lstat() alone, found the list of files it had just written "no longer
+// there", where stat() finds every file the title has.
+bool isLink(const std::string& path)
+{
+	const int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+	if (fd >= 0)
+	{
+		close(fd);
+		return false;
+	}
+	if (errno == ELOOP || errno == EMLINK)
+		return true;
+	struct stat own;
+	return lstat(path.c_str(), &own) == 0 && S_ISLNK(own.st_mode);
+}
+
+// What is at a path, a link itself and not what it points to: a link is
+// reported as one and never followed, anything else is as stat() sees it.
+bool lookAt(const std::string& path, struct stat& st)
+{
+	if (isLink(path))
+	{
+		memset(&st, 0, sizeof(st));
+		st.st_mode = S_IFLNK | 0777;
+		return true;
+	}
+	return stat(path.c_str(), &st) == 0;
+}
+
 // Whether anything is at the path, a link itself and not what it points to.
 bool pathExists(const std::string& path)
 {
 	struct stat st;
-	return lstat(path.c_str(), &st) == 0;
+	return lookAt(path, st);
 }
 
 bool isRegularFile(const std::string& path)
 {
 	struct stat st;
-	return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+	return lookAt(path, st) && S_ISREG(st.st_mode);
 }
 
 // ------------------------------------------------------------------ files
@@ -217,7 +249,7 @@ void removeTree(std::string path, int depth = 0)
 	while (path.size() > 1 && path.back() == '/')
 		path.pop_back();
 	struct stat st;
-	if (path.empty() || lstat(path.c_str(), &st) != 0)
+	if (path.empty() || !lookAt(path, st))
 		return;
 	if (!S_ISDIR(st.st_mode))
 	{
@@ -997,6 +1029,10 @@ void runCheck(const Setup& use)
 	{
 		diag::mark("update: build %d is running, the newest release is build %d", use.build, release.build);
 		status.state = State::UpToDate;
+		// It can be put in place again (Install again): a damaged folder
+		// mended, or the updater tried.
+		status.reinstall = chosen != nullptr
+				&& (release.zipUrl.compare(0, 8, "https://") == 0 || release.zipUrl.compare(0, 7, "http://") == 0);
 	}
 	else if (chosen == nullptr
 			|| (release.zipUrl.compare(0, 8, "https://") != 0 && release.zipUrl.compare(0, 7, "http://") != 0))
@@ -1589,6 +1625,19 @@ void check()
 	startWorker([use] { runCheck(use); });
 }
 
+void reinstall()
+{
+	{
+		std::lock_guard<std::mutex> call(callMutex);
+		std::lock_guard<std::mutex> lock(stateMutex);
+		if (!initialised || current.state != State::UpToDate || !current.reinstall)
+			return;
+		diag::mark("update: build %d to be put in place again", found.build);
+		current.state = State::Available;
+	}
+	download();
+}
+
 void download()
 {
 	std::lock_guard<std::mutex> call(callMutex);
@@ -1645,7 +1694,14 @@ bool install()
 	std::string planText, addedText;
 	std::set<std::string> made;
 	if (!readLines(dir + "plan", plan) || plan.empty())
+	{
+		// What the console says of it, for the log.
+		struct stat st;
+		const int byStat = stat((dir + "plan").c_str(), &st) == 0 ? 0 : errno;
+		const int byLstat = lstat((dir + "plan").c_str(), &st) == 0 ? 0 : errno;
+		diag::mark("update: %splan: stat %d, lstat %d, %zu lines", dir.c_str(), byStat, byLstat, plan.size());
 		error = "The unpacked update is no longer there.";
+	}
 	for (const std::string& path : plan)
 	{
 		if (!error.empty())
@@ -1655,7 +1711,7 @@ bool install()
 			error = "The update's list of files is damaged.";
 		else if (!isRegularFile(dir + "stage/" + path))
 			error = "The unpacked update is incomplete (" + path + ").";
-		else if (lstat((use.appDir + path).c_str(), &st) == 0 && !S_ISREG(st.st_mode))
+		else if (lookAt(use.appDir + path, st) && !S_ISREG(st.st_mode))
 			error = path + " in the title's folder is not a file; it was left alone.";
 		planText += path + "\n";
 		// What the install adds: the folders that are not there yet, the
