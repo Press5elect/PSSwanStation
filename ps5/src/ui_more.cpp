@@ -1288,7 +1288,15 @@ void updatePage(Frame& f)
 		break;
 	case update::State::UpToDate:
 		line(format("This is the newest build (%d).", BuildNumber), t.text, Bold, 30);
-		line("Nothing to do.", t.dim, Body, 24);
+		line(status.reinstall ? "Nothing to do. Should the title's files have come to harm, Square fetches this build "
+				"again and puts it in place; your games, saves, states, covers and settings stay as they are."
+				: "Nothing to do.", t.dim, Body, 24);
+		if (status.reinstall)
+		{
+			hints.push_back({ Square, "Install again" });
+			if (hit(Square))
+				update::reinstall();
+		}
 		break;
 	case update::State::NoRelease:
 		line("The releases page has no build to fetch yet.", t.text, Bold, 30);

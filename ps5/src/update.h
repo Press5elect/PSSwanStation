@@ -51,6 +51,7 @@ struct Status
 	std::string error;
 	uint64_t done = 0, total = 0;
 	double speed = 0;			// bytes a second while downloading
+	bool reinstall = false;		// UpToDate: the newest release can be put in place again
 };
 
 struct Setup
@@ -78,6 +79,9 @@ void init(const Setup& setup);
 void check();
 // Downloads, checks and unpacks the release that check() found.
 void download();
+// Up to date: downloads the newest release all the same, to put it in place
+// again.
+void reinstall();
 // Stops a download (the state goes back to Available).
 void cancel();
 // Puts the new files in place. True: done, close the title. False: the old
