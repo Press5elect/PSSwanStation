@@ -2742,17 +2742,43 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	}
 	if (generation != 0)
 	{
-		items.push_back(pictureChoice(forGame, "fg_quality", "Generation quality", { "Performance", "Balanced", "Quality" },
-				"How hard frame generation works. Performance: less for the graphics processor, decided more "
-				"coarsely, for when the frame rate drops with it on. Quality: movement looked for in a finer "
-				"picture, decided at the game's own size, and every movement checked from both frames' side, so "
-				"that what comes into view or goes out of it is not smeared.", [] { display::forgetGenerated(); }));
-		items.push_back(pictureChoice(forGame, "fg_mode", "Made pictures", { "Between the game's", "Ahead of the game's" },
-				"Between: each made picture lies between the game's last two, which needs the latest before the "
-				"pictures leading to it can be shown: a little delay, the smoothest result. Ahead: the game's "
-				"latest picture is shown the moment it comes, and the made ones carry its movement on until the "
-				"next: no delay, more mistakes where movement changes (a turn, a stop).",
-				[] { display::forgetGenerated(); }));
+		const int method = now_("fg_method");
+		items.push_back(pictureChoice(forGame, "fg_method", "Generation method", { "PSSwanStation's own", "Optical flow" },
+				"Two ways of finding how the picture moved and drawing the pictures between. PSSwanStation's own: its "
+				"movement search, with the quality, ahead and movement view settings below. Optical flow: swordpdf's "
+				"ps5-framegen, AMD FSR3's optical flow with an interpolation that tries several movements for every "
+				"few pixels and keeps what has not changed for a while (a score, a map) still; on test pictures its "
+				"made pictures are about half as far from the true ones as the title's own. It makes one, two or three "
+				"pictures between two of the game's, at even steps, so a rate that does not divide the screen's (a PAL "
+				"game at 120 Hz) moves a little less evenly; and it makes none ahead.", [] { display::forgetGenerated(); }));
+		{
+			Item item = pictureChoice(forGame, "fg_quality", "Generation quality", { "Performance", "Balanced", "Quality" },
+					"How hard frame generation works. Performance: less for the graphics processor, decided more "
+					"coarsely, for when the frame rate drops with it on. Quality: movement looked for in a finer "
+					"picture, decided at the game's own size, and every movement checked from both frames' side, so "
+					"that what comes into view or goes out of it is not smeared.", [] { display::forgetGenerated(); });
+			if (method == 1)
+			{
+				item.enabled = false;
+				item.value = "The optical flow's own";
+			}
+			items.push_back(item);
+		}
+		{
+			Item item = pictureChoice(forGame, "fg_mode", "Made pictures", { "Between the game's", "Ahead of the game's" },
+					"Between: each made picture lies between the game's last two, which needs the latest before the "
+					"pictures leading to it can be shown: a little delay, the smoothest result. Ahead: the game's "
+					"latest picture is shown the moment it comes, and the made ones carry its movement on until the "
+					"next: no delay, more mistakes where movement changes (a turn, a stop).",
+					[] { display::forgetGenerated(); });
+			if (method == 1)
+			{
+				item.enabled = false;
+				item.value = "Between the game's";
+				item.info += " The optical flow makes them between only.";
+			}
+			items.push_back(item);
+		}
 		{
 			Item item = pictureChoice(forGame, "fg_cap", "Generate up to", { "The screen's rate", "60 a second" },
 					"At 120 Hz: the screen's rate makes pictures for all 120 refreshes; 60 a second makes half as many, "
@@ -2775,7 +2801,9 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"and not in netplay."));
 		items.push_back(pictureChoice(forGame, "fg_debug", "Show the movement", { "Off", "On" },
 				"A view for checking frame generation: over the made pictures, the movement found is shown as a "
-				"colour (its way) and a strength (its length), and grey where it is not believed."));
+				"colour (its way) and a strength (its length), and grey where it is not believed. With the optical "
+				"flow: grey no movement, green a movement, red and blue an edge where the frame before's or this one's "
+				"side was kept, magenta an edge blended."));
 	}
 }
 

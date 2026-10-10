@@ -66,6 +66,8 @@
 #include "common/vulkan/texture.h"
 
 #include "gfx/vk/vk_renderer.hpp"
+#define PS5_FRAMEGEN_VULKAN_HEADER "vulkan_loader.h"
+#include "ps5_framegen.h"
 
 #include <miniz.h>
 
@@ -164,6 +166,8 @@ VkRenderPass shaderPass = VK_NULL_HANDLE, floatPass = VK_NULL_HANDLE;
 constexpr VkFormat FloatFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 void fsrShutdown();
 void generationShutdown();
+void flowShutdown();
+void flowForget();
 void lookShutdown();
 // The interface kit: its renderer draws every layer of the interface, in the
 // swapchain's pass, over the game's picture.
@@ -627,6 +631,7 @@ void shutdown()
 	releaseWrapped();
 	lookShutdown();
 	generationShutdown();
+	flowShutdown();
 	fsrShutdown();
 	std::vector<Target *> targets = { &captureTarget, &ambientTarget };
 	for (Target& level : blurLevels)
@@ -1626,9 +1631,12 @@ bool viewBehind(void *texture, VkImageView& view, VkImageLayout& layout)
 void forgetGenerated()
 {
 	generation.haveNow = generation.haveBefore = generation.haveMovement = false;
+	flowForget();
 }
 
-void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality, bool debug)
+namespace
+{
+void *generatedOwn(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality, bool debug)
 {
 	const bool lighter = quality <= 0;
 	const bool careful = quality >= 2 && generation.check != VK_NULL_HANDLE;
@@ -1815,6 +1823,211 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 			g.kept[g.now].texture.GetView(), g.chosen.texture.GetView(), c,
 			g.haveCut ? g.cutFound.texture.GetView() : VK_NULL_HANDLE);
 	return (void *)g.between.set;
+}
+
+// The other way of making the frames between the game's: swordpdf's
+// ps5-framegen (third_party/ps5-framegen), AMD FSR3's optical flow with an
+// interpolation that tries several movements for every 2 x 2 pixels and keeps
+// what has not changed for 8 frames (a HUD, text) where it is.
+//
+// It makes the frames at fixed moments, 1 / (n + 1) of the way apart, n of
+// them (up to 3) between two of the game's, all at once when the second
+// arrives. n comes from how many refreshes the last frame of the game was
+// shown for; each refresh is then given the made frame nearest its phase.
+// A phase past 1 (ahead) it cannot make: the frame itself is shown then.
+struct Flow
+{
+	ps5::framegen::interpolator fg;
+	bool failed = false;
+	int width = 0, height = 0;
+	Target in;							// the game's picture, copied (the frame itself, for phase 1)
+	Target out[3];						// the made frames, nearest the frame before first
+	Picture *output = nullptr;			// the interpolator's output image, for drawing from
+	VkImageView outputView = VK_NULL_HANDLE;	// a view of it (the interpolator keeps none to give)
+	int made = 0;						// how many of out[] hold this pair's frames
+	int generated = 1;					// how many it makes between two frames
+	int refreshes = 0, lastRefreshes = 2;	// refreshes this frame has been shown for, and the frame before
+	uint64_t keptAt = 0;
+	bool haveNow = false;
+	double reportedAt = 0;
+} flow;
+
+void flowShutdown()
+{
+	Flow& f = flow;
+	f.fg.destroy();
+	retire(f.output);
+	f.output = nullptr;
+	if (f.outputView != VK_NULL_HANDLE)
+		vkDestroyImageView(g_vulkan_context->GetDevice(), f.outputView, nullptr);
+	f.outputView = VK_NULL_HANDLE;
+	destroyTarget(f.in);
+	for (Target& target : f.out)
+		destroyTarget(target);
+	f.width = f.height = 0;
+	f.made = 0;
+	f.haveNow = false;
+}
+
+void flowForget()
+{
+	flow.haveNow = false;
+	flow.made = 0;
+}
+
+void *generatedFlow(void *texture, int width, int height, float u, float v, bool fresh, float phase, bool debug)
+{
+	Flow& f = flow;
+	if (f.failed)
+		return nullptr;
+	if (f.width != width || f.height != height)
+	{
+		if (f.fg.ready())
+		{
+			g_vulkan_context->WaitForGPUIdle();
+			flowShutdown();
+		}
+		std::string error;
+		if (!f.fg.create(gpu, g_vulkan_context->GetDevice(), (uint32_t)width, (uint32_t)height, error, swapFormat))
+		{
+			diag::mark("frame generation (optical flow): %s; the title's own is used", error.c_str());
+			f.failed = true;
+			return nullptr;
+		}
+		VkImageViewCreateInfo info{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+		info.image = f.fg.output_image();
+		info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		info.format = ps5::framegen::interpolator::k_format;
+		info.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		if (vkCreateImageView(g_vulkan_context->GetDevice(), &info, nullptr, &f.outputView) != VK_SUCCESS)
+		{
+			diag::mark("frame generation (optical flow): no view of its output; the title's own is used");
+			f.fg.destroy();
+			f.failed = true;
+			return nullptr;
+		}
+		f.output = makePicture(f.outputView, VK_IMAGE_LAYOUT_GENERAL);
+		f.width = width;
+		f.height = height;
+		diag::mark("frame generation (optical flow): pictures of %d x %d", width, height);
+	}
+	if (!ensureTarget(f.in, width, height, swapFormat, shaderPass))
+		return nullptr;
+	f.fg.set_debug_view(debug);
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	if (fresh)
+	{
+		VkImageView view = VK_NULL_HANDLE;
+		VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		if (!viewBehind(texture, view, layout))
+			return nullptr;
+		// A picture kept long ago is not the one before this one.
+		const bool follows = f.haveNow && frames - f.keptAt <= 16;
+		if (f.refreshes > 0)
+			f.lastRefreshes = f.refreshes;
+		f.refreshes = 0;
+		f.generated = std::clamp(f.lastRefreshes - 1, 1, 3);
+		f.fg.set_generated((uint32_t)f.generated);
+		// The picture, at its size, into the frame the interpolator reads.
+		Picture source{ view, layout, 0 };
+		{
+			VkClearValue clear{};
+			VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+			begin.renderPass = shaderPass;
+			begin.framebuffer = f.in.framebuffer;
+			begin.renderArea = { { 0, 0 }, { (uint32_t)width, (uint32_t)height } };
+			begin.clearValueCount = 1;
+			begin.pClearValues = &clear;
+			vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+			Presented p{};
+			p.picture = &source;
+			const float r[4] = { -1.f, -1.f, 1.f, 1.f }, uv[4] = { 0.f, 0.f, u, v }, tint[4] = { 1.f, 1.f, 1.f, 1.f };
+			memcpy(p.rect, r, sizeof(r));
+			memcpy(p.uv, uv, sizeof(uv));
+			memcpy(p.tint, tint, sizeof(tint));
+			p.nearest = true;
+			presentRecord(cmd, p, width, height);
+			vkCmdEndRenderPass(cmd);
+			f.in.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			f.in.drawn = true;
+		}
+		f.fg.prepare(cmd);
+		f.in.texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		VkImageCopy region{};
+		region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		region.extent = { (uint32_t)width, (uint32_t)height, 1 };
+		vkCmdCopyImage(cmd, f.in.texture.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, f.fg.frame_image(),
+				VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+		f.in.texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		// The movement since the frame before and the frames between them.
+		f.made = 0;
+		if (f.fg.record(cmd, !follows))
+		{
+			for (int i = 0; i < f.generated; i++)
+			{
+				if (i > 0 && !f.fg.interpolate_next(cmd, (uint32_t)i))
+					break;
+				if (!ensureTarget(f.out[i], width, height, swapFormat, shaderPass))
+					break;
+				VkClearValue clear{};
+				VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+				begin.renderPass = shaderPass;
+				begin.framebuffer = f.out[i].framebuffer;
+				begin.renderArea = { { 0, 0 }, { (uint32_t)width, (uint32_t)height } };
+				begin.clearValueCount = 1;
+				begin.pClearValues = &clear;
+				vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+				Presented p{};
+				p.picture = f.output;
+				const float r[4] = { -1.f, -1.f, 1.f, 1.f }, uv[4] = { 0.f, 0.f, 1.f, 1.f }, tint[4] = { 1.f, 1.f, 1.f, 1.f };
+				memcpy(p.rect, r, sizeof(r));
+				memcpy(p.uv, uv, sizeof(uv));
+				memcpy(p.tint, tint, sizeof(tint));
+				p.nearest = true;
+				presentRecord(cmd, p, width, height);
+				vkCmdEndRenderPass(cmd);
+				f.out[i].texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				f.out[i].drawn = true;
+				f.made = i + 1;
+			}
+		}
+		f.fg.advance();
+		f.haveNow = true;
+		f.keptAt = frames;
+		// Its cost, now and then, in the boot log.
+		double mean = 0, most = 0, flowMs = 0;
+		uint32_t count = 0;
+		if (now() - f.reportedAt > 10.0 && f.fg.take_gpu_time(mean, most, count, flowMs))
+		{
+			diag::mark("frame generation (optical flow): %.2f ms a frame (%.2f optical flow), most %.2f, %u frames, %d made "
+					"between two", mean, flowMs, most, count, f.generated);
+			f.reportedAt = now();
+		}
+	}
+	f.refreshes++;
+	if (!f.haveNow)
+		return nullptr;
+	if (phase >= 0.999f || f.made == 0)
+		return (void *)f.in.set;
+	// The made frame nearest this moment.
+	const int k = std::clamp((int)std::lround(phase * (float)(f.generated + 1)), 1, f.made);
+	return (void *)f.out[k - 1].set;
+}
+} // namespace
+
+void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality, bool debug,
+		int method)
+{
+	if (texture == nullptr || !frameOpen || width < 64 || height < 64 || width > 8192 || height > 8192 || u <= 0 || v <= 0)
+		return nullptr;
+	if (method == 1)
+	{
+		void *made = generatedFlow(texture, width, height, u, v, fresh, std::min(phase, 1.f), debug);
+		if (made != nullptr || !flow.failed)
+			return made;
+	}
+	return generatedOwn(texture, width, height, u, v, fresh, phase, quality, debug);
 }
 
 // ------------------------------------------------------------ the picture's look

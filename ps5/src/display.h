@@ -96,9 +96,11 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 // movement (extrapolation: no waiting for the next frame). `quality`: 0 less
 // work for the graphics processor and less care, 1 the usual, 2 finer, with
 // every movement checked from both frames' side. `debug`: the movement shown
-// in colours over the picture.
+// in colours over the picture. `method`: 0 the title's own, 1 swordpdf's
+// ps5-framegen (optical flow; frames at fixed moments, nearest the phase, none
+// ahead).
 void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality = 1,
-		bool debug = false);
+		bool debug = false, int method = 0);
 // The next picture has no picture before it (another game, a state loaded).
 void forgetGenerated();
 // The picture's look: how it is grown to the screen, what signal a television

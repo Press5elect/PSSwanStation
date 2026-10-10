@@ -185,6 +185,9 @@ bool Context::SelectDeviceFeatures(const VkPhysicalDeviceFeatures* required_feat
   // Enable the features we use.
   m_device_features.dualSrcBlend = available_features.dualSrcBlend;
   m_device_features.sampleRateShading = available_features.sampleRateShading;
+  // PSSwanStation: the optical flow frame generation (ps5-framegen) writes
+  // two-channel storage images.
+  m_device_features.shaderStorageImageExtendedFormats = available_features.shaderStorageImageExtendedFormats;
   return true;
 }
 
