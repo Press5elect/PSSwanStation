@@ -1866,12 +1866,15 @@ struct LookState
 {
 	bool tried = false, ready = false;
 	VkPipelineLayout layout = VK_NULL_HANDLE;
-	VkPipeline signal = VK_NULL_HANDLE, scale = VK_NULL_HANDLE, cas = VK_NULL_HANDLE, down = VK_NULL_HANDLE;
+	VkPipeline signal = VK_NULL_HANDLE, scale = VK_NULL_HANDLE, cas = VK_NULL_HANDLE, down = VK_NULL_HANDLE,
+			grain = VK_NULL_HANDLE;
 	// The picture at its own size, looked after; stretched to the screen's
 	// size; and that sharpened (CAS); the picture NIS starts from; the picture
 	// sharpened at its own size (CAS, for a large enlargement); the picture
 	// made smaller than its own size (look_down.frag).
 	Target staged, stretched, sharpened, before, sharpenedFirst, reduced;
+	// The picture with film grain over it, at the screen's size.
+	Target grained;
 	unsigned frame = 0;
 	// NVIDIA Image Scaling.
 	bool nisTried = false, nisReady = false;
@@ -1918,6 +1921,7 @@ bool lookInit()
 		return false;
 	const VkShaderModule vertex = shaderModule(fsr_vertex_spirv, sizeof(fsr_vertex_spirv));
 	const VkShaderModule signal = shaderModule(look_signal_spirv, sizeof(look_signal_spirv));
+	const VkShaderModule grain = shaderModule(look_grain_spirv, sizeof(look_grain_spirv));
 	const VkShaderModule scale = shaderModule(look_scale_spirv, sizeof(look_scale_spirv));
 	const VkShaderModule cas = shaderModule(look_cas_spirv, sizeof(look_cas_spirv));
 	const VkShaderModule down = shaderModule(look_down_spirv, sizeof(look_down_spirv));
@@ -1929,8 +1933,10 @@ bool lookInit()
 		// (Without it a picture larger than the screen is drawn the usual way.)
 		if (down != VK_NULL_HANDLE)
 			l.down = fsrPipeline(vertex, down, l.layout);
+		if (grain != VK_NULL_HANDLE)
+			l.grain = fsrPipeline(vertex, grain, l.layout);
 	}
-	for (VkShaderModule module : { vertex, signal, scale, cas, down })
+	for (VkShaderModule module : { vertex, signal, scale, cas, down, grain })
 		if (module != VK_NULL_HANDLE)
 			vkDestroyShaderModule(device, module, nullptr);
 	l.ready = l.signal != VK_NULL_HANDLE && l.scale != VK_NULL_HANDLE && l.cas != VK_NULL_HANDLE;
@@ -2209,9 +2215,9 @@ void lookShutdown()
 	chain::destroy(l.imported);
 	retire(l.crtSet);
 	retire(l.nisOutSet);
-	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before, &l.sharpenedFirst, &l.reduced })
+	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before, &l.sharpenedFirst, &l.reduced, &l.grained })
 		destroyTarget(*target);
-	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis, l.down })
+	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis, l.down, l.grain })
 		if (pipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(device, pipeline, nullptr);
 	for (VkPipelineLayout layout : { l.layout, l.nisLayout })
@@ -2243,7 +2249,8 @@ std::vector<std::string> crtPresetNames()
 
 bool Look::plain() const
 {
-	return scaler == 0 && signal == 0 && crt == 0 && brightness == 1.f && contrast == 1.f && saturation == 1.f && gamma == 1.f;
+	return scaler == 0 && signal == 0 && crt == 0 && grain == 0 && brightness == 1.f && contrast == 1.f && saturation == 1.f
+			&& gamma == 1.f;
 }
 
 void forgetPicture()
@@ -2401,6 +2408,40 @@ void *picture(void *texture, int width, int height, float u, float v, int outWid
 			said = "CAS";
 			break;
 		}
+		}
+	}
+	// Film grain, last, at the screen's size: over what the chain made, or
+	// over the picture stretched to that size first.
+	if (want.grain > 0 && l.grain != VK_NULL_HANDLE)
+	{
+		VkImageView from = result != nullptr ? static_cast<Picture *>(result)->view : VK_NULL_HANDLE;
+		if (from == VK_NULL_HANDLE && (width == outWidth && height == outHeight))
+			from = staged;
+		else if (from == VK_NULL_HANDLE && ensureTarget(l.stretched, outWidth, outHeight, swapFormat, shaderPass))
+		{
+			LookConstants s{};
+			s.a[0] = (float)width;
+			s.a[1] = (float)height;
+			s.a[2] = s.a[3] = 1.f;
+			s.b[0] = (float)outWidth;
+			s.b[1] = (float)outHeight;
+			fsrPass(l.stretched, l.scale, l.layout, staged, readable, &s, sizeof(s));
+			from = l.stretched.texture.GetView();
+		}
+		if (from != VK_NULL_HANDLE && ensureTarget(l.grained, outWidth, outHeight, swapFormat, shaderPass))
+		{
+			static const float strength[3] = { 0.045f, 0.085f, 0.14f };
+			LookConstants g{};
+			g.a[0] = (float)outWidth;
+			g.a[1] = (float)outHeight;
+			g.b[0] = strength[std::clamp(want.grain, 1, 3) - 1];
+			// A grain is two pixels at 1080 lines, four at 2160.
+			g.b[1] = (float)std::max(outHeight / 540, 1);
+			g.b[2] = (float)(l.frame % 1024u) * 0.731f;
+			g.b[3] = 0.f;
+			fsrPass(l.grained, l.grain, l.layout, from, readable, &g, sizeof(g));
+			result = (void *)l.grained.set;
+			said += (said.empty() ? "" : ", ") + std::string("grain");
 		}
 	}
 	if (result != nullptr)

@@ -650,6 +650,7 @@ void drawGame(float dim)
 		look.contrast = 0.5f + 0.05f * (float)f.contrast;
 		look.saturation = 0.5f + 0.05f * (float)f.saturation;
 		look.gamma = 0.5f + 0.05f * (float)f.gamma;
+		look.grain = f.grain;
 		const int outW = (int)std::lround(dw), outH = (int)std::lround(dh);
 		float phase = 1.f;
 		bool fresh = false;
@@ -4417,6 +4418,7 @@ bool lookTest()
 		const char *name;
 		int scaler, sharpness, signal, crt;
 		float brightness, contrast, saturation, gamma;
+		int grain;
 	};
 	static const Case cases[] = {
 		{ "plain", 0, 1, 0, 0, 1, 1, 1, 1 },
@@ -4434,6 +4436,8 @@ bool lookTest()
 		{ "crt-arcade", 0, 1, 0, 4, 1, 1, 1, 1 },
 		{ "crt-soft", 0, 1, 0, 5, 1, 1, 1, 1 },
 		{ "crt-composite", 0, 1, 3, 2, 1, 1, 1, 1 },
+		{ "grain", 1, 1, 0, 0, 1, 1, 1, 1, 2 },
+		{ "grain-crt", 0, 1, 0, 2, 1, 1, 1, 1, 3 },
 	};
 	// Each look for eight refreshes (the tube's afterglow and average settle);
 	// the last of them is saved.
@@ -4472,6 +4476,7 @@ bool lookTest()
 	look.contrast = c.contrast;
 	look.saturation = c.saturation;
 	look.gamma = c.gamma;
+	look.grain = c.grain;
 	const float H = height(), W = width();
 	const float dh = H, dw = std::min(W, dh * 4.f / 3.f);
 	const ImVec2 p0(std::floor((W - dw) * 0.5f), 0.f), p1(p0.x + dw, dh);
