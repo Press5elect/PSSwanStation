@@ -278,7 +278,7 @@ std::vector<Field> fields()
 		{ "fg_runahead", nullptr, &c.fgRunAhead, 0, 1 },
 		{ "fg_debug", nullptr, &c.fgDebug, 0, 1 },
 		{ "crt", &c.crt, nullptr, 0, 72 },
-		{ "border", &c.border, nullptr, 0, 3 },
+		{ "border", &c.border, nullptr, 0, 4 },
 		{ "preset", &c.preset, nullptr, 0, 4 },
 		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },
 		{ "auto_load", nullptr, &c.autoLoadOnStart, 0, 1 },

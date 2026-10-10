@@ -229,7 +229,7 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 | Picture tube | Scanlines (soft or full), a shadow mask, or crt-guest-advanced in five kinds; and presets brought in from USB |
 | Video signal | As it is, dither smoothed, S-Video or composite |
 | Brightness, Contrast, Colour, Gamma | 50% to 150% |
-| Beside the picture | Black, the picture's own light, a gradient, or a picture from `borders/` |
+| Beside the picture | Black, the picture's own light (the picture blurred over the whole screen), a gradient, a picture from `borders/`, or the picture carried on past its edges, blurred |
 | Frame pacing | By the display, the game's own speed, or the game's own speed by the clock (for variable refresh rate) |
 | Display output | 60 Hz, 120 Hz, or 120 Hz with variable refresh rate; from the next start |
 | Black frame insertion | At 120 Hz, a black refresh between a 60 fps game's frames |
