@@ -18,6 +18,11 @@ Build 20
   - With AMD FSR3 optical flow, the picture's look was skipped: film
     grain, colours, the scaling filter, sharpening and the picture tube.
     They are drawn over its frames now, as over the title's own.
+  - 120 Hz came up at some starts and stayed at 60 Hz at others, and
+    with variable refresh rate the About page could say 60 Hz while the
+    screen ran at 120. The graphics driver decided from one quick look
+    at the screen just as it was changing mode; it now waits up to 1.5 s
+    for the mode to settle, and keeps 120 Hz with variable refresh rate.
   Not yet run on my console.
 
 Build 19
