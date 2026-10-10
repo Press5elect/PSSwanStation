@@ -287,6 +287,7 @@ std::vector<Field> fields()
 		{ "high_contrast", nullptr, &c.highContrast, 0, 1 },
 		{ "colour_blind", nullptr, &c.colourBlind, 0, 1 },
 		{ "accent", &c.accent, nullptr, 0, 7 },
+		{ "theme", &c.theme, nullptr, 0, 64 },
 		{ "sort", &c.sort, nullptr, 0, 4 },
 		{ "filter", &c.filter, nullptr, 0, 3 },
 		{ "region_filter", &c.regionFilter, nullptr, 0, 3 },

@@ -28,6 +28,7 @@
 	narrows towards its far edge as a picture in space does.
 */
 #include "ui_internal.h"
+#include "display.h"
 
 #include <algorithm>
 #include <cmath>
@@ -657,11 +658,14 @@ bool frontFace(const Camera& camera, const Case& c, const Image& cover, const li
 		return shadeColour(c.light * 0.8f, c.alpha * 0.34f * std::clamp(1.f - (1.f - v) * 1.7f, 0.f, 1.f));
 	};
 	ImDrawList *list = draw();
-	if (cover.id != nullptr && cover.width > 0 && cover.height > 0)
+	// A game with no cover shows the card the grid shows, as a picture.
+	const Image shown = cover.id != nullptr && cover.width > 0 && cover.height > 0 ? cover
+			: placeholderImage(game.name, game.region, c.w / std::max(c.h, 0.01f));
+	if (shown.id != nullptr && shown.width > 0 && shown.height > 0)
 	{
 		// The part of the picture the case shows, when it is not the picture's shape.
 		float u0 = 0, u1 = 1, v0 = 0, v1 = 1;
-		const float pictureAspect = (float)cover.width / (float)cover.height, caseAspect = c.w / c.h;
+		const float pictureAspect = (float)shown.width / (float)shown.height, caseAspect = c.w / c.h;
 		if (pictureAspect > caseAspect)
 		{
 			const float part = caseAspect / pictureAspect;
@@ -676,7 +680,7 @@ bool frontFace(const Camera& camera, const Case& c, const Image& cover, const li
 		}
 		// The more it leans away, the finer the mesh: each cell is drawn flat.
 		const int cells = farthest / nearest > 1.12f ? 8 : farthest / nearest > 1.03f ? 4 : 1;
-		list->PushTexture(ImTextureRef((ImTextureID)(size_t)cover.id));
+		list->PushTexture((ImTextureID)shown.id);
 		list->PrimReserve(cells * cells * 6, (cells + 1) * (cells + 1));
 		const unsigned first = list->_VtxCurrentIdx;
 		for (int row = 0; row <= cells; row++)
@@ -702,27 +706,12 @@ bool frontFace(const Camera& camera, const Case& c, const Image& cover, const li
 			}
 		list->PopTexture();
 	}
-	else
-	{
-		// The card the grid shows for a game with no cover, drawn flat and
-		// then carried to where the case's front is.
-		const int from = list->VtxBuffer.Size;
-		const float side = px(232);
-		const ImVec2 a(0, 0), b(side * c.w / std::max(c.h, 0.01f), side);
-		coverPlaceholder(a, b, game.name, game.region);
-		for (int i = from; i < list->VtxBuffer.Size; i++)
-		{
-			ImDrawVert& vertex = list->VtxBuffer[i];
-			const float u = (vertex.pos.x - a.x) / (b.x - a.x), v = (vertex.pos.y - a.y) / (b.y - a.y);
-			float depth;
-			project(camera, worldOf(c, { -hw + c.w * u, hh - c.h * v, z }, mirrored, mirrorOffset), vertex.pos, depth);
-			const ImU32 tint = colourAt(std::clamp(v, 0.f, 1.f));
-			vertex.col = IM_COL32(((vertex.col & 0xff) * (tint & 0xff)) / 255, (((vertex.col >> 8) & 0xff) * ((tint >> 8) & 0xff)) / 255,
-					(((vertex.col >> 16) & 0xff) * ((tint >> 16) & 0xff)) / 255, ((vertex.col >> 24) * (tint >> 24)) / 255);
-		}
-	}
 	return true;
 }
+
+// Where the focused case's heart goes, once the scene is drawn.
+ImVec2 heartAt;
+bool heartShown = false;
 
 void drawCase(const Camera& camera, const Case& c, const Image& cover, const library::Game& game)
 {
@@ -752,9 +741,9 @@ void drawCase(const Camera& camera, const Case& c, const Image& cover, const lib
 		draw()->AddPolyline(outline, 4, t.accent, px(4), ImDrawFlags_Closed);
 		if (library::favourite(game.path))
 		{
-			const ImVec2 corner(outline[0].x + px(12), outline[0].y + px(12));
-			draw()->AddCircleFilled(ImVec2(corner.x + px(16), corner.y + px(16)), px(19), IM_COL32(0, 0, 0, 170));
-			text(ImVec2(corner.x + px(6), corner.y + px(6)), IM_COL32(255, 96, 128, 255), icon::Heart, Body, 20);
+			// Drawn flat over the scene (its words are not part of its mesh).
+			heartAt = ImVec2(outline[0].x + px(12), outline[0].y + px(12));
+			heartShown = true;
 		}
 	}
 }
@@ -952,7 +941,10 @@ bool flowView(int index, const FlowGames& games, int& cursor, bool active, bool 
 		return a.focused < b.focused;
 	});
 
-	draw()->PushClipRect(at(0, top - 8), at(W, bottom), true);
+	// The cases are a 3D scene: a mesh, drawn by its own pass into a picture
+	// the size of the screen, which the page then shows where it belongs.
+	heartShown = false;
+	beginScene();
 	if (mode.mirror)
 	{
 		ImVec2 outline[4];
@@ -961,6 +953,15 @@ bool flowView(int index, const FlowGames& games, int& cursor, bool active, bool 
 	}
 	for (const Case& c : cases)
 		drawCase(camera, c, games.cover(c.index), games.game(c.index));
+	void *scene = display::scene(endScene());
+	draw()->PushClipRect(at(0, top - 8), at(W, bottom), true);
+	if (scene != nullptr)
+		draw()->AddImage((ImTextureID)scene, ImVec2(0, 0), ImVec2(width(), height()));
+	if (heartShown)
+	{
+		draw()->AddCircleFilled(ImVec2(heartAt.x + px(16), heartAt.y + px(16)), px(19), IM_COL32(0, 0, 0, 170));
+		text(ImVec2(heartAt.x + px(6), heartAt.y + px(6)), IM_COL32(255, 96, 128, 255), icon::Heart, Body, 20);
+	}
 	draw()->PopClipRect();
 
 	// The game under the cursor, in words.

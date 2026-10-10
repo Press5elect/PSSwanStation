@@ -97,6 +97,8 @@ public:
   // These command buffers are allocated per-frame. They are valid until the command buffer
   // is submitted, after that you should call these functions again.
   ALWAYS_INLINE VkCommandBuffer GetCurrentCommandBuffer() const { return m_current_command_buffer; }
+  // Which of the NUM_COMMAND_BUFFERS frame slots is being recorded.
+  ALWAYS_INLINE uint32_t GetCurrentCommandBufferIndex() const { return m_current_frame; }
 
   /// Allocates a descriptor set from the pool reserved for the current frame.
   VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout set_layout);

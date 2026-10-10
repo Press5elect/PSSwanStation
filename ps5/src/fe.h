@@ -383,6 +383,7 @@ struct Frontend
 	bool highContrast = false;	// black behind the menus, white text, brighter dim text
 	bool colourBlind = false;	// good and bad in blue and orange instead of green and red
 	int accent = 0;
+	int theme = 0;				// the interface's theme: 0 PSSwanStation's own, then the kit's thirty
 	int sort = 0;				// library: 0 name, 1 last played, 2 most played, 3 year, 4 size
 	int filter = 0;				// 0 all, 1 favourites, 2 not played yet, 3 hidden
 	int regionFilter = 0;		// 0 all, 1 USA, 2 Europe, 3 Japan
@@ -911,6 +912,8 @@ void init();
 // One frame of the interface: input, then ImGui windows. `gameVisible` says
 // the emulator's picture is behind it.
 void frame();
+// Queues the frame's interface layers (ui_widgets.cpp), before display::endFrame.
+void widgetsSubmit();
 // Whether the title should end.
 bool quitRequested();
 // The emulator must not run this frame (a menu is over the game).

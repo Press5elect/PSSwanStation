@@ -183,8 +183,17 @@ void forgetImage(const std::string& path)
 
 Image imageFromPixels(const std::string& key, const uint32_t *pixels, int width, int height, int enlarge)
 {
-	if (key.empty() || pixels == nullptr || width <= 0 || height <= 0)
+	if (key.empty() || width <= 0 || height <= 0)
 		return {};
+	// No pixels: the picture made before under this key, if there is one.
+	if (pixels == nullptr)
+	{
+		const auto found = entries.find("pixels:" + key);
+		if (found == entries.end() || found->second.texture == nullptr)
+			return {};
+		found->second.used = display::frameCount();
+		return { display::textureId(found->second.texture), found->second.width, found->second.height, nullptr };
+	}
 	Entry& entry = entries["pixels:" + key];
 	entry.used = display::frameCount();
 	if (entry.texture == nullptr)

@@ -347,8 +347,8 @@ void pickerPanel(Frame& f, const Item& item)
 	const float panelW = 760, panelH = 96 + visible * rowH + 20;
 	const float x0 = (W - panelW) * 0.5f, y0 = (H - panelH) * 0.5f;
 	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, 150));
-	panel(at(x0, y0), at(x0 + panelW, y0 + panelH), IM_COL32(24, 30, 48, 252), 18);
-	outline(at(x0, y0), at(x0 + panelW, y0 + panelH), IM_COL32(255, 255, 255, 26), 18, 1.5f);
+	panel(at(x0, y0), at(x0 + panelW, y0 + panelH), theme().panel, 18);
+	outline(at(x0, y0), at(x0 + panelW, y0 + panelH), withAlpha(theme().text, 0.10f), 18, 1.5f);
 	textFit(at(x0 + 32, y0 + 26), px(panelW - 64), t.text, item.label, Bold, 30);
 
 	const float listTop = y0 + 88;
@@ -516,7 +516,7 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 			panel(at(x0 + 6, y + 3), at(x1 - 6, y + h - 3), t.panelHigh, 12);
 			panel(at(x0 + 6, y + 14), at(x0 + 12, y + h - 14), t.accent, 3);
 		}
-		const ImU32 colour = !item.enabled ? t.faint : focused ? t.text : IM_COL32(214, 220, 234, 255);
+		const ImU32 colour = !item.enabled ? t.faint : focused ? t.text : theme().text;
 		float x = x0 + 30;
 		if (item.picture.id != nullptr)
 		{
@@ -594,9 +594,10 @@ bool optionsSpent;
 
 void drawGame(float dim)
 {
-	ImDrawList *list = ImGui::GetBackgroundDrawList();
+	// The game's picture is under the interface's layers (display::present);
+	// what is beside it and the tube's lines over it are in the background list.
+	ImDrawList *list = background();
 	const float W = width(), H = height();
-	list->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(0, 0, 0, 255));
 	void *texture = host::frameTexture();
 	// With black frame insertion every second refresh shows nothing (not under
 	// a menu, where the game stands still).
@@ -669,16 +670,12 @@ void drawGame(float dim)
 		}
 		void *looked = display::picture(shown, w, h, shownU, shownV, outW, outH, look, full);
 		const bool squares = full || f.scaler == 1;
-		if (squares)
-			display::sampling(list, true);
 		if (looked != nullptr && full)
-			list->AddImage((ImTextureID)looked, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH));
+			display::present(looked, p0.x, p0.y, p0.x + (float)outW, p0.y + (float)outH, 0, 0, 1, 1, 1.f, squares);
 		else if (looked != nullptr)
-			list->AddImage((ImTextureID)looked, p0, p1);
+			display::present(looked, p0.x, p0.y, p1.x, p1.y, 0, 0, 1, 1, 1.f, squares);
 		else
-			list->AddImage((ImTextureID)shown, p0, p1, ImVec2(0, 0), ImVec2(shownU, shownV));
-		if (squares)
-			display::sampling(list, false);
+			display::present(shown, p0.x, p0.y, p1.x, p1.y, 0, 0, shownU, shownV, 1.f, squares);
 		drawScanlines(list, p0, p1);
 	}
 	if (dim > 0)
@@ -1189,7 +1186,7 @@ void libraryWash(const std::string& coverPath)
 	if (!current.empty())
 		wash(image(current), strength * fade);
 	// Darker towards the bottom, where the names are read.
-	ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()),
+	background()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()),
 			IM_COL32(8, 10, 18, 40), IM_COL32(8, 10, 18, 40), IM_COL32(8, 10, 18, 170), IM_COL32(8, 10, 18, 170));
 }
 
@@ -1335,7 +1332,7 @@ void letterRail(const std::vector<library::Game>& games, int focus)
 		const float y = top + step * (float)i;
 		if (current)
 			panel(at(x - 16, y - 2), at(x + 16, y + step - 4), withAlpha(t.accent, alpha), 10);
-		textCentred(at(x, y + (step - 26) * 0.5f), withAlpha(current ? IM_COL32(8, 12, 22, 255) : has[i] ? t.text : t.faint,
+		textCentred(at(x, y + (step - 26) * 0.5f), withAlpha(current ? theme().onAccent : has[i] ? t.text : t.faint,
 				alpha * (current || has[i] ? 1.f : 0.45f)), std::string(1, letter), Bold, 19);
 	}
 	// The letter itself, large.
@@ -1634,7 +1631,7 @@ void libraryPage(bool active)
 					+ (game.discs.size() > 1 ? format("%d discs", (int)game.discs.size()) : "");
 			const float factsW = toUnits(measure(facts, Body, 20).x);
 			textRight(at(x1 - 24, y + 20), t.faint, facts, Body, 20);
-			textFit(at(x0 + 28, y + 16), px(x1 - x0 - 70 - factsW), focused ? t.text : IM_COL32(214, 220, 234, 255),
+			textFit(at(x0 + 28, y + 16), px(x1 - x0 - 70 - factsW), focused ? t.text : theme().text,
 					game.name, Body, 26);
 		}
 		draw()->PopClipRect();
@@ -1821,6 +1818,12 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"Box art for games that have none in the covers folder is fetched from the libretro thumbnails "
 				"collection, by the game's file name. Your own pictures (covers/<file name>.png or .jpg) are never "
 				"replaced."));
+		items.push_back(choice("Theme", std::clamp(f.theme, 0, (int)themeNames().size() - 1), themeNames(),
+				"How the whole interface looks: its colours, its panels (frosted glass, soft shadows, hard "
+				"outlines, bevels, pixels, a pen), its type, how things move and which sounds it makes. "
+				"PSSwanStation is the title's own; the others are the thirty of the interface kit "
+				"(BlackBearReloaded's ps5-homebrew-ui). Now: " + themeAbout(f.theme),
+				[](int i) { options::frontend().theme = i; }));
 		items.push_back(choice("Accent colour", f.accent,
 				[] {
 					std::vector<std::string> names;
@@ -1828,7 +1831,8 @@ void frontendItems(int kind, std::vector<Item>& items)
 						names.push_back(accentName(i));
 					return names;
 				}(),
-				"The colour of the cursor and the highlights.", [](int i) { options::frontend().accent = i; }));
+				"The colour of the cursor and the highlights, in the PSSwanStation theme (the others bring their own).",
+				[](int i) { options::frontend().accent = i; }));
 		items.push_back(choice("Interface size", std::clamp((f.uiScale - 80) / 10, 0, 6),
 				{ "80%", "90%", "100%", "110%", "120%", "130%", "140%" },
 				"Makes the text and everything else of the interface larger or smaller. At the largest sizes long "
@@ -2747,7 +2751,7 @@ void detailsPage(Frame& f)
 	const float x = (W - w) * 0.5f, y = 96 + (H - 64 - 96 - h) * 0.5f + (1 - ease) * 36;
 	draw()->AddRectFilled(at(x - 6, y - 4), at(x + w + 6, y + h + 12), IM_COL32(0, 0, 0, (int)(70 * ease)), px(30));
 	panel(at(x, y), at(x + w, y + h), IM_COL32(22, 28, 46, 252), 24);
-	outline(at(x, y), at(x + w, y + h), IM_COL32(255, 255, 255, 22), 24, 1.5f);
+	outline(at(x, y), at(x + w, y + h), withAlpha(theme().text, 0.09f), 24, 1.5f);
 
 	// The left column: the cover, the file, the serial, when it was played.
 	// Among its saved states, what the game showed at the one under the cursor
@@ -2849,7 +2853,7 @@ void detailsPage(Frame& f)
 		const float pillsY = bottom - 64;
 		const float discsY = pillsY - 66;
 		const float textBottom = (discs > 1 ? discsY : pillsY) - 28;
-		textWrapped(at(tx, top), px(tw), det.known ? IM_COL32(200, 208, 226, 255) : t.faint, description, Body, 24,
+		textWrapped(at(tx, top), px(tw), det.known ? theme().text : t.faint, description, Body, 24,
 				px(textBottom - top));
 		if (discs > 1)
 		{
@@ -3016,7 +3020,7 @@ void detailsPage(Frame& f)
 		const Item *focused = runList(f, items, tx - 14, listTop, tx + tw - 4, bottom - infoH);
 		if (focused != nullptr && infoH > 0)
 		{
-			draw()->AddLine(at(tx, bottom - infoH + 10), at(tx + tw, bottom - infoH + 10), IM_COL32(255, 255, 255, 18), 1.f);
+			draw()->AddLine(at(tx, bottom - infoH + 10), at(tx + tw, bottom - infoH + 10), withAlpha(theme().text, 0.07f), 1.f);
 			std::string info = focused->info;
 			std::replace(info.begin(), info.end(), '\n', ' ');
 			textWrapped(at(tx, bottom - infoH + 22), px(tw), t.faint, info, Body, 20, px(infoH - 22));
@@ -3098,8 +3102,8 @@ void loadingPage(Frame& f)
 	const float left = x0 + 48, right = x0 + w - 48;
 	const float barY = y0 + h - 118;
 	draw()->AddRectFilled(at(x0 - 6, y0 - 4), at(x0 + w + 6, y0 + h + 12), IM_COL32(0, 0, 0, 70), px(26));
-	panel(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(24, 30, 48, 252), 20);
-	outline(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(255, 255, 255, 22), 20, 1.5f);
+	panel(at(x0, y0), at(x0 + w, y0 + h), theme().panel, 20);
+	outline(at(x0, y0), at(x0 + w, y0 + h), withAlpha(theme().text, 0.09f), 20, 1.5f);
 	// The game's name, and how far it is.
 	textFit(at(left, y0 + 36), px(right - left - 130), t.text, f.s2, Bold, 32);
 	if (fraction >= 0)
@@ -3204,8 +3208,8 @@ void messagePage(Frame& f, bool confirm)
 	const float h = 190 + textH;
 	const float x0 = (W - w) * 0.5f, y0 = (H - h) * 0.5f;
 	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, 130));
-	panel(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(24, 30, 48, 252), 20);
-	outline(at(x0, y0), at(x0 + w, y0 + h), IM_COL32(255, 255, 255, 26), 20, 1.5f);
+	panel(at(x0, y0), at(x0 + w, y0 + h), theme().panel, 20);
+	outline(at(x0, y0), at(x0 + w, y0 + h), withAlpha(theme().text, 0.10f), 20, 1.5f);
 	// Something to answer or to know is marked in the accent colour; something
 	// that went wrong, in red.
 	const bool plain = confirm || f.a == 1;
@@ -3346,7 +3350,7 @@ void searchPage(Frame&)
 	const float kx = 64, key = 76, gap = 8, kw = SearchColumns * key + (SearchColumns - 1) * gap;
 	const float fieldY = 132;
 	panel(at(kx, fieldY), at(kx + kw, fieldY + 68), t.panel, 14);
-	outline(at(kx, fieldY), at(kx + kw, fieldY + 68), s.inResults ? IM_COL32(255, 255, 255, 26) : withAlpha(t.accent, 0.7f), 14, 2);
+	outline(at(kx, fieldY), at(kx + kw, fieldY + 68), s.inResults ? withAlpha(theme().text, 0.10f) : withAlpha(t.accent, 0.7f), 14, 2);
 	text(at(kx + 20, fieldY + 20), t.faint, icon::Search, Body, 26);
 	if (s.query.empty())
 		text(at(kx + 62, fieldY + 19), t.faint, "A part of the name", Body, 26);
@@ -3372,7 +3376,7 @@ void searchPage(Frame&)
 			const bool focused = !s.inResults && s.row == r && (r == actionRow ? s.column / 2 == c : s.column == c);
 			panel(at(x, y), at(x + w, y + key - 8), focused ? t.accent : t.panelHigh, 12);
 			const std::string label = r == actionRow ? actions[c] : std::string(1, searchKeys[r * SearchColumns + c]);
-			textCentred(at(x + w * 0.5f, y + (r == actionRow ? 21 : 16)), focused ? IM_COL32(8, 12, 22, 255) : t.text, label, Bold,
+			textCentred(at(x + w * 0.5f, y + (r == actionRow ? 21 : 16)), focused ? theme().onAccent : t.text, label, Bold,
 					r == actionRow ? 22 : 30);
 		}
 	}
@@ -3408,7 +3412,7 @@ void searchPage(Frame&)
 		const float factsW = toUnits(measure(facts, Body, 20).x);
 		textRight(at(rx1 - 24, y + 21), t.faint, facts, Body, 20);
 		text(at(rx0 + 10, y + 20), focused ? t.accent : t.faint, sourceIcons[source], Body, 22);
-		textFit(at(rx0 + 50, y + 17), px(rx1 - rx0 - 110 - factsW), focused ? t.text : IM_COL32(214, 220, 234, 255), game.name,
+		textFit(at(rx0 + 50, y + 17), px(rx1 - rx0 - 110 - factsW), focused ? t.text : theme().text, game.name,
 				Body, 26);
 	}
 	if (count > visible)
@@ -3963,12 +3967,8 @@ bool generationTest()
 			getenv("SWANSTATION_FG_AHEAD") != nullptr ? phase + (step == steps - 1 ? 0.f : 1.f) : phase,
 			getenv("SWANSTATION_FG_LIGHTER") != nullptr ? 0 : quality != nullptr ? atoi(quality) : 1,
 			getenv("SWANSTATION_FG_DEBUG") != nullptr);
-	ImDrawList *list = ImGui::GetBackgroundDrawList();
-	list->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(0, 0, 0, 255));
-	display::sampling(list, true);
-	list->AddImage((ImTextureID)(shown != nullptr ? shown : picture.id), ImVec2(0, 0),
-			ImVec2((float)picture.width, (float)picture.height));
-	display::sampling(list, false);
+	display::present(shown != nullptr ? shown : picture.id, 0, 0, (float)picture.width, (float)picture.height, 0, 0, 1, 1,
+			1.f, true);
 	diag::mark("generation test: display frame %llu shows picture %d at phase %.2f%s", (unsigned long long)display::frameCount(),
 			(int)index, phase, shown == nullptr ? " (not made)" : "");
 	return true;
@@ -4039,17 +4039,13 @@ bool lookTest()
 	const float H = height(), W = width();
 	const float dh = H, dw = std::min(W, dh * 4.f / 3.f);
 	const ImVec2 p0(std::floor((W - dw) * 0.5f), 0.f), p1(p0.x + dw, dh);
-	ImDrawList *list = ImGui::GetBackgroundDrawList();
-	list->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(0, 0, 0, 255));
 	bool full = false;
 	const int outW = (int)std::lround(dw), outH = (int)std::lround(dh);
 	void *looked = display::picture(picture.id, picture.width, picture.height, 1.f, 1.f, outW, outH, look, full);
-	display::sampling(list, full);
 	if (looked != nullptr && full)
-		list->AddImage((ImTextureID)looked, p0, ImVec2(p0.x + (float)outW, p0.y + (float)outH));
+		display::present(looked, p0.x, p0.y, p0.x + (float)outW, p0.y + (float)outH, 0, 0, 1, 1, 1.f, true);
 	else
-		list->AddImage((ImTextureID)(looked != nullptr ? looked : picture.id), p0, p1);
-	display::sampling(list, false);
+		display::present(looked != nullptr ? looked : picture.id, p0.x, p0.y, p1.x, p1.y, 0, 0, 1, 1, 1.f, full);
 	return true;
 }
 #endif

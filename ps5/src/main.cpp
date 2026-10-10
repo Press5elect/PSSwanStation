@@ -280,6 +280,7 @@ int main(int, char **)
 			host::runFrame();
 		host::tick();
 		ui::frame();
+		ui::widgetsSubmit();
 		display::endFrame();
 		// The web panel's requests, between frames.
 		web::tick();

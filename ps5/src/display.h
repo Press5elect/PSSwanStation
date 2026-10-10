@@ -4,6 +4,9 @@
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #pragma once
+
+namespace hui::gfx { class VkRenderer; }
+struct Scene;
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -51,9 +54,16 @@ int textureHeight(const Texture *texture);
 // drawable by ImGui. The id stays the same while the view does.
 void *wrapView(void *imageView, int layout);
 void releaseWrapped();
-// Nearest or linear sampling for what is drawn next into an ImDrawList (the
-// game's picture); linear is what everything else is drawn with.
-void sampling(void *drawList, bool nearest);
+// The game's picture (a picture id from the calls here), drawn this frame into
+// x0,y0-x1,y1 of the screen, in pixels, under every layer of the interface:
+// u0,v0-u1,v1 of it, darkened by alpha, sampled nearest or linear.
+void present(void *picture, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1,
+		float alpha, bool nearest);
+// A 3D scene of the interface (ui::beginScene), drawn now into a picture the
+// size of the screen; its id, to be shown where the scene belongs.
+void *scene(const Scene& mesh);
+// A picture id as the interface kit draws it (0: not one it can).
+uint32_t kitTexture(void *picture);
 
 // The picture `texture` (its part up to u, v) alone, drawn `width` x `height`
 // and read back as RGBA8. Slow: it waits for the graphics processor. Only
@@ -120,4 +130,7 @@ bool saveScreenshot(const std::string& path);
 // For the emulator's libretro Vulkan interface.
 void *vkInstance();
 
+// The interface kit's renderer: the interface queues its layers into it,
+// and makes its textures with it, between frames.
+hui::gfx::VkRenderer& interfaceRenderer();
 }
