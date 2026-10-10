@@ -265,6 +265,9 @@ void padPoll()
 	static unsigned polls;
 	if (++polls % 120 == 0)
 		lookForUsers();
+	uint32_t before[MaxPads];
+	for (int i = 0; i < MaxPads; i++)
+		before[i] = pads[i].buttons;
 	for (int i = 0; i < MaxPads; i++)
 	{
 		Device& device = devices[i];
@@ -324,6 +327,39 @@ void padPoll()
 		{
 			pad.touchX = std::clamp(raw.touch[0].x / 1919.f, 0.f, 1.f);
 			pad.touchY = std::clamp(raw.touch[0].y / 1079.f, 0.f, 1.f);
+		}
+	}
+	// A USB controller the console does not take as its own (usbpad_ps5.cpp):
+	// the next player, or player 1 together with the DualSense.
+	Pad usb;
+	if (usbPad(usb))
+	{
+		int slot = -1;
+		if (options::frontend().usbPadsAs == 1)
+			slot = 0;
+		else
+			for (int i = 0; i < MaxPads && slot < 0; i++)
+				if (!pads[i].connected)
+					slot = i;
+		if (slot >= 0)
+		{
+			Pad& pad = pads[slot];
+			if (!pad.connected)
+				pad = usb;
+			else
+			{
+				// Merged: either one's buttons, the stick pushed further.
+				pad.buttons |= usb.buttons;
+				const auto further = [](float a, float b) { return std::fabs(b) > std::fabs(a) ? b : a; };
+				pad.lx = further(pad.lx, usb.lx);
+				pad.ly = further(pad.ly, usb.ly);
+				pad.rx = further(pad.rx, usb.rx);
+				pad.ry = further(pad.ry, usb.ry);
+				pad.l2 = std::max(pad.l2, usb.l2);
+				pad.r2 = std::max(pad.r2, usb.r2);
+			}
+			pad.pressed = pad.buttons & ~before[slot];
+			pad.released = before[slot] & ~pad.buttons;
 		}
 	}
 }

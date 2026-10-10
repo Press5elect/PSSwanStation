@@ -205,7 +205,8 @@ void earlyInit()
 	if (safeStart)
 		diag::mark("main: the last start did not finish: this one stays in the sandbox, at 59.94 Hz");
 	const int filesAt = options::frontend().filesAt;
-	const bool wantOut = (options::frontend().usb || filesAt == 1 || filesAt == 2 || filesAt == 3) && !safeStart;
+	const bool wantOut = (options::frontend().usb || options::frontend().usbPads != 0 || filesAt == 1 || filesAt == 2
+			|| filesAt == 3) && !safeStart;
 	if (wantOut)
 	{
 		// Before any other thread exists, as the helper's protocol asks.
@@ -342,6 +343,7 @@ void lateInit()
 {
 	diag::mark("hide splash screen: %d", sceSystemServiceHideSplashScreen());
 	padOpen();
+	usbPadStart(options::frontend().usbPads);
 }
 
 [[noreturn]] void quit()

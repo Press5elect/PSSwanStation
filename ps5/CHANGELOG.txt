@@ -1,6 +1,20 @@
 PSSwanStation - what changed
 ============================
 
+Build 20
+  Added
+  - A second way of making frames between the game's: optical flow,
+    swordpdf's ps5-framegen (Settings, Picture, Generation method). On my
+    test pictures its frames are about half as far from the true ones as
+    the title's own. The title's own stays, and is the default.
+  - USB controllers the console does not take as its own (an
+    experiment): a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or
+    another USB gamepad, read by PSSwanStation itself (after PS5SX2),
+    as the next player or together with player 1. Settings, Controllers,
+    USB controllers; off at first. Only devices that say what they are
+    are read; Sony's controllers are left to the console.
+  Not yet run on my console.
+
 Build 19
   Added
   - A new look: the interface is drawn by the PS5 homebrew UI kit, with

@@ -2939,6 +2939,32 @@ void moreSettings(int kind, std::vector<Item>& items)
 			items.push_back(std::move(item));
 		}
 
+		items.push_back(header("USB controllers"));
+		{
+			Item item = choice("USB controllers", f.usbPads, { "Off", "On", "On, and look harder" },
+					"An experiment: controllers the console does not take as its own, on a USB cable - a PS3 pad, a "
+					"DualShock 3, an Xbox 360 pad, other USB gamepads - read by PSSwanStation itself (after swordpdf's "
+					"PS5SX2). It has not yet been seen to work on a console: the boot log's \"usbpad\" lines say what "
+					"the console offers and what the controller sends. On: through the kernel's own USB nodes, only a "
+					"device that says what it is. Look harder: also through the console's USB library, opening every "
+					"device that is not Sony's and not a drive or a hub to ask what it is. Sony's PS4 and PS5 "
+					"controllers are always left to the console. Needs PSSwanStation to leave its sandbox (a resident "
+					"Lapy service or the ELF loader on port 9021); from the next start.",
+					[](int i) { options::frontend().usbPads = i; });
+			std::string name;
+			Pad usb;
+			if (f.usbPads != 0 && platform::usbPad(usb, &name))
+				item.info += "\n\nConnected now: " + name + ".";
+			items.push_back(item);
+			Item as = choice("A USB controller is", f.usbPadsAs, { "The next player", "Player 1, with the DualSense" },
+					"The next player: the first player without a controller. Player 1: it and player 1's DualSense play "
+					"together, either one's buttons. Its Select and Start are the touch pad's halves (the PlayStation's "
+					"Select and Start), its PS or Guide button opens PSSwanStation's menu.",
+					[](int i) { options::frontend().usbPadsAs = i; });
+			as.enabled = f.usbPads != 0;
+			items.push_back(as);
+		}
+
 		items.push_back(header("The pad"));
 		items.push_back(action(icon::Gamepad, "Buttons", "Which button of the pad presses which of the PlayStation's "
 				"(the touch pad's halves are Select and Start), and which fire again and again while held (turbo).",

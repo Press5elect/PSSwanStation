@@ -66,6 +66,11 @@ ps5-framegen (frame          GPL-3.0-or-later GPL-3.0.txt              github.co
 generation, optical flow)    (its shaders:    (its shaders:            64362101757c, by swordpdf, unmodified
                              MIT)             FSR3-LICENSE.txt)        (ps5/third_party/ps5-framegen): AMD
                                                                        FidelityFX SDK 2.3.0's FSR3 optical flow
+PS5SX2's USB pad decoder     GPL-3.0-or-later GPL-3.0.txt              github.com/Swordpdf/PS5SX2 at 6ccf48047a12,
+(USB controllers)                                                      by swordpdf: OrbisUsbPadDecode.h unmodified
+                                                                       (ps5/third_party/ps5sx2-usbpad); the reader
+                                                                       (ps5/src/ps5/usbpad_ps5.cpp) follows its
+                                                                       ProsperoUsbPad.cpp
 QR Code generator (the web   MIT              MIT.txt                  github.com/nayuki/QR-Code-generator
 panel's code)                                                          (Project Nayuki), cpp/ unmodified
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,

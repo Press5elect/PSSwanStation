@@ -124,6 +124,13 @@ void padRumble(int index, float strong, float weak);
 void padLight(int index, uint8_t red, uint8_t green, uint8_t blue);
 // Switches the motion sensors of every pad on or off.
 void padMotion(bool on);
+// USB controllers the console does not take as its own (PS3 pads, a DualShock
+// 3 on a cable, Xbox 360 pads, other USB gamepads), read by the title itself
+// (usbpad_ps5.cpp): `mode` 1 by the kernel's own nodes, 2 through libSceUsbd
+// too. padPoll() puts the first one found among the pads.
+void usbPadStart(int mode);
+// The USB controller now; false with none. `name`: what it calls itself.
+bool usbPad(Pad& out, std::string *name = nullptr);
 
 // The sound output: opens it and starts the thread that feeds it from
 // audio::render(). False when there is none.
@@ -409,6 +416,8 @@ struct Frontend
 	int swanMoves = 0;			// the swan: 0 lively, 1 calm, 2 still
 	int swanSeason = 0;			// its seasonal touches: 0 by the date, 1 none, 2 winter, 3 Halloween, 4 Christmas, 5 New Year
 	bool swanThemed = true;		// its look follows the theme
+	int usbPads = 0;			// USB controllers the console does not take: 0 off, 1 on, 2 on, through libSceUsbd too
+	int usbPadsAs = 0;			// such a controller is 0 the next player, 1 player 1 with the DualSense
 	int sort = 0;				// library: 0 name, 1 last played, 2 most played, 3 year, 4 size
 	int filter = 0;				// 0 all, 1 favourites, 2 not played yet, 3 hidden
 	int regionFilter = 0;		// 0 all, 1 USA, 2 Europe, 3 Japan
