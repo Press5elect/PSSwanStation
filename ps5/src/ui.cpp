@@ -770,6 +770,20 @@ struct LibraryView
 	int cursor = 0;
 	float scroll = 0, scrollTarget = 0;
 	bool fresh = true;
+	// The shelves: the shelf under the cursor, each shelf's own cursor and
+	// scroll, where the shelves stand (moving towards shelfRow), and the game
+	// the large block above them shows, crossing from the one before.
+	int shelfRow = 0;
+	int shelfColumn[3] = {};
+	float shelfScroll[3] = {}, shelfRowAt = 0;
+	std::string heroPath, heroBefore;
+	double heroSince = -10, shelfNudgeAt = -10;
+	float shelfNudge = 0;
+	// The favourites among the games, looked through again when the marks or
+	// the games change.
+	std::vector<int> favourites;
+	unsigned favouritesMarks = ~0u, favouritesOrder = ~0u;
+	size_t favouritesCount = ~(size_t)0;
 };
 LibraryView views[library::SourceCount];
 // The source on the screen, and the one that was asked for (with L1 and R1,
@@ -1185,9 +1199,11 @@ void libraryWash(const std::string& coverPath)
 		wash(image(previous), strength * (1.f - fade));
 	if (!current.empty())
 		wash(image(current), strength * fade);
-	// Darker towards the bottom, where the names are read.
-	background()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()),
-			IM_COL32(8, 10, 18, 40), IM_COL32(8, 10, 18, 40), IM_COL32(8, 10, 18, 170), IM_COL32(8, 10, 18, 170));
+	// Darker (in a light theme, lighter) towards the bottom, in the page's own
+	// colour.
+	const ImU32 page = theme().background;
+	background()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()), withAlpha(page, 0.16f),
+			withAlpha(page, 0.16f), withAlpha(page, 0.67f), withAlpha(page, 0.67f));
 }
 
 // One game of the grid: its cover (or a card with its name), the name under
@@ -1342,6 +1358,335 @@ void letterRail(const std::vector<library::Game>& games, int focus)
 	textCentred(at(W - 250 + size * 0.5f, H * 0.5f - 58), withAlpha(t.accent, alpha), std::string(1, now), Huge, 92);
 }
 
+// ----------------------------------------------------------------- shelves
+//
+// The library as the PS5's own home screen has it, after PSWin's: the game
+// under the cursor large at the top (its name, what is known of it, its cover
+// floating at the right), and under it shelves of covers: what was played
+// lately, the favourites, every game. Up and down go from shelf to shelf, the
+// shelves above the one in use stepping out of the way.
+
+namespace
+{
+float easeOut(float t)
+{
+	t = 1 - std::clamp(t, 0.f, 1.f);
+	return 1 - t * t * t * t * t;
+}
+
+// A shake that dies away: a refusal at the end of a shelf.
+float shake(double since, float amplitude)
+{
+	const float t = (float)since;
+	if (t < 0 || t > 0.45f || motion() == MotionOff)
+		return 0;
+	return amplitude * std::sin(t * 48.f) * (1 - t / 0.45f);
+}
+
+struct Shelf
+{
+	std::string title;
+	const char *icon;
+	std::vector<int> games;		// indices into the view's games
+};
+
+std::vector<Shelf> shelvesOf(LibraryView& view)
+{
+	std::vector<Shelf> shelves;
+	if (!view.recent.empty())
+		shelves.push_back({ "Continue playing", icon::Clock, view.recent });
+	if (view.favouritesMarks != library::marksGeneration() || view.favouritesOrder != (view.orderSeen ^ (view.generation * 2654435761u))
+			|| view.favouritesCount != view.games.size())
+	{
+		view.favouritesMarks = library::marksGeneration();
+		view.favouritesOrder = view.orderSeen ^ (view.generation * 2654435761u);
+		view.favouritesCount = view.games.size();
+		view.favourites.clear();
+		for (int i = 0; i < (int)view.games.size(); i++)
+			if (library::favourite(view.games[(size_t)i].path))
+				view.favourites.push_back(i);
+	}
+	if (!view.favourites.empty())
+		shelves.push_back({ "Favourites", icon::Heart, view.favourites });
+	Shelf all{ "All games", icon::Grid, {} };
+	all.games.resize(view.games.size());
+	for (int i = 0; i < (int)view.games.size(); i++)
+		all.games[(size_t)i] = i;
+	shelves.push_back(std::move(all));
+	return shelves;
+}
+
+constexpr float ShelfCard = 196, ShelfGap = 26, ShelfGrow = 1.2f, ShelfPitch = 304, ShelfMargin = 96;
+
+// One cover of a shelf, square, with its marks.
+void shelfCard(LibraryView& view, int index, ImVec2 a, ImVec2 b, float rounding, float alpha)
+{
+	const library::Game& game = view.games[(size_t)index];
+	const Image cover = coverOf(view, index);
+	const ImU32 tint = withAlpha(IM_COL32_WHITE, alpha);
+	if (cover.id != nullptr)
+	{
+		draw()->AddRectFilled(a, b, withAlpha(IM_COL32(0, 0, 0, 255), 0.35f * alpha), px(rounding));
+		imageFit(cover, a, b, rounding, tint);
+	}
+	else
+		draw()->AddImageRounded(placeholderImage(game.name, game.region, 1.f).id, a, b, ImVec2(0, 0), ImVec2(1, 1),
+				tint, px(rounding));
+	const float s = (b.x - a.x) / px(1);
+	if (library::favourite(game.path))
+	{
+		const float r = s * 0.09f;
+		draw()->AddCircleFilled(ImVec2(b.x - px(s * 0.13f), a.y + px(s * 0.13f)), px(r), withAlpha(IM_COL32(0, 0, 0, 170), alpha));
+		textCentred(ImVec2(b.x - px(s * 0.13f), a.y + px(s * 0.13f - r * 0.62f)), withAlpha(IM_COL32(255, 96, 128, 255), alpha),
+				icon::Heart, Body, r * 1.15f);
+	}
+	if (game.discs.size() > 1)
+	{
+		const std::string discs = format("%d", (int)game.discs.size());
+		const float h = s * 0.13f, w = toUnits(measure(discs + "  " + icon::Disc, Bold, h * 0.62f).x) + h * 0.7f;
+		panel(ImVec2(a.x + px(s * 0.05f), b.y - px(s * 0.05f + h)), ImVec2(a.x + px(s * 0.05f + w), b.y - px(s * 0.05f)),
+				withAlpha(IM_COL32(0, 0, 0, 180), alpha), h * 0.5f);
+		text(ImVec2(a.x + px(s * 0.05f + h * 0.35f), b.y - px(s * 0.05f + h * 0.82f)), withAlpha(IM_COL32_WHITE, alpha),
+				discs + "  " + icon::Disc, Bold, h * 0.62f);
+	}
+}
+
+// The large block: what the shelf is, the name, what is known, Cross and
+// Triangle, and the cover at the right. `slide` moves it sideways as one
+// game gives way to the next.
+void heroBlock(LibraryView& view, int index, const std::string& shelfTitle, float alpha, float slide)
+{
+	if (alpha <= 0.01f || index < 0 || index >= (int)view.games.size())
+		return;
+	const Theme& t = theme();
+	const float W = unitsWide();
+	const library::Game& game = view.games[(size_t)index];
+	const Meta& meta = metaOf(view, index);
+
+	// The cover, floating, lit in the accent's colour.
+	const float bob = motion() == MotionFull ? (float)std::sin(clock() * 0.8) * 6.f : 0.f;
+	const float side = 420, ax = W - ShelfMargin - side + slide * 1.6f, ay = 132 + bob;
+	glowAt(at(ax + side * 0.5f, ay + side * 0.5f), px(side * 0.62f), withAlpha(t.accent, 0.22f * alpha));
+	draw()->AddRectFilled(at(ax + 14, ay + 22), at(ax + side - 14, ay + side + 12), withAlpha(IM_COL32(0, 0, 0, 255), 0.22f * alpha),
+			px(40));
+	shelfCard(view, index, at(ax, ay), at(ax + side, ay + side), 34, alpha);
+	outline(at(ax, ay), at(ax + side, ay + side), withAlpha(IM_COL32_WHITE, 0.16f * alpha), 34, 2);
+
+	const float x = ShelfMargin + slide, wide = ax - x - 70;
+	text(at(x, 168), withAlpha(t.accent, alpha), shelfTitle, Bold, 20);
+	// The name, as large as fits.
+	float size = 82;
+	while (size > 50 && toUnits(measure(game.name, Huge, size).x) > wide)
+		size -= 8;
+	textFit(at(x - 3, 200), px(wide), withAlpha(t.pageText, alpha), game.name, Huge, size);
+	float y = 216 + size * 1.1f;
+	std::string facts = game.region;
+	if (meta.known)
+		facts += (facts.empty() ? "" : "  \xc2\xb7  ") + factsLine(meta.info, true);
+	if (game.discs.size() > 1)
+		facts += (facts.empty() ? "" : "  \xc2\xb7  ") + format("%d discs", (int)game.discs.size());
+	textFit(at(x, y), px(wide), withAlpha(t.pageText, 0.85f * alpha), facts, Body, 25);
+	y += 42;
+	const history::Entry played = history::get(game.path);
+	std::string when = played.lastPlayed != 0 ? agoText(played.lastPlayed) : "";
+	std::string line = when.empty() ? std::string("Not played yet") : "Played " + when;
+	const std::string total = playedText(played.seconds);
+	if (!total.empty())
+		line += "  \xc2\xb7  " + total + " in all";
+	textFit(at(x, y), px(wide), withAlpha(t.pageDim, alpha), line, Body, 23);
+	y += 40;
+	if (meta.known && !meta.info.description.empty())
+		textWrapped(at(x, y), px(std::min(wide, 980.f)), withAlpha(t.pageDim, 0.9f * alpha), meta.info.description, Body, 21,
+				px(56));
+
+	// What Cross and Triangle do.
+	const float by = 470, bh = 62;
+	const float playW = 196, moreW = 222;
+	glowAt(at(x + playW * 0.5f, by + bh * 0.5f), px(110), withAlpha(t.accent, 0.25f * alpha));
+	panel(at(x, by), at(x + playW, by + bh), withAlpha(t.accent, alpha), bh * 0.5f);
+	buttonGlyph(at(x + 38, by + bh * 0.5f), 32, confirmButton);
+	text(at(x + 70, by + 14), withAlpha(t.onAccent, alpha), "Play", Bold, 28);
+	const float mx = x + playW + 18;
+	panel(at(mx, by), at(mx + moreW, by + bh), withAlpha(t.panel, 0.85f * alpha), bh * 0.5f);
+	outline(at(mx, by), at(mx + moreW, by + bh), withAlpha(t.pageText, 0.25f * alpha), bh * 0.5f, 2);
+	buttonGlyph(at(mx + 38, by + bh * 0.5f), 32, Triangle);
+	text(at(mx + 70, by + 14), withAlpha(t.text, alpha), "Details", Bold, 28);
+}
+} // namespace
+
+// The shelves view; the game under the cursor, or -1.
+int shelvesView(LibraryView& view, bool active, float bottom)
+{
+	const Theme& t = theme();
+	const float W = unitsWide(), H = unitsHigh();
+	const std::vector<Shelf> shelves = shelvesOf(view);
+	const int rows = (int)shelves.size();
+	if (view.fresh)
+	{
+		// Back from a game: at the shelf of what was played lately, at its first.
+		view.shelfRow = std::clamp(view.shelfRow, 0, rows - 1);
+		view.shelfRowAt = (float)view.shelfRow;
+	}
+	view.shelfRow = std::clamp(view.shelfRow, 0, rows - 1);
+	for (int r = 0; r < rows && r < 3; r++)
+		view.shelfColumn[r] = std::clamp(view.shelfColumn[r], 0, std::max((int)shelves[(size_t)r].games.size() - 1, 0));
+	int& row = view.shelfRow;
+	if (active)
+	{
+		int& column = view.shelfColumn[std::min(row, 2)];
+		const int length = (int)shelves[(size_t)row].games.size();
+		const auto refuse = [&view](float direction) {
+			if (!hit(Left | Right | Up | Down))
+				return;		// silent on a held direction
+			view.shelfNudgeAt = clock();
+			view.shelfNudge = direction;
+			sound::play(sound::Refuse);
+		};
+		if (nav(Right))
+		{
+			if (column + 1 < length)
+				column++;
+			else
+				refuse(1);
+		}
+		if (nav(Left))
+		{
+			if (column > 0)
+				column--;
+			else
+				refuse(-1);
+		}
+		if (nav(Down))
+		{
+			if (row + 1 < rows)
+				row++;
+			else
+				refuse(0);
+		}
+		if (nav(Up))
+		{
+			if (row > 0)
+				row--;
+			else
+				refuse(0);
+		}
+		// L2 and R2 jump by letter along every game.
+		if (nav(R2) || nav(L2))
+		{
+			const int all = rows - 1;
+			const int from = shelves[(size_t)row].games.empty() ? 0
+					: shelves[(size_t)row].games[(size_t)std::clamp(view.shelfColumn[std::min(row, 2)], 0,
+							(int)shelves[(size_t)row].games.size() - 1)];
+			row = all;
+			view.shelfColumn[std::min(all, 2)] = letterJump(view.games, from, nav(R2));
+			letterShownAt = clock();
+		}
+	}
+	const Shelf& shelf = shelves[(size_t)row];
+	if (shelf.games.empty())
+		return -1;
+	const int column = std::clamp(view.shelfColumn[std::min(row, 2)], 0, (int)shelf.games.size() - 1);
+	const int focus = shelf.games[(size_t)column];
+	view.cursor = focus;
+	view.inShelf = false;
+	const float speed = motion() == MotionOff ? 1000.f : 11.f;
+	view.shelfRowAt = view.fresh ? (float)row : approach(view.shelfRowAt, (float)row, speed);
+
+	// Each shelf keeps the cursor's cover in sight, with room at the right.
+	for (int r = 0; r < rows && r < 3; r++)
+	{
+		const int c = std::clamp(view.shelfColumn[r], 0, std::max((int)shelves[(size_t)r].games.size() - 1, 0));
+		const float start = c * (ShelfCard + ShelfGap), end = start + ShelfCard * ShelfGrow;
+		const float span = W - ShelfMargin * 2;
+		float target = view.shelfScroll[r];
+		if (end - target > span - ShelfCard * 1.2f)
+			target = end - span + ShelfCard * 1.2f;
+		if (start - target < ShelfCard * 1.2f)
+			target = start - ShelfCard * 1.2f;
+		const float most = std::max((float)shelves[(size_t)r].games.size() * (ShelfCard + ShelfGap)
+				+ ShelfCard * (ShelfGrow - 1) - ShelfGap - span, 0.f);
+		target = std::clamp(target, 0.f, most);
+		view.shelfScroll[r] = view.fresh || motion() == MotionOff ? target : approach(view.shelfScroll[r], target, 12.f);
+	}
+
+	// The large block, crossing from the game before.
+	const std::string& path = view.games[(size_t)focus].path;
+	if (path != view.heroPath)
+	{
+		view.heroBefore = view.heroPath;
+		view.heroPath = path;
+		view.heroSince = view.fresh ? -10 : clock();
+	}
+	const float crossing = motion() == MotionOff ? 1.f : (float)(clock() - view.heroSince) / 0.42f;
+	const std::string title = shelf.title;
+	if (crossing < 1.f)
+	{
+		int before = -1;
+		for (int i = 0; i < (int)view.games.size() && before < 0; i++)
+			if (view.games[(size_t)i].path == view.heroBefore)
+				before = i;
+		heroBlock(view, before, title, 1.f - smooth(crossing * 2.2f), -36.f * smooth(crossing * 2.2f));
+		const float arrive = std::clamp((crossing - 0.25f) / 0.75f, 0.f, 1.f);
+		heroBlock(view, focus, title, smooth(arrive), 44.f * (1.f - easeOut(arrive)));
+	}
+	else
+		heroBlock(view, focus, title, 1.f, 0.f);
+
+	// The shelves. The one in use stands at shelfY, those above are gone, the
+	// one below peeks in.
+	const float shelfY = std::min(H - 350.f, bottom - 286.f);
+	draw()->PushClipRect(at(0, 590), at(W, bottom), true);
+	ImVec2 ringA, ringB;
+	for (int r = 0; r < rows; r++)
+	{
+		const float distance = (float)r - view.shelfRowAt;
+		const float visible = std::clamp(1.f + distance * 2.5f, 0.f, 1.f)
+				* (distance > 0 ? 1.f - 0.45f * std::clamp(distance, 0.f, 1.f) : 1.f);
+		if (visible <= 0.01f)
+			continue;
+		const Shelf& s = shelves[(size_t)r];
+		const float y = shelfY + distance * ShelfPitch;
+		const float scroll = view.shelfScroll[std::min(r, 2)];
+		const int current = std::clamp(view.shelfColumn[std::min(r, 2)], 0, std::max((int)s.games.size() - 1, 0));
+		const float titleW = toUnits(measure(s.title, Bold, 24).x);
+		text(at(ShelfMargin, y - 88), withAlpha(t.accent, visible * (r == row ? 1.f : 0.7f)), s.icon, Body, 22);
+		text(at(ShelfMargin + 38, y - 90), withAlpha(t.pageText, visible * (r == row ? 0.95f : 0.6f)), s.title, Bold, 24);
+		text(at(ShelfMargin + 54 + titleW, y - 87), withAlpha(t.pageDim, visible * 0.8f), format("%d", (int)s.games.size()),
+				Body, 21);
+		const int first = std::max((int)((scroll - ShelfCard) / (ShelfCard + ShelfGap)), 0);
+		for (int c = first; c < (int)s.games.size(); c++)
+		{
+			float x = ShelfMargin + c * (ShelfCard + ShelfGap) - scroll;
+			if (x > W)
+				break;
+			if (r == row && c == current)
+			{
+				const float grown = ShelfCard * ShelfGrow;
+				const float nudge = view.shelfNudge != 0 ? shake(clock() - view.shelfNudgeAt, 14.f) * view.shelfNudge : 0.f;
+				const float lift = view.shelfNudge == 0 ? shake(clock() - view.shelfNudgeAt, 8.f) : 0.f;
+				ringA = at(x + nudge, y - (grown - ShelfCard) + lift);
+				ringB = at(x + nudge + grown, y + ShelfCard + lift);
+				continue;		// drawn last, on top
+			}
+			// The covers after the grown one make room for it.
+			if (r == row && c > current)
+				x += ShelfCard * (ShelfGrow - 1);
+			shelfCard(view, s.games[(size_t)c], at(x, y), at(x + ShelfCard, y + ShelfCard), 22, visible * 0.86f);
+		}
+	}
+	// The cover under the cursor: grown, lifted, ringed.
+	draw()->AddRectFilled(ImVec2(ringA.x + px(12), ringA.y + px(14)), ImVec2(ringB.x - px(12), ringB.y + px(12)),
+			IM_COL32(0, 0, 0, theme().dark ? 90 : 40), px(30));
+	const float breathe = motion() == MotionFull ? 0.5f + 0.5f * (float)std::sin(clock() * 2.4) : 0.6f;
+	glowAt(ImVec2((ringA.x + ringB.x) * 0.5f, (ringA.y + ringB.y) * 0.5f), (ringB.x - ringA.x) * 0.78f,
+			withAlpha(t.accent, 0.28f + 0.14f * breathe));
+	shelfCard(view, focus, ringA, ringB, 26, 1.f);
+	focusRing(ImVec2(ringA.x - px(5), ringA.y - px(5)), ImVec2(ringB.x + px(5), ringB.y + px(5)), 30);
+	draw()->PopClipRect();
+	view.fresh = false;
+	return focus;
+}
+
 void libraryPage(bool active)
 {
 	const Theme& t = theme();
@@ -1380,11 +1725,13 @@ void libraryPage(bool active)
 
 	LibraryView& view = views[source];
 	const int count = (int)view.games.size();
-	// 0 the grid, 1 the list, 2 and up a view in space (ui_flow.cpp); one that
-	// is no longer there (its file was taken away) is the grid.
+	// 0 the shelves, 1 the grid, 2 the list, 3 and up a view in space
+	// (ui_flow.cpp); one that is no longer there (its file was taken away) is
+	// the shelves.
 	const int viewMode = options::frontend().view;
-	const bool flow = viewMode >= 2 && viewMode - 2 < (int)flowNames().size();
-	const bool grid = viewMode == 0 || (viewMode >= 2 && !flow);
+	const bool flow = viewMode >= 3 && viewMode - 3 < (int)flowNames().size();
+	const bool shelves = viewMode == 0 || (viewMode >= 3 && !flow);
+	const bool grid = viewMode == 1;
 	const float top = 128, bottom = H - 64;
 	coverLookups = 0;
 	int focus = -1;		// the game under the cursor
@@ -1450,10 +1797,15 @@ void libraryPage(bool active)
 			const Meta& meta = metaOf(view, i);
 			return meta.known ? meta.info.description : std::string();
 		};
-		flowView(viewMode - 2, games, view.cursor, active, view.fresh, top, bottom);
+		flowView(viewMode - 3, games, view.cursor, active, view.fresh, top, bottom);
 		view.fresh = false;
 		focus = view.cursor;
 		libraryWash(view.cover[focus]);
+	}
+	else if (shelves)
+	{
+		libraryWash(view.cursor >= 0 && view.cursor < count ? view.cover[(size_t)view.cursor] : "");
+		focus = shelvesView(view, active, bottom);
 	}
 	else if (grid)
 	{
@@ -1806,7 +2158,8 @@ void frontendItems(int kind, std::vector<Item>& items)
 			// The same list as the library's own (Square, View).
 			const std::vector<std::string> names = libraryViewNames();
 			items.push_back(choice("Library view", std::min(f.view, (int)names.size() - 1), names,
-					"How the library shows your games. Covers: a grid, with what was played lately on a shelf above "
+					"How the library shows your games. Shelves: the game under the cursor large at the top, and "
+					"shelves under it of what was played lately, your favourites and every game. Covers: a grid, with what was played lately on a shelf above "
 					"it. List: names, with the cover and the description beside them. Flow, Row, Wall, Cascade and "
 					"Wheel stand the covers in space as cases, in the manner of Aurora on the Xbox 360: a flow that "
 					"leans towards the one under the cursor, a flat row, three rows across the screen, a line going "
