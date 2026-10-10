@@ -2008,7 +2008,7 @@ void gameMarks()
 	{
 		const float w = toUnits(measure(mark, Bold, 24).x) + 100;
 		const float x = (W - w) * 0.5f;
-		panel(at(x, 30), at(x + w, 82), IM_COL32(10, 12, 20, 215), 26);
+		panel(at(x, 30), at(x + w, 82), theme().panel, 26);
 		text(at(x + 26, 43), t.accent, symbol, Body, 24);
 		text(at(x + 70, 42), t.text, mark, Bold, 24);
 	}
@@ -2027,7 +2027,7 @@ void gameMarks()
 		const float w = 440, x1 = W - 30, x0 = x1 - w;
 		const float rowH = 34, top = 30;
 		const float h = 58 + shown * rowH + 66;
-		panel(at(x0, top), at(x1, top + h), IM_COL32(10, 12, 20, 210), 16);
+		panel(at(x0, top), at(x1, top + h), theme().panel, 16);
 		text(at(x0 + 22, top + 14), t.dim, speedrun::practice() ? "Practice (" + speedrun::practiceReason() + ")"
 				: options::frontend().speedrunClock == 1 ? "Real time" : "Game time", Body, 20);
 		int64_t previous = 0;
@@ -2097,7 +2097,7 @@ void gameMarks()
 					+ std::to_string(value) + (watch.frozen ? "  \xe2\x80\xa2" : ""));
 			widest = std::max(widest, toUnits(measure(lines.back(), Body, 22).x));
 		}
-		panel(at(30, 30), at(30 + widest + 40, 30 + 20 + rows * 32.f), IM_COL32(10, 12, 20, 200), 14);
+		panel(at(30, 30), at(30 + widest + 40, 30 + 20 + rows * 32.f), theme().panel, 14);
 		for (size_t i = 0; i < rows; i++)
 			text(at(50, 40 + i * 32.f), watches[i].frozen ? t.accent : t.text, lines[i], Body, 22);
 	}
@@ -2132,7 +2132,7 @@ float drawNotice(const host::Message& m, float y)
 	const float w = std::min(textW + pad + 36, unitsWide() - 96);
 	const float top = y - h;
 	const float fade = (float)std::clamp((m.until - now()) / 0.4, 0.0, 1.0);
-	panel(at(48, top), at(48 + w, top + h), withAlpha(IM_COL32(14, 18, 30, 235), fade), 14);
+	panel(at(48, top), at(48 + w, top + h), withAlpha(theme().panel, fade), 14);
 	panel(at(48, top + 14), at(54, top + h - 14), withAlpha(t.accent, fade), 3);
 	if (pictured)
 	{
