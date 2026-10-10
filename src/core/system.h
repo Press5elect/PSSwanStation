@@ -149,5 +149,11 @@ void SetCheatList(std::unique_ptr<CheatList> cheats);
 void ClearMemorySaveStates();
 void UpdateMemorySaveStateSettings();
 void SetRunaheadReplayFlag();
+#ifdef SWANSTATION_STANDALONE
+/// The rollback a change of input asks for, done now rather than with the
+/// next frame (PSSwanStation does it in a refresh without a frame of the
+/// game, so that frame costs no more than any other). True if it was done.
+bool CatchUpRunahead();
+#endif
 
 } // namespace System

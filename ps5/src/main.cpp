@@ -301,6 +301,12 @@ int main(int, char **)
 		at[5] = now();
 		display::endFrame();
 		at[6] = now();
+#ifdef SWANSTATION_HOST
+		// A test: what each refresh's frame of the game took.
+		static FILE *times = getenv("SWANSTATION_TIMES") != nullptr ? fopen(getenv("SWANSTATION_TIMES"), "w") : nullptr;
+		if (times != nullptr && playing)
+			fprintf(times, "%.3f\n", (at[3] - at[2]) * 1e3);
+#endif
 		if (playing)
 		{
 			const float rate = display::refreshRate();

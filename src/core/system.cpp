@@ -1896,6 +1896,16 @@ void DoRunahead()
   }
 }
 
+#ifdef SWANSTATION_STANDALONE
+bool CatchUpRunahead()
+{
+  if (s_runahead_frames == 0 || !s_runahead_replay_pending)
+    return false;
+  DoRunahead();
+  return true;
+}
+#endif
+
 void SetRunaheadReplayFlag()
 {
   if (s_runahead_frames == 0 || s_runahead_states.empty())
