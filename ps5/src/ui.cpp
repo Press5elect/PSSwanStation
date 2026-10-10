@@ -4447,6 +4447,22 @@ bool lookTest()
 		return true;
 	}
 	const Case& c = cases[index];
+	// With SWANSTATION_LOOK_BORDER set, what is beside the picture is drawn
+	// too, as the "border" setting has it.
+	if (getenv("SWANSTATION_LOOK_BORDER") != nullptr)
+	{
+		const float Hb = height(), Wb = width();
+		const float bh = Hb, bw = std::min(Wb, bh * 4.f / 3.f);
+		const ImVec2 b0(std::floor((Wb - bw) * 0.5f), 0.f), b1(b0.x + bw, bh);
+		if (getenv("SWANSTATION_LOOK_BORDER")[0] == '2')
+		{
+			void *soft = display::ambient(picture.id, 1.f, 1.f);
+			if (soft != nullptr)
+				background()->AddImage((ImTextureID)soft, ImVec2(0, 0), ImVec2(Wb, Hb));
+			return true;
+		}
+		drawBorder(background(), picture.id, 1.f, 1.f, b0, b1);
+	}
 	display::Look look;
 	look.scaler = c.scaler;
 	look.sharpness = c.sharpness;
