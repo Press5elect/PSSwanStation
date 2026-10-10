@@ -168,6 +168,7 @@ void fsrShutdown();
 void generationShutdown();
 void flowShutdown();
 void flowForget();
+bool flowView(void *texture, VkImageView& view);
 void lookShutdown();
 // The interface kit: its renderer draws every layer of the interface, in the
 // swapchain's pass, over the game's picture.
@@ -1620,6 +1621,10 @@ bool viewBehind(void *texture, VkImageView& view, VkImageLayout& layout)
 			view = target->texture.GetView();
 			return true;
 		}
+	// A frame of the optical flow's (the look, the grain among it, comes
+	// after it as after the title's own).
+	if (flowView(texture, view))
+		return true;
 	const auto it = dynamicViews.find(texture);
 	if (it == dynamicViews.end())
 		return false;
@@ -1874,6 +1879,24 @@ void flowForget()
 {
 	flow.haveNow = false;
 	flow.made = 0;
+}
+
+bool flowView(void *texture, VkImageView& view)
+{
+	if (texture == nullptr)
+		return false;
+	if (texture == (void *)flow.in.set && flow.in.framebuffer != VK_NULL_HANDLE)
+	{
+		view = flow.in.texture.GetView();
+		return true;
+	}
+	for (const Target& target : flow.out)
+		if (texture == (void *)target.set && target.framebuffer != VK_NULL_HANDLE)
+		{
+			view = target.texture.GetView();
+			return true;
+		}
+	return false;
 }
 
 void *generatedFlow(void *texture, int width, int height, float u, float v, bool fresh, float phase, bool debug)
