@@ -394,7 +394,6 @@ struct Frontend
 	bool swapConfirm = false;	// Circle confirms in the menus
 	bool splash = true;			// the start-up animation
 	bool splashSound = true;	// and its sound
-	bool uiSounds = true;		// the menus' sounds
 	int music = 0;				// in the menus: 0 none, 1 the title's own, 2 the music folder, 3 the kit's songs
 	int soundSet = 0;			// 0 as the theme has it, 1 the title's own, 2 Glass, 3 Paper
 	int soundVolume = 80;		// the interface's sounds, percent
@@ -444,6 +443,9 @@ struct Option
 	std::vector<Value> values;
 	std::string defaultValue;
 	bool visible = true;
+	// Not offered at all: the title drives it from a setting of its own, or
+	// it is a libretro frontend's business.
+	bool hidden = false;
 };
 struct Category
 {

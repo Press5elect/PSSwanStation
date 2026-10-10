@@ -2179,56 +2179,75 @@ void frontendItems(int kind, std::vector<Item>& items)
 	switch (kind)
 	{
 	case 0:
+		items.push_back(header("Library"));
 		{
 			// The same list as the library's own (Square, View).
 			const std::vector<std::string> names = libraryViewNames();
 			items.push_back(choice("Library view", std::min(f.view, (int)names.size() - 1), names,
 					"How the library shows your games. Shelves: the game under the cursor large at the top, and "
-					"shelves under it of what was played lately, your favourites and every game. Covers: a grid, with what was played lately on a shelf above "
-					"it. List: names, with the cover and the description beside them. Flow, Row, Wall, Cascade and "
-					"Wheel stand the covers in space as cases, in the manner of Aurora on the Xbox 360: a flow that "
-					"leans towards the one under the cursor, a flat row, three rows across the screen, a line going "
-					"away to the right, a wheel at the right. Aurora layout files (.cfljson) put in " + shownRoot()
-					+ "layouts are in the list too, after those. The same choice is in the library itself, under "
-					"Square.",
+					"shelves under it of what was played lately, your favourites and every game. Covers: a grid, with "
+					"what was played lately on a shelf above it. List: names, with the cover and the description beside "
+					"them. Flow, Row, Wall, Cascade and Wheel stand the covers in space as cases, in the manner of "
+					"Aurora on the Xbox 360: a flow that leans towards the one under the cursor, a flat row, three rows "
+					"across the screen, a line going away to the right, a wheel at the right. Aurora layout files "
+					"(.cfljson) put in " + shownRoot() + "layouts are in the list too, after those. The same choice is "
+					"in the library itself, under Square.",
 					[](int i) { options::frontend().view = i; }));
 		}
 		items.push_back(toggle("Download covers", &f.covers,
 				"Box art for games that have none in the covers folder is fetched from the libretro thumbnails "
 				"collection, by the game's file name. Your own pictures (covers/<file name>.png or .jpg) are never "
 				"replaced."));
+		items.push_back(toggle("Clock", &f.clock, "The time, in the library's header. It is the console's clock; a console "
+				"whose clock was never set shows none."));
+		items.push_back(toggle("Ask for updates at start", &f.updateCheck, "Asks the releases page, when PSSwanStation "
+				"starts, whether a newer build is out, and says so in the library's header. Nothing is fetched until "
+				"you say so (Menu, Update)."));
+
+		items.push_back(header("Look"));
 		items.push_back(choice("Theme", std::clamp(f.theme, 0, (int)themeNames().size() - 1), themeNames(),
 				"How the whole interface looks: its colours, its panels (frosted glass, soft shadows, hard "
 				"outlines, bevels, pixels, a pen), its type, how things move and which sounds it makes. "
 				"PSSwanStation is the title's own; the others are the thirty of the interface kit "
 				"(BlackBearReloaded's ps5-homebrew-ui). Now: " + themeAbout(f.theme),
 				[](int i) { options::frontend().theme = i; }));
-		items.push_back(choice("Accent colour", f.accent,
-				[] {
-					std::vector<std::string> names;
-					for (int i = 0; i < AccentCount; i++)
-						names.push_back(accentName(i));
-					return names;
-				}(),
-				"The colour of the cursor and the highlights, in the PSSwanStation theme (the others bring their own).",
-				[](int i) { options::frontend().accent = i; }));
+		{
+			Item item = choice("Accent colour", f.accent,
+					[] {
+						std::vector<std::string> names;
+						for (int i = 0; i < AccentCount; i++)
+							names.push_back(accentName(i));
+						return names;
+					}(),
+					"The colour of the cursor and the highlights, in the PSSwanStation theme.",
+					[](int i) { options::frontend().accent = i; });
+			if (f.theme != 0)
+			{
+				item.enabled = false;
+				item.value = "The theme's own";
+				item.info += " The other themes bring their own.";
+			}
+			items.push_back(std::move(item));
+		}
 		items.push_back(choice("Interface size", std::clamp((f.uiScale - 80) / 10, 0, 6),
 				{ "80%", "90%", "100%", "110%", "120%", "130%", "140%" },
 				"Makes the text and everything else of the interface larger or smaller. At the largest sizes long "
 				"names are cut short.", [](int i) { options::frontend().uiScale = 80 + i * 10; }));
 		items.push_back(toggle("High contrast", &f.highContrast,
-				"Black behind the menus, white text, the dimmer text brighter and the cursor's row stronger: easier to "
-				"read from the sofa or with weaker sight."));
+				"Black (or, in a light theme, white) behind the menus, the text at its strongest and the cursor's row "
+				"stronger, whatever the theme: easier to read from the sofa or with weaker sight."));
 		items.push_back(toggle("Colour-blind safe colours", &f.colourBlind,
 				"What is good and what is bad (ahead or behind in the speedrun timer, an achievement earned, a check "
 				"that passed) in blue and orange, which are told apart with every common colour blindness, instead "
 				"of green and red."));
 		items.push_back(choice("Animations", f.animations, { "Full", "Reduced", "Off" },
-				"Full: the swan flies from the start-up screen to its corner, looks about while it sits there, "
-				"and flies at the screen when a game starts. Reduced: it stays still, the start-up screen only "
-				"fades, and a game starts at once. Off: nothing moves at all - no start-up screen, and lists and "
-				"pictures jump to their places.",
+				"Full: the swan flies from the start-up screen to its corner, lives while it sits there, "
+				"and flies at the screen when a game starts; lists and the themes' backdrops move. Reduced: the "
+				"swan stays still, the start-up screen only fades, and a game starts at once. Off: nothing moves "
+				"at all - no start-up screen, and lists and pictures jump to their places.",
 				[](int i) { options::frontend().animations = i; }));
+
+		items.push_back(header("The swan"));
 		items.push_back(choice("Swan", f.swanMoves, swanMoveNames(),
 				"What the swan in the corner does. Lively: it looks about, feeds, preens, stretches its wings and "
 				"drifts on the water; it turns its head to the game under the cursor, starts when you scroll fast, "
@@ -2247,7 +2266,8 @@ void frontendItems(int kind, std::vector<Item>& items)
 		{
 			Item item = toggle("Start-up animation", &f.splash,
 					"How PSSwanStation opens: the swan paddles along the bottom of the screen, takes the lift up to "
-					"the middle, and flies to its corner as the library comes in. Any button skips it.");
+					"the middle, and flies to its corner as the library comes in. Any button skips it. Its sound is "
+					"under Sound.");
 			if (f.animations == 2)
 			{
 				item.enabled = false;
@@ -2257,21 +2277,20 @@ void frontendItems(int kind, std::vector<Item>& items)
 			items.push_back(std::move(item));
 		}
 		{
-			Item item = toggle("Start-up sound", &f.splashSound,
-					"What the start-up animation sounds like: the water, the lift and its bell, the swan's wings. "
-					"It follows the Volume setting (Sound).");
-			if (f.animations == 2 || !f.splash)
-			{
-				item.enabled = false;
-				item.value = "Off";
-				item.info += f.animations == 2 ? " Not heard while Animations is Off."
-						: " Not heard while the start-up animation is off.";
-			}
-			items.push_back(std::move(item));
+			static const int minutes[5] = { 0, 2, 5, 10, 20 };
+			int now_ = 0;
+			for (int i = 0; i < 5; i++)
+				if (minutes[i] == f.idleMinutes)
+					now_ = i;
+			items.push_back(choice("The swan takes the screen", now_, { "Never", "After 2 minutes", "After 5 minutes",
+					"After 10 minutes", "After 20 minutes" },
+					"When no button was pressed for this long in the library or a menu, the screen goes dark and the swan "
+					"swims across it, which spares a screen that keeps what it shows for long. Any button brings the "
+					"menus back. Not while a game is on the screen.",
+					[](int i) { options::frontend().idleMinutes = minutes[i]; }));
 		}
-		items.push_back(toggle("Interface sounds", &f.uiSounds,
-				"Small sounds in the menus: the cursor moving, a choice, a step back, a letter typed. They follow "
-				"the Volume setting (Sound)."));
+
+		items.push_back(header("Buttons and notices"));
 		items.push_back(choice("Confirm button", f.swapConfirm ? 1 : 0, { "Cross", "Circle" },
 				"Which button confirms in the menus; the other one goes back. Games are not affected.",
 				[](int i) { options::frontend().swapConfirm = i != 0; }));
@@ -2284,6 +2303,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 				[] { diag::setNotifications(options::frontend().notifications); }));
 		break;
 	case 2:
+		items.push_back(header("The game"));
 		items.push_back(choice("Volume", f.volume / 5,
 				[] {
 					std::vector<std::string> names;
@@ -2291,114 +2311,63 @@ void frontendItems(int kind, std::vector<Item>& items)
 						names.push_back(format("%d%%", v));
 					return names;
 				}(),
-				"The loudness of the game's sound.", [](int i) {
+				"The loudness of the game's sound. The menus' sounds and music are under it.", [](int i) {
 					options::frontend().volume = i * 5;
 					audio::setVolume(i * 5);
 				}));
-		break;
-	case 3:
-	{
-		// Who is holding a controller.
-		std::string who;
-		int connected = 0;
-		for (int i = 0; i < platform::MaxPads; i++)
-			if (platform::pad(i).connected)
-			{
-				connected++;
-				who += (who.empty() ? "" : ", ") + std::to_string(i + 1);
-			}
-		items.push_back(fact("Controllers", connected == 0 ? std::string("None") : connected == 1 ? std::string("Player 1")
-				: "Players " + who,
-				"Player 1 is whoever started PSSwanStation. Every other player is another user logged in on the console "
-				"with a controller of their own (press the PS button on it and choose a user), in the order they "
-				"joined; a controller that joins while PSSwanStation runs is taken up within a few seconds. Any of "
-				"them moves through these menus."));
-		static const char *const modes[4] = { "Disabled", "Port1Only", "Port2Only", "BothPorts" };
-		static const char *const tapKey = "swanstation_ControllerPorts_MultitapMode";
-		int mode = 0;
-		if (const char *now = options::get(tapKey))
-			for (int i = 0; i < 4; i++)
-				if (!strcmp(now, modes[i]))
-					mode = i;
-		items.push_back(choice("Multitap", mode, { "Off", "In port 1", "In port 2", "In both ports" },
-				"For games made for three or four players. In port 1: the four players are on the multitap, which "
-				"is what most of those games expect. In port 2: player 1 is in port 1 and the others on the multitap. "
-				"Leave it off for games for one or two: some do not see a controller behind a multitap.",
-				[](int i) { options::set(tapKey, modes[i], false); }));
-		for (int player = 0; player < 4; player++)
+
+		items.push_back(header("The menus"));
+		items.push_back(choice("Sound set", f.soundSet, sound::setNames(),
+				"What the menus sound like. As the theme has it: each theme brings its own. PSSwanStation: the "
+				"title's own drops of water, computed when it starts. Glass: soft chimes in one key. Paper: warm, "
+				"wooden, tactile. Glass and Paper are the interface kit's recordings (BlackBearReloaded's "
+				"ps5-homebrew-ui); a sound one of them has not recorded is the other's.",
+				[](int i) { options::frontend().soundSet = i; sound::play(sound::Toggle); }));
+		items.push_back(choice("Interface sounds", f.soundVolume / 10,
+				{ "Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
+				"How loud the small sounds of the menus are (the cursor moving, a choice, a step back, a letter "
+				"typed), under the Volume above.",
+				[](int i) { options::frontend().soundVolume = i * 10; sound::play(sound::Move); }));
 		{
-			Item item = choice(format("Player %d's controller", player + 1), f.controller[player],
-					{ "Digital controller", "DualShock", "Analog joystick", "None", "neGcon", "GunCon (light gun)" },
-					"What the game finds plugged in for this player. DualShock suits most games; a few early ones only "
-					"know the digital controller. The neGcon is Namco's twisting controller, which racing games of "
-					"the time steer finely with: the left stick (or the pad leant, see Tilt steering) is its twist, "
-					"R2 and L2 its two analogue buttons. The GunCon is a light gun: the sticks move its aim, as does "
-					"turning the pad when its motion sensor answers; R2 or Cross fires, L2 or Circle fires away "
-					"from the screen (which reloads), Square and Triangle are its two buttons.",
-					[player](int i) {
-						options::frontend().controller[player] = i;
-						host::applyControllers();
-					});
-			if (player >= 2 && mode == 0)
+			Item item = toggle("Start-up sound", &f.splashSound,
+					"What the start-up animation sounds like: the water, the lift and its bell, the swan's wings. "
+					"It follows the Volume above.");
+			if (f.animations == 2 || !f.splash)
 			{
 				item.enabled = false;
-				item.value = "Needs the multitap";
+				item.value = "Off";
+				item.info += f.animations == 2 ? " Not heard while Animations is Off (Interface)."
+						: " Not heard while the start-up animation is off (Interface).";
 			}
 			items.push_back(std::move(item));
 		}
-	}
-		items.push_back(choice("Stick dead zone", (int)std::lround(f.deadZone * 20.f),
-				{ "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%" },
-				"How far a stick must move before the game sees it.",
-				[](int i) { options::frontend().deadZone = (float)i * 0.05f; }));
-		items.push_back(toggle("Vibration", &f.rumble, "Passes the game's vibration to the DualSense."));
-		items.push_back(fact("Select and Start", "Touch pad",
-				"The left half of the touch pad is the PlayStation's Select, the right half is Start: press the pad "
-				"down on that side. OPTIONS opens PSSwanStation's menu."));
+
+		items.push_back(header("Music"));
+		items.push_back(choice("Menu music", f.music, sound::musicNames(),
+				"Music while the library or a menu has the screen. The title's own is a quiet piece computed when it "
+				"is first played, like its sounds. My music folder: every .ogg, .mp3 and .wav in " + shownRoot()
+				+ "music, one after another in an order shuffled at each start (the first six minutes of each). The "
+				"interface kit's songs: its three, First Light, Open Strings and Quiet Hours, the same way.\n\n"
+				+ (f.music >= 2 ? sound::musicStatus() : std::string()),
+				[](int i) { options::frontend().music = i; }));
+		items.push_back(choice("Music volume", f.musicVolume / 10,
+				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
+				"How loud the menus' music is, under the Volume above.",
+				[](int i) { options::frontend().musicVolume = i * 10; }));
 		break;
-	case 4:
-		items.push_back(toggle("Save when a game is closed", &f.autoSaveOnExit,
-				"Keeps a state of the game as it is when you close it, apart from the ten state slots."));
-		items.push_back(toggle("Continue where I left off", &f.autoLoadOnStart,
-				"Starts a game from the state kept when it was last closed, when there is one. The game's details "
-				"page (Triangle) can still start it from the beginning."));
-		items.push_back(toggle("Sleep-safe saving", &f.sleepSafe,
-				"Saves the game's resume state every five minutes of play and whenever the console's own menu (the PS "
-				"button) opens over it, quietly and without a pause. When the console closes PSSwanStation (rest "
-				"mode, or closing it from the console's menu) the next start offers to continue from there. It uses "
-				"the same state as \"Save when a game is closed\". Not yet tried on a console: if PSSwanStation "
-				"stops when a game starts with this on, switch it off."));
-		items.push_back(toggle("Load network games into memory", &f.ramCache,
-				"Reads a game from the network share completely before it starts, so the game never waits for the "
-				"network while it runs. Off starts sooner and reads as the game asks."));
-		items.push_back(toggle("USB drives", &f.usb,
-				"Lets PSSwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
-				"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs a resident "
-				"Lapy service or the ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
-				"starts."));
-		{
-			std::string folders;
-			for (const std::string& folder : smb::gameFolders())
-				folders += (folders.empty() ? "" : ", ") + folder;
-			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
-					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
-					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "
-					"itself. PSSwanStation reads it when it starts."));
-			items.push_back(fact("Folders", shownRoot(),
-					"Games go in " + shownRoot() + "games, BIOS files in bios, covers in covers, your own cheat "
-					"files in cheats. Memory cards, states and settings are kept in data."));
-		}
+	default:
+		// Controllers, games and network, shortcuts, RetroAchievements and
+		// debug are in ui_more.cpp.
+		moreSettings(kind, items);
 		break;
 	}
-	// What later builds added to each page, and the pages they added.
-	moreSettings(kind, items);
 }
 
 void optionItems(const std::string& category, bool uncategorised, bool forGame, std::vector<Item>& items)
 {
 	for (const options::Option& option : options::all())
 	{
-		if (!option.visible || option.values.empty())
+		if (!option.visible || option.hidden || option.values.empty())
 			continue;
 		if (uncategorised ? !option.category.empty() : option.category != category)
 			continue;
@@ -2489,18 +2458,21 @@ void aboutItems(std::vector<Item>& items)
 	const uint64_t memory = freeMemory();
 	if (memory != 0)
 		items.push_back(fact("Free memory", format("%u MB", (unsigned)(memory >> 20))));
-	items.push_back(fact("Folder", shownRoot()));
 	items.push_back(header("Licences"));
 	items.push_back(fact("SwanStation", "GPL-3.0",
 			"SwanStation is free software under the GNU General Public License, version 3, kept by the libretro team "
 			"and its contributors. This title's source is the SwanStation source plus the ps5 folder."));
 	items.push_back(fact("Mesa RADV", "MIT", "The Vulkan driver, from the PS5 Mesa port."));
-	items.push_back(fact("Dear ImGui", "MIT", "The interface is drawn with Dear ImGui by Omar Cornut."));
+	items.push_back(fact("Interface kit", "GPL-3.0-or-later",
+			"The menus' shapes, text, themes and sounds are BlackBearReloaded's ps5-homebrew-ui, with the Vulkan "
+			"backend of PS5_VKHomebrewUI."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));
-	items.push_back(fact("Fonts", "Roboto, Font Awesome",
-			"Roboto (Apache License 2.0) and the solid symbols of Font Awesome Free (SIL OFL 1.1)."));
+	items.push_back(fact("Fonts", "Inter, Montserrat, DejaVu Sans Mono, Press Start 2P, Patrick Hand, Font Awesome",
+			"The interface kit's faces: Inter, Montserrat, Press Start 2P and Patrick Hand (SIL OFL 1.1) and DejaVu "
+			"Sans Mono (Bitstream Vera licence); the solid symbols of Font Awesome Free (SIL OFL 1.1). The full list "
+			"of parts and licences is in the title folder's licenses folder."));
 }
 
 void settingsPage(Frame& f)
@@ -2641,23 +2613,26 @@ void resume()
 void mainMenuPage(Frame& f)
 {
 	std::vector<Item> items;
-	items.push_back(action(icon::Gear, "Settings", "The interface, the picture and the sound, controllers, where "
-			"games come from, and every setting of the emulator.", [] { push(Page::Settings); }));
+	items.push_back(header("Games"));
 	items.push_back(action(icon::Search, "Search", "Finds a game by a part of its name, in the games folder, on the USB "
 			"drives and on the network together. From the library: press the touch pad.", [] {
 				pop();
 				openSearch();
+			}));
+	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
+			"network share again.", [] {
+				scanEverything();
+				pop();
 			}));
 	items.push_back(action(icon::Card, "Memory cards", "What is saved on each memory card: copy a save to another "
 			"card, delete it, take saves in from files and put them out as files, and go back to an earlier copy "
 			"of a card.", [] { push(Page::Cards); }));
 	items.push_back(action(icon::Chip, "Start the BIOS", "Starts the PlayStation without a disc: the memory card "
 			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { startBios(); }));
-	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
-			"network share again.", [] {
-				scanEverything();
-				pop();
-			}));
+
+	items.push_back(header("PSSwanStation"));
+	items.push_back(action(icon::Gear, "Settings", "The interface, the picture and the sound, controllers, where "
+			"games come from, and every setting of the emulator.", [] { push(Page::Settings); }));
 	{
 		const update::Status newer = update::status();
 		Item item = action(icon::Download, "Update", "Asks the releases page whether a newer build is out, and puts "
@@ -2666,7 +2641,7 @@ void mainMenuPage(Frame& f)
 			item.value = format("Build %d is out", newer.build);
 		items.push_back(item);
 	}
-	items.push_back(action(icon::Info, "About", "Versions, folders and licences.", [] {
+	items.push_back(action(icon::Info, "About", "Versions, what's new, and licences.", [] {
 		const int about = (int)settingsCategories(false).size() - 1;
 		push(Page::Settings, about);
 	}));
@@ -2679,6 +2654,8 @@ void pausePage(Frame& f)
 	const host::GameInfo& game = host::game();
 	std::vector<Item> items;
 	items.push_back(action(icon::Play, "Resume", "", [] { resume(); }));
+
+	items.push_back(header("The game"));
 	items.push_back(action(icon::Save, "Save state", "Keeps the game exactly as it is now in one of ten slots.",
 			[] { push(Page::States, 0); }, !game.path.empty()));
 	items.push_back(action(icon::Upload, "Load state", "Returns the game to a state saved before.",
@@ -2702,12 +2679,16 @@ void pausePage(Frame& f)
 				: format("%d", (int)cheats::list().size());
 		items.push_back(item);
 	}
-	pauseMoreItems(items);
 	items.push_back(action(icon::Sliders, "Game settings", "The picture's and the emulator's settings for this game "
 			"alone: what is set there is kept with the game and used whenever it runs.",
 			[] { push(Page::Settings, 0, 1); }, !game.serial.empty()));
+
+	items.push_back(header("Extras"));
+	pauseMoreItems(items);
+
+	items.push_back(header("PSSwanStation"));
 	items.push_back(action(icon::Gear, "Settings", "The settings for every game.", [] { push(Page::Settings); }));
-	items.push_back(action(icon::Undo, "Reset", "Restarts the game, as the console's reset button does.", [] {
+	items.push_back(action(icon::Undo, "Reset the game", "Restarts the game, as the console's reset button does.", [] {
 		push(Page::Confirm, 0, 0, "Reset the game?", "What was not saved to a memory card or a state is lost.", [] {
 			host::reset();
 			resume();

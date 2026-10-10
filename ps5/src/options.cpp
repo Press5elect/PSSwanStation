@@ -164,9 +164,36 @@ void adapt(Option& option)
 			option.info += " The recompiler is not offered: this console refused executable memory.";
 		}
 	}
-	else if (key == "swanstation_Main_RunaheadFrameCount" || key == "swanstation_Audio_FastHook")
+	else if (key == "swanstation_Logging_LogLevel")
 	{
-		// Both are for a libretro frontend's own audio and run-ahead handling.
+		// "Verbose logging" (Settings, Debug) sets it.
+		option.hidden = true;
+	}
+	else if (key == "swanstation_Display_AspectRatio")
+	{
+		// Its text speaks of RetroArch's video settings; here the shape goes
+		// into the title's own picture scaling.
+		option.name = "Picture shape";
+		option.info = "The shape the picture is given when Picture size (Picture) fits it to the screen or enlarges it "
+				"by whole multiples: 4:3 as a television of the time, Auto by the game's own resolution, or wider for "
+				"the widescreen hack. Forced to Corrected (NTSC) with a GunCon.";
+	}
+	else if (key == "swanstation_CDROM_LoadImageToRAM")
+	{
+		option.info = "Loads the disc image into memory before the game starts, so the game never waits for the "
+				"storage while it runs, at the cost of a longer start. Games on the network share are loaded into memory "
+				"by the title itself (Settings, Games and network).";
+	}
+	else if (key == "swanstation_Display_ShowOSDMessages")
+	{
+		option.name = "Emulator messages";
+		option.info = "Shows the emulator's own messages (a state saved, a disc changed, a problem) as notices over the game.";
+	}
+	else if (key == "swanstation_MemoryCards_UsePlaylistTitle")
+	{
+		option.name = "One card for all of a game's discs";
+		option.info = "A game with several discs shares one memory card between them, with cards per game title. Off: a "
+				"separate card for each disc.";
 	}
 	if (std::none_of(option.values.begin(), option.values.end(),
 			[&](const Value& value) { return value.value == option.defaultValue; }) && !option.values.empty())
@@ -279,7 +306,6 @@ std::vector<Field> fields()
 		{ "swap_confirm", nullptr, &c.swapConfirm, 0, 1 },
 		{ "splash", nullptr, &c.splash, 0, 1 },
 		{ "splash_sound", nullptr, &c.splashSound, 0, 1 },
-		{ "ui_sounds", nullptr, &c.uiSounds, 0, 1 },
 		{ "music", &c.music, nullptr, 0, 3 },
 		{ "music_volume", &c.musicVolume, nullptr, 0, 100 },
 		{ "animations", &c.animations, nullptr, 0, 2 },
@@ -535,6 +561,13 @@ void loadFrontend()
 		// and the views in space (2 and up); the shelves came first after that.
 		// The grid was the first choice, so one that never chose stays on the
 		// shelves, the new first choice.
+		// Before build 19 the menus' sounds had a switch beside their volume;
+		// the volume is the switch now.
+		else if (!strcmp(key, "ui_sounds"))
+		{
+			if (i == 0)
+				current.soundVolume = 0;
+		}
 		else if (!strcmp(key, "view"))
 			current.view = i <= 0 ? 0 : std::min(i + 1, 62);
 		// A build 15 made before its release had a scaler (6) that is gone.

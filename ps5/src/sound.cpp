@@ -573,7 +573,7 @@ void init()
 void play(Id id)
 {
 	const options::Frontend& settings = options::frontend();
-	if (id < 0 || id >= Count || !(id <= Chime ? settings.splashSound : settings.uiSounds))
+	if (id < 0 || id >= Count || !(id <= Chime ? settings.splashSound : settings.soundVolume > 0))
 		return;
 	if (id <= Chime)
 	{
