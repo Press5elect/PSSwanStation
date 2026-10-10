@@ -702,7 +702,7 @@ void drawMessages()
 		const float h = m.progress >= 0 ? 70.f : 52.f;
 		y -= h + 10;
 		const float fade = (float)std::clamp((m.until - now()) / 0.4, 0.0, 1.0);
-		panel(at(48, y), at(48 + w, y + h), withAlpha(IM_COL32(14, 18, 30, 225), fade), 12);
+		panel(at(48, y), at(48 + w, y + h), withAlpha(theme().panel, fade), 12);
 		textFit(at(72, y + 13), px(w - 48), withAlpha(t.text, fade), m.text, Body, 24);
 		if (m.progress >= 0)
 			progressBar(at(72, y + 50), at(48 + w - 24, y + 58), (float)m.progress / 100.f);
@@ -726,7 +726,7 @@ void drawGameOverlay()
 			line += format("   %.0f \xe2\x86\x92 %.0f", host::picturesPerSecond(), host::shownPerSecond());
 		const float w = toUnits(measure(line, Bold, 22).x) + 32;
 		const float x = unitsWide() - w - 32;
-		panel(at(x, 28), at(x + w, 68), IM_COL32(10, 12, 20, 190), 10);
+		panel(at(x, 28), at(x + w, 68), theme().panel, 10);
 		text(at(x + 16, 36), got + 0.6f >= (float)want ? t.good : t.bad, line, Bold, 22);
 	}
 	// A streamed network game waiting for the share.
@@ -735,7 +735,7 @@ void drawGameOverlay()
 	{
 		const float w = toUnits(measure(status.text, Body, 24).x) + 56;
 		const float x = (unitsWide() - w) * 0.5f;
-		panel(at(x, 36), at(x + w, 88), IM_COL32(10, 12, 20, 215), 14);
+		panel(at(x, 36), at(x + w, 88), theme().panel, 14);
 		text(at(x + 28, 48), t.text, status.text, Body, 24);
 	}
 }
@@ -1347,7 +1347,7 @@ void letterRail(const std::vector<library::Game>& games, int focus)
 	}
 	const char now = letterOf(games[(size_t)std::clamp(focus, 0, (int)games.size() - 1)].name);
 	const float top = 150, step = (H - 64 - top - 30) / 27.f, x = W - 34;
-	panel(at(x - 20, top - 14), at(x + 20, top + step * 27 + 4), withAlpha(IM_COL32(10, 12, 20, 200), alpha), 20);
+	panel(at(x - 20, top - 14), at(x + 20, top + step * 27 + 4), withAlpha(theme().panel, alpha), 20);
 	for (int i = 0; i < 27; i++)
 	{
 		const char letter = i == 0 ? '#' : (char)('A' + i - 1);
@@ -1361,7 +1361,7 @@ void letterRail(const std::vector<library::Game>& games, int focus)
 	// The letter itself, large.
 	const float size = 150;
 	panel(at(W - 250, H * 0.5f - size * 0.5f), at(W - 250 + size, H * 0.5f + size * 0.5f),
-			withAlpha(IM_COL32(10, 12, 20, 225), alpha), 28);
+			withAlpha(theme().panel, alpha), 28);
 	textCentred(at(W - 250 + size * 0.5f, H * 0.5f - 58), withAlpha(t.accent, alpha), std::string(1, now), Huge, 92);
 }
 
@@ -3144,7 +3144,7 @@ void detailsPage(Frame& f)
 	const float w = std::min(W - 160, 1560.f), h = std::min(H - 200, 800.f);
 	const float x = (W - w) * 0.5f, y = 96 + (H - 64 - 96 - h) * 0.5f + (1 - ease) * 36;
 	draw()->AddRectFilled(at(x - 6, y - 4), at(x + w + 6, y + h + 12), IM_COL32(0, 0, 0, (int)(70 * ease)), px(30));
-	panel(at(x, y), at(x + w, y + h), IM_COL32(22, 28, 46, 252), 24);
+	panel(at(x, y), at(x + w, y + h), theme().panel, 24);
 	outline(at(x, y), at(x + w, y + h), withAlpha(theme().text, 0.09f), 24, 1.5f);
 
 	// The left column: the cover, the file, the serial, when it was played.
@@ -3258,7 +3258,7 @@ void detailsPage(Frame& f)
 				const ImVec2 extent = measure(label, Bold, 20);
 				const float pw = toUnits(extent.x) + 36;
 				panel(at(dx, discsY), at(dx + pw, discsY + 40), i == det.disc ? t.text : t.panelHigh, 20);
-				text(at(dx + 18, discsY + 20 - toUnits(extent.y) * 0.5f), i == det.disc ? IM_COL32(16, 22, 38, 255) : t.dim,
+				text(at(dx + 18, discsY + 20 - toUnits(extent.y) * 0.5f), i == det.disc ? theme().onAccent : t.dim,
 						label, Bold, 20);
 				dx += pw + 10;
 			}
@@ -3285,9 +3285,19 @@ void detailsPage(Frame& f)
 			if (nav(Left))
 				det.action = std::max(det.action - 1, 0);
 		}
-		ImVec2 at0 = at(tx, pillsY);
+		// As large as fits the panel (a wide face, as Pixel's, needs a smaller size).
+		float pillSize = 24;
+		for (; pillSize > 15; pillSize -= 1)
+		{
+			float total = 0;
+			for (int i = 0; i < 5; i++)
+				total += toUnits(measure(labels[i], Bold, pillSize).x) + 64 * pillSize / 24 + 14;
+			if (total <= tw)
+				break;
+		}
+		ImVec2 at0 = at(tx, pillsY + (64 - 64 * pillSize / 24) * 0.5f);
 		for (int i = 0; i < 5; i++)
-			at0.x += pill(at0, labels[i], i == det.action, enabled[i], 64, 24) + px(14);
+			at0.x += pill(at0, labels[i], i == det.action, enabled[i], 64 * pillSize / 24, pillSize) + px(14);
 		if (det.action == 1 && states.empty())
 			text(at(tx, pillsY - (discs > 1 ? 104 : 38)), t.faint,
 					"No state is saved for this game yet: save one from the menu while playing.", Body, 20);
