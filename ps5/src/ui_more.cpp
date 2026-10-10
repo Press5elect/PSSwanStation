@@ -2743,11 +2743,12 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	if (generation != 0)
 	{
 		const int method = now_("fg_method");
-		items.push_back(pictureChoice(forGame, "fg_method", "Generation method", { "PSSwanStation's own", "Optical flow" },
+		items.push_back(pictureChoice(forGame, "fg_method", "Generation method", { "PSSwanStation's own", "AMD FSR3 optical flow" },
 				"Two ways of finding how the picture moved and drawing the pictures between. PSSwanStation's own: its "
-				"movement search, with the quality, ahead and movement view settings below. Optical flow: swordpdf's "
-				"ps5-framegen, AMD FSR3's optical flow with an interpolation that tries several movements for every "
-				"few pixels and keeps what has not changed for a while (a score, a map) still; on test pictures its "
+				"movement search, with the quality, ahead and movement view settings below. AMD FSR3 optical flow: the "
+				"optical flow of AMD's FidelityFX SDK (FSR3), which finds the movement without the game's help, run on "
+				"the console through swordpdf's ps5-framegen, whose interpolation tries several movements for every few "
+				"pixels and keeps what has not changed for a while (a score, a map) still; on test pictures its "
 				"made pictures are about half as far from the true ones as the title's own. It makes one, two or three "
 				"pictures between two of the game's, at even steps, so a rate that does not divide the screen's (a PAL "
 				"game at 120 Hz) moves a little less evenly; and it makes none ahead.", [] { display::forgetGenerated(); }));
