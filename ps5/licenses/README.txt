@@ -62,6 +62,10 @@ NVIDIA Image Scaling         MIT              NIS-LICENSE.txt          github.co
 crt-guest-advanced           GPL-2.0-or-      GPL-3.0.txt              github.com/libretro/slang-shaders, by
 (the picture tube)           later                                     guest(r): compiled to SPIR-V, used under
                                                                        GPL-3.0 as its licence allows
+ps5-framegen (frame          GPL-3.0-or-later GPL-3.0.txt              github.com/Swordpdf/ps5-framegen at
+generation, optical flow)    (its shaders:    (its shaders:            64362101757c, by swordpdf, unmodified
+                             MIT)             FSR3-LICENSE.txt)        (ps5/third_party/ps5-framegen): AMD
+                                                                       FidelityFX SDK 2.3.0's FSR3 optical flow
 QR Code generator (the web   MIT              MIT.txt                  github.com/nayuki/QR-Code-generator
 panel's code)                                                          (Project Nayuki), cpp/ unmodified
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,

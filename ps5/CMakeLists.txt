@@ -194,6 +194,7 @@ set(frontend_sources
 	src/web.cpp
 	src/slangimport.cpp
 	third_party/qrcodegen/qrcodegen.cpp
+	third_party/ps5-framegen/src/ps5_framegen.cpp
 	src/music.cpp
 	src/memcard.cpp
 	src/netplay.cpp
@@ -269,7 +270,7 @@ target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader lib
 	glslang glslang-default-resource-limits)
 target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
-	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen)
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5-framegen/src)
 # Vulkan is reached through the core's function table (dep/vulkan-loader),
 # which is filled from the RADV linked into the title.
 target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES
@@ -279,6 +280,9 @@ file(GLOB hui_fonts ${CMAKE_CURRENT_SOURCE_DIR}/assets/hui/fonts/*.huifont)
 set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS
 	"${hui_fonts};${CMAKE_CURRENT_SOURCE_DIR}/assets/logo-box.png")
 set_source_files_properties(${frontend_sources} PROPERTIES COMPILE_OPTIONS "-std=c++20")
+# ps5-framegen, as it is: C++17, its Vulkan calls through the core's function table.
+set_source_files_properties(third_party/ps5-framegen/src/ps5_framegen.cpp PROPERTIES COMPILE_OPTIONS
+	"-std=c++17;-w;-DPS5_FRAMEGEN_VULKAN_HEADER=\"vulkan_loader.h\"")
 # The two decoders in it are other people's C, compiled as they are.
 set_source_files_properties(src/music.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20;-w")
 # The build's date, in main.cpp alone so a new day recompiles one file.

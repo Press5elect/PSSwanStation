@@ -663,7 +663,7 @@ void drawGame(float dim)
 		// the look comes after it.
 		if (generating)
 		{
-			void *made = display::generated(texture, w, h, u, v, fresh, phase, f.fgQuality, f.fgDebug);
+			void *made = display::generated(texture, w, h, u, v, fresh, phase, f.fgQuality, f.fgDebug, f.fgMethod);
 			if (made != nullptr)
 			{
 				shown = made;
@@ -2467,6 +2467,8 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Interface kit", "GPL-3.0-or-later",
 			"The menus' shapes, text, themes and sounds are BlackBearReloaded's ps5-homebrew-ui, with the Vulkan "
 			"backend of PS5_VKHomebrewUI."));
+	items.push_back(fact("ps5-framegen", "GPL-3.0, MIT", "The optical flow frame generation is swordpdf's ps5-framegen "
+			"(GPL-3.0-or-later), with AMD FidelityFX SDK 2.3.0's FSR3 optical flow in its shaders (MIT)."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));
@@ -4387,7 +4389,7 @@ bool generationTest()
 	void *shown = display::generated(picture.id, picture.width, picture.height, 1.f, 1.f, step == 0,
 			getenv("SWANSTATION_FG_AHEAD") != nullptr ? phase + (step == steps - 1 ? 0.f : 1.f) : phase,
 			getenv("SWANSTATION_FG_LIGHTER") != nullptr ? 0 : quality != nullptr ? atoi(quality) : 1,
-			getenv("SWANSTATION_FG_DEBUG") != nullptr);
+			getenv("SWANSTATION_FG_DEBUG") != nullptr, getenv("SWANSTATION_FG_FLOW") != nullptr ? 1 : 0);
 	display::present(shown != nullptr ? shown : picture.id, 0, 0, (float)picture.width, (float)picture.height, 0, 0, 1, 1,
 			1.f, true);
 	diag::mark("generation test: display frame %llu shows picture %d at phase %.2f%s", (unsigned long long)display::frameCount(),
