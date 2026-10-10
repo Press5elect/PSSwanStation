@@ -227,6 +227,7 @@ set(frontend_sources
 if(SWANSTATION_PS5)
 	list(APPEND frontend_sources
 		src/ps5/pad_ps5.cpp
+		src/ps5/usbpad_ps5.cpp
 		src/ps5/audio_ps5.cpp
 		src/ps5/http_ps5.cpp
 		src/ps5/libc_ps5.cpp
@@ -270,7 +271,8 @@ target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader lib
 	glslang glslang-default-resource-limits)
 target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
-	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5-framegen/src)
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5-framegen/src
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5sx2-usbpad)
 # Vulkan is reached through the core's function table (dep/vulkan-loader),
 # which is filled from the RADV linked into the title.
 target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES

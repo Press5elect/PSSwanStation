@@ -451,6 +451,14 @@ bool jitAvailable()
 	return getenv("SWANSTATION_NO_JIT") == nullptr;
 }
 
+// USB controllers are read on the console only.
+void usbPadStart(int) {}
+
+bool usbPad(Pad&, std::string *)
+{
+	return false;
+}
+
 }
 
 std::string fe::shownRoot()

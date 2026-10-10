@@ -285,9 +285,9 @@ Settings (in the menu) holds PSSwanStation's own sections and every setting of t
 | Section | What it holds |
 | --- | --- |
 | Interface | Library: view, cover downloads, clock, update check. Look: theme, accent colour, size (up to 140%), high contrast, colour-blind safe colours, animations. The swan: lively, calm or still; dressed for the theme; seasonal touches; the start-up animation; the swan screen saver. Buttons and notices: confirm button, frame rate, console notices |
-| Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation |
+| Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation (the title's own, or optical flow) |
 | Sound | The game's volume; the menus' sound set, interface sounds volume and start-up sound; menu music (the kit's songs, or your own .ogg files in `music/`) and its volume |
-| Controllers | Players: who holds a pad, multitap, each player's controller type. The pad: buttons (remapping, turbo), stick dead zone, vibration, player lights, tilt steering |
+| Controllers | Players: who holds a pad, multitap, each player's controller type. USB controllers (an experiment: PS3 pads, a DualShock 3 on a cable, Xbox 360 pads and other USB gamepads, as the next player or with player 1). The pad: buttons (remapping, turbo), stick dead zone, vibration, player lights, tilt steering |
 | Shortcuts and rewind | The held-OPTIONS shortcuts, fast forward speed, rewind and its memory |
 | Games and network | Where the games are: folders, USB drives, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database |
 | RetroAchievements | Sign in, hardcore mode |

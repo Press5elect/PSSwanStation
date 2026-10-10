@@ -319,6 +319,8 @@ std::vector<Field> fields()
 		{ "swan_moves", &c.swanMoves, nullptr, 0, 2 },
 		{ "swan_season", &c.swanSeason, nullptr, 0, 5 },
 		{ "swan_themed", nullptr, &c.swanThemed, 0, 1 },
+		{ "usb_pads", &c.usbPads, nullptr, 0, 2 },
+		{ "usb_pads_as", &c.usbPadsAs, nullptr, 0, 1 },
 		{ "sound_set", &c.soundSet, nullptr, 0, 3 },
 		{ "sound_volume", &c.soundVolume, nullptr, 0, 100 },
 		{ "sort", &c.sort, nullptr, 0, 4 },
