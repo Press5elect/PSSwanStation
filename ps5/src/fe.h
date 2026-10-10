@@ -321,7 +321,7 @@ namespace options
 // The frontend's own settings (<root>frontend.cfg).
 struct Frontend
 {
-	int view = 0;				// library: 0 grid, 1 list
+	int view = 0;				// library: 0 shelves, 1 grid, 2 list, 3 and up the views in space
 	int source = 0;				// the library tab last open: 0 internal, 1 USB, 2 network
 	bool covers = true;			// download missing covers
 	bool usb = false;			// leave the sandbox at start to read USB drives

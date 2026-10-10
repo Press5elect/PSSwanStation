@@ -223,7 +223,7 @@ std::vector<Field> fields()
 {
 	Frontend& c = current;
 	std::vector<Field> list = {
-		{ "view", &c.view, nullptr, 0, 61 },
+		{ "library_view", &c.view, nullptr, 0, 62 },
 		{ "source", &c.source, nullptr, 0, 2 },
 		{ "covers", nullptr, &c.covers, 0, 1 },
 		{ "usb", nullptr, &c.usb, 0, 1 },
@@ -528,6 +528,12 @@ void loadFrontend()
 			if (i != 0 && current.filesAt == 0)
 				current.filesAt = 1;
 		}
+		// Before build 19 the views were counted from the grid (0), the list (1)
+		// and the views in space (2 and up); the shelves came first after that.
+		// The grid was the first choice, so one that never chose stays on the
+		// shelves, the new first choice.
+		else if (!strcmp(key, "view"))
+			current.view = i <= 0 ? 0 : std::min(i + 1, 62);
 		// A build 15 made before its release had a scaler (6) that is gone.
 		else if (!strcmp(key, "scaler") && i == 6)
 			current.scaler = 0;

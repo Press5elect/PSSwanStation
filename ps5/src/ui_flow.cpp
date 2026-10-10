@@ -772,7 +772,7 @@ std::vector<std::string> flowNames()
 
 std::vector<std::string> libraryViewNames()
 {
-	std::vector<std::string> names = { "Covers", "List" };
+	std::vector<std::string> names = { "Shelves", "Covers", "List" };
 	for (const std::string& name : flowNames())
 		names.push_back(name);
 	return names;
