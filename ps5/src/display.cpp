@@ -2475,10 +2475,11 @@ bool capture(void *texture, float u, float v, int width, int height, std::vector
 // of light and not a flash.
 int blurShown = 0;
 
-void *ambient(void *texture, float u, float v)
+void *ambient(void *texture, float u, float v, int depth)
 {
 	if (texture == nullptr || !frameOpen)
 		return nullptr;
+	depth = std::clamp(depth, 1, BlurLevels);
 	int w = 256, h = 192;
 	for (int i = 0; i < BlurLevels; i++, w /= 2, h /= 2)
 		if (!ensureTarget(blurLevels[i], w, h, VK_FORMAT_UNDEFINED, shaderPass))
@@ -2513,13 +2514,13 @@ void *ambient(void *texture, float u, float v)
 	// Down: the game's picture, then each level from the one above.
 	blit(blurLevels[0], static_cast<Picture *>(texture), u, v, 1.f, false);
 	end();
-	for (int i = 1; i < BlurLevels; i++)
+	for (int i = 1; i < depth; i++)
 	{
 		blit(blurLevels[i], blurLevels[i - 1].set, 1.f, 1.f, 1.f, false);
 		end();
 	}
 	// Up: each level from the one below, twice over, which blurs it again.
-	for (int i = BlurLevels - 2; i >= 0; i--)
+	for (int i = depth - 2; i >= 0; i--)
 	{
 		blit(blurLevels[i], blurLevels[i + 1].set, 1.f, 1.f, 1.f, false);
 		end();

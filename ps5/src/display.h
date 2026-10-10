@@ -71,7 +71,9 @@ uint32_t kitTexture(void *picture);
 bool capture(void *texture, float u, float v, int width, int height, std::vector<uint8_t>& rgba);
 // A few soft pixels of `texture`, averaged over the last half second, for
 // ImGui to stretch over the screen; null when it cannot be made.
-void *ambient(void *texture, float u, float v);
+// The picture blurred: `depth` halvings and doublings (5: the wide, soft
+// light; 3: shapes still there, for an extension of the picture).
+void *ambient(void *texture, float u, float v, int depth = 5);
 // The next one starts anew (another game).
 void forgetAmbient();
 // The picture `texture` (its part up to u, v, which is `width` x `height`

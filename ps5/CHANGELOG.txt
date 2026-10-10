@@ -35,7 +35,9 @@ Build 19
   - "The picture's light" (Picture, Beside the picture) is the picture
     itself, blurred wide and soft over the whole screen and brighter, with
     a soft shadow round the picture, instead of a dim average of its
-    colours.
+    colours. And a new choice there, "The picture carried on": its edges
+    continued outwards, blurred, so the picture seems to go on past its
+    frame.
   Not yet run on my console.
 
 Build 18
