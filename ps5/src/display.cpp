@@ -54,17 +54,18 @@
 	can be saved as PNGs: that is how the interface is checked without a console.
 */
 #include "display.h"
+#include "ui_draw.h"
 #include "chain.h"
 #include "slangimport.h"
 #include "fe.h"
 
 #include "common/vulkan/context.h"
 #include "common/vulkan/staging_buffer.h"
+#include "common/vulkan/stream_buffer.h"
 #include "common/vulkan/staging_texture.h"
 #include "common/vulkan/texture.h"
 
-#include "imgui.h"
-#include "imgui_impl_vulkan.h"
+#include "gfx/vk/vk_renderer.hpp"
 
 #include <miniz.h>
 
@@ -84,11 +85,23 @@ bool LoadVulkanInstanceFunctions(VkInstance instance);
 namespace fe::display
 {
 
+void sceneRelease();
+
+// A picture the interface or the title's shaders can draw: an image view and
+// the layout it is read in. The interface kit is given it the first time the
+// interface draws it (kit, then); the game's picture is drawn by present().
+struct Picture
+{
+	VkImageView view = VK_NULL_HANDLE;
+	VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	uint32_t kit = 0;
+};
+
 struct Texture
 {
 	Vulkan::Texture texture;
 	Vulkan::StagingTexture staging;
-	VkDescriptorSet set = VK_NULL_HANDLE;
+	Picture *set = nullptr;
 	int width = 0, height = 0;
 	bool dynamic = false;
 };
@@ -119,7 +132,7 @@ float outputRate = 0;
 
 // The emulator's picture, wrapped for ImGui.
 VkImageView wrappedView = VK_NULL_HANDLE;
-VkDescriptorSet wrappedSet = VK_NULL_HANDLE;
+Picture *wrappedSet = nullptr;
 int wrappedLayout = 0;
 // The software renderer's pictures, by what ImGui knows them as: FSR reads
 // the image itself.
@@ -130,7 +143,7 @@ struct Target
 {
 	Vulkan::Texture texture;
 	VkFramebuffer framebuffer = VK_NULL_HANDLE;
-	VkDescriptorSet set = VK_NULL_HANDLE;		// for ImGui; none for a picture only shaders read
+	Picture *set = nullptr;		// for the interface; none for a picture only shaders read
 	int width = 0, height = 0;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	bool drawn = false;
@@ -147,18 +160,30 @@ constexpr VkFormat FloatFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 void fsrShutdown();
 void generationShutdown();
 void lookShutdown();
-// Descriptor sets ImGui must not lose before the frames that used them are
-// drawn: freed two frames later.
+// The interface kit: its renderer draws every layer of the interface, in the
+// swapchain's pass, over the game's picture.
+hui::gfx::VkRenderer kit;
+bool kitReady = false;
+
+Picture *makePicture(VkImageView view, VkImageLayout layout)
+{
+	Picture *picture = new Picture();
+	picture->view = view;
+	picture->layout = layout;
+	return picture;
+}
+
+// Pictures a frame under way may still draw are let go of three frames later.
 struct Retired
 {
-	VkDescriptorSet set;
+	Picture *set;
 	uint64_t frame;
 };
 std::vector<Retired> retired;
 
-void retire(VkDescriptorSet set)
+void retire(Picture *set)
 {
-	if (set != VK_NULL_HANDLE)
+	if (set != nullptr)
 		retired.push_back({ set, frames });
 }
 
@@ -168,7 +193,9 @@ void freeRetired(bool all)
 	{
 		if (all || frames > retired[i].frame + 3)
 		{
-			ImGui_ImplVulkan_RemoveTexture(retired[i].set);
+			if (retired[i].set->kit != 0 && kitReady)
+				kit.destroy_texture(retired[i].set->kit);
+			delete retired[i].set;
 			retired.erase(retired.begin() + i);
 		}
 		else
@@ -527,50 +554,40 @@ bool createSwapchain()
 	return true;
 }
 
-void checkResult(VkResult result)
+// The game's picture under the interface (its own pipeline: the kit draws
+// with one linear sampler, and only images it can read as it expects).
+bool presentInit();
+void presentShutdown();
+// What present() asked for this frame, drawn first in the swapchain's pass.
+struct Presented
 {
-	if (result != VK_SUCCESS)
-		diag::mark("imgui: Vulkan error %d", (int)result);
-}
+	Picture *picture;
+	float rect[4], uv[4], tint[4];
+	bool nearest;
+};
+std::vector<Presented> presented;
+void presentRecord(VkCommandBuffer cmd, const Presented& p, int width, int height);
 
-bool initImGui()
+bool initInterface()
 {
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.IniFilename = nullptr;
-	io.LogFilename = nullptr;
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-	io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-	io.DisplaySize = ImVec2((float)extent.width, (float)extent.height);
-
-	if (!ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_0,
-			[](const char *name, void *user) { return vkGetInstanceProcAddr(static_cast<VkInstance>(user), name); },
-			instance))
+	hui::gfx::VkRendererConfig config;
+	config.physical_device = gpu;
+	config.device = g_vulkan_context->GetDevice();
+	config.queue = g_vulkan_context->GetGraphicsQueue();
+	config.queue_family = g_vulkan_context->GetGraphicsQueueFamilyIndex();
+	config.frames_in_flight = Vulkan::Context::NUM_COMMAND_BUFFERS;
+	config.render_pass = renderPass;
+	config.subpass = 0;
+	config.samples = VK_SAMPLE_COUNT_1_BIT;
+	if (!kit.init(config))
 	{
-		diag::mark("imgui: Vulkan functions are missing");
+		diag::mark("interface: the kit's renderer did not start (%d)", (int)kit.last_error());
 		return false;
 	}
-	ImGui_ImplVulkan_InitInfo info{};
-	info.ApiVersion = VK_API_VERSION_1_0;
-	info.Instance = instance;
-	info.PhysicalDevice = gpu;
-	info.Device = g_vulkan_context->GetDevice();
-	info.QueueFamily = g_vulkan_context->GetGraphicsQueueFamilyIndex();
-	info.Queue = g_vulkan_context->GetGraphicsQueue();
-	info.PipelineInfoMain.RenderPass = renderPass;
-	info.MinImageCount = (uint32_t)images.size();
-	// How many sets of vertex buffers the backend goes round: a frame draws
-	// up to three times (the screen, the ambient light, a capture), and a set
-	// must not come round again while the graphics processor may still read it.
-	info.ImageCount = (uint32_t)images.size() * 3 + 1;
-	info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-	// Covers are one descriptor set each.
-	info.DescriptorPoolSize = 4096;
-	info.CheckVkResultFn = checkResult;
-	if (!ImGui_ImplVulkan_Init(&info))
+	kitReady = true;
+	if (!presentInit())
 	{
-		diag::mark("imgui: the Vulkan backend did not start");
+		diag::mark("interface: the picture's pipeline did not start");
 		return false;
 	}
 	return true;
@@ -590,7 +607,7 @@ bool init()
 	}
 	if (!createSwapchain())
 		return false;
-	if (!initImGui())
+	if (!initInterface())
 		return false;
 	diag::mark("vulkan: ready");
 	return true;
@@ -614,9 +631,12 @@ void shutdown()
 		target->texture.Destroy(false);
 		*target = Target();
 	}
+	sceneRelease();
 	freeRetired(true);
-	ImGui_ImplVulkan_Shutdown();
-	ImGui::DestroyContext();
+	presentShutdown();
+	if (kitReady)
+		kit.release();
+	kitReady = false;
 	for (VkSemaphore semaphore : acquireSemaphores)
 		vkDestroySemaphore(device, semaphore, nullptr);
 	for (VkSemaphore semaphore : renderSemaphores)
@@ -693,9 +713,7 @@ bool beginFrame()
 	}
 	frameOpen = true;
 	freeRetired(false);
-	ImGui_ImplVulkan_NewFrame();
-	ImGui::GetIO().DisplaySize = ImVec2((float)extent.width, (float)extent.height);
-	ImGui::NewFrame();
+	presented.clear();
 	return true;
 }
 
@@ -704,8 +722,10 @@ void endFrame()
 	if (!frameOpen)
 		return;
 	frameOpen = false;
-	ImGui::Render();
 	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	// The kit's uploads and frosted-glass copies, outside the pass; its layers
+	// are laid out in the screen's own pixels.
+	kit.prepare(cmd, g_vulkan_context->GetCurrentCommandBufferIndex(), (float)extent.width, (float)extent.height);
 	VkClearValue clear{};
 	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
 	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
@@ -715,8 +735,11 @@ void endFrame()
 	begin.clearValueCount = 1;
 	begin.pClearValues = &clear;
 	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+	for (const Presented& p : presented)
+		presentRecord(cmd, p, (int)extent.width, (int)extent.height);
+	kit.draw(cmd, (int)extent.width, (int)extent.height);
 	vkCmdEndRenderPass(cmd);
+	presented.clear();
 
 	g_vulkan_context->SubmitCommandBuffer(acquireSemaphores[semaphoreIndex], renderSemaphores[semaphoreIndex]);
 	VkPresentInfoKHR present{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
@@ -760,7 +783,7 @@ Texture *createTexture(int w, int h, const uint8_t *rgba)
 	texture->staging.CopyToTexture(cmd, 0, 0, texture->texture, 0, 0, 0, 0, w, h);
 	texture->texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	texture->staging.Destroy(true);
-	texture->set = ImGui_ImplVulkan_AddTexture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	texture->set = makePicture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 #if defined(SWANSTATION_HOST)
 	// The frame generation test (ui.cpp) passes pictures from files as the game's.
 	dynamicViews[(void *)texture->set] = texture->texture.GetView();
@@ -789,7 +812,7 @@ Texture *createDynamicTexture(int w, int h)
 	static const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	vkCmdClearColorImage(cmd, texture->texture.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
 	texture->texture.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	texture->set = ImGui_ImplVulkan_AddTexture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	texture->set = makePicture(texture->texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	dynamicViews[(void *)texture->set] = texture->texture.GetView();
 	return texture;
 }
@@ -882,7 +905,7 @@ void *wrapView(void *imageView, int layout)
 	if (view != wrappedView || wrappedLayout != layout)
 	{
 		retire(wrappedSet);
-		wrappedSet = ImGui_ImplVulkan_AddTexture(view, (VkImageLayout)layout);
+		wrappedSet = makePicture(view, (VkImageLayout)layout);
 		wrappedView = view;
 		wrappedLayout = layout;
 	}
@@ -892,17 +915,41 @@ void *wrapView(void *imageView, int layout)
 void releaseWrapped()
 {
 	retire(wrappedSet);
-	wrappedSet = VK_NULL_HANDLE;
+	wrappedSet = nullptr;
 	wrappedView = VK_NULL_HANDLE;
 }
 
-void sampling(void *drawList, bool nearest)
+void present(void *picture, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1,
+		float alpha, bool nearest)
 {
-	// The backend's two samplers, chosen by a command in the draw list.
-	const ImGuiPlatformIO& io = ImGui::GetPlatformIO();
-	const ImDrawCallback callback = nearest ? io.DrawCallback_SetSamplerNearest : io.DrawCallback_SetSamplerLinear;
-	if (callback != nullptr)
-		static_cast<ImDrawList *>(drawList)->AddCallback(callback, nullptr);
+	if (picture == nullptr || !frameOpen || alpha <= 0.f)
+		return;
+	Presented p{};
+	p.picture = static_cast<Picture *>(picture);
+	const float w = (float)extent.width, h = (float)extent.height;
+	const float r[4] = { x0 / w * 2.f - 1.f, y0 / h * 2.f - 1.f, x1 / w * 2.f - 1.f, y1 / h * 2.f - 1.f };
+	const float uv[4] = { u0, v0, u1, v1 };
+	const float tint[4] = { alpha, alpha, alpha, 1.f };
+	memcpy(p.rect, r, sizeof(r));
+	memcpy(p.uv, uv, sizeof(uv));
+	memcpy(p.tint, tint, sizeof(tint));
+	p.nearest = nearest;
+	presented.push_back(p);
+}
+
+uint32_t kitTexture(void *picture)
+{
+	Picture *p = static_cast<Picture *>(picture);
+	if (p == nullptr || !kitReady || p->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+		return 0;
+	if (p->kit == 0)
+		p->kit = kit.import_texture(p->view);
+	return p->kit;
+}
+
+hui::gfx::VkRenderer& interfaceRenderer()
+{
+	return kit;
 }
 
 namespace
@@ -946,7 +993,7 @@ bool ensureTarget(Target& target, int width, int height, VkFormat format = VK_FO
 		return false;
 	}
 	if (forImGui)
-		target.set = ImGui_ImplVulkan_AddTexture(view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		target.set = makePicture(view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	target.width = width;
 	target.height = height;
 	target.format = format;
@@ -964,7 +1011,7 @@ void destroyTarget(Target& target)
 }
 
 // Draws `texture` (its part up to u, v) over the whole of a target, with
-// ImGui's pipeline: `alpha` below 1 blends it over what the target holds.
+// the picture's own pipeline: `alpha` below 1 blends it over what the target holds.
 // `shiftU`, `shiftV` move where it is sampled, in parts of the texture.
 void drawInto(Target& target, void *texture, float u, float v, float alpha, float shiftU, float shiftV)
 {
@@ -979,21 +1026,14 @@ void drawInto(Target& target, void *texture, float u, float v, float alpha, floa
 	begin.clearValueCount = 1;
 	begin.pClearValues = &clear;
 	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
-	const ImVec2 size((float)target.width, (float)target.height);
-	static ImDrawList list(ImGui::GetDrawListSharedData());
-	list._ResetForNewFrame();
-	list.PushClipRect(ImVec2(0, 0), size);
-	list.PushTexture(ImTextureRef((ImTextureID)(size_t)texture));
-	list.AddImage(ImTextureRef((ImTextureID)(size_t)texture), ImVec2(0, 0), size, ImVec2(shiftU, shiftV), ImVec2(u + shiftU, v + shiftV),
-			IM_COL32(255, 255, 255, blend ? (int)(alpha * 255.f) : 255));
-	ImDrawData data;
-	data.Clear();
-	data.Valid = true;
-	data.DisplayPos = ImVec2(0, 0);
-	data.DisplaySize = size;
-	data.FramebufferScale = ImVec2(1, 1);
-	data.AddDrawList(&list);
-	ImGui_ImplVulkan_RenderDrawData(&data, cmd);
+	Presented p{};
+	p.picture = static_cast<Picture *>(texture);
+	const float r[4] = { -1.f, -1.f, 1.f, 1.f }, uv[4] = { shiftU, shiftV, u + shiftU, v + shiftV };
+	const float tint[4] = { 1.f, 1.f, 1.f, blend ? alpha : 1.f };
+	memcpy(p.rect, r, sizeof(r));
+	memcpy(p.uv, uv, sizeof(uv));
+	memcpy(p.tint, tint, sizeof(tint));
+	presentRecord(cmd, p, target.width, target.height);
 	vkCmdEndRenderPass(cmd);
 	target.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	target.drawn = true;
@@ -1835,7 +1875,7 @@ struct LookState
 	Vulkan::Texture coefScaler, coefUsm, nisOut;
 	Vulkan::StagingBuffer coefStaging, nisUniforms;
 	bool coefUploaded = false;
-	VkDescriptorSet nisOutSet = VK_NULL_HANDLE;
+	Picture *nisOutSet = nullptr;
 	// crt-guest-advanced.
 	chain::Chain *crt = nullptr;
 	bool crtTried = false;
@@ -1845,7 +1885,7 @@ struct LookState
 	bool importedTried = false;
 	int crtPreset = -1, crtMaskSize = 0;
 	VkImageView crtView = VK_NULL_HANDLE;
-	VkDescriptorSet crtSet = VK_NULL_HANDLE;
+	Picture *crtSet = nullptr;
 	std::string said;
 } look;
 
@@ -2002,7 +2042,7 @@ void *nisScale(VkImageView view, int width, int height, int outWidth, int outHei
 					VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
 					VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
 			return nullptr;
-		l.nisOutSet = ImGui_ImplVulkan_AddTexture(l.nisOut.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		l.nisOutSet = makePicture(l.nisOut.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 	const uint32_t align = std::max<uint32_t>((uint32_t)g_vulkan_context->GetDeviceLimits().minUniformBufferOffsetAlignment, 256);
 	const unsigned slot = l.nisNext++ % LookState::NisSets;
@@ -2114,7 +2154,7 @@ void *crtRun(VkImageView view, int width, int height, int outWidth, int outHeigh
 		if (out != l.crtView)
 		{
 			retire(l.crtSet);
-			l.crtSet = ImGui_ImplVulkan_AddTexture(out, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			l.crtSet = makePicture(out, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			l.crtView = out;
 		}
 		return (void *)l.crtSet;
@@ -2145,7 +2185,7 @@ void *crtRun(VkImageView view, int width, int height, int outWidth, int outHeigh
 	if (out != l.crtView)
 	{
 		retire(l.crtSet);
-		l.crtSet = ImGui_ImplVulkan_AddTexture(out, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		l.crtSet = makePicture(out, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		l.crtView = out;
 	}
 	return (void *)l.crtSet;
@@ -2525,3 +2565,484 @@ bool saveScreenshot(const std::string& path)
 }
 
 }
+
+// ------------------------------------------------- the game's picture, drawn
+
+namespace fe::display
+{
+namespace
+{
+#include "present_spirv.inc"
+
+struct Present
+{
+	VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	VkSampler linear = VK_NULL_HANDLE, nearest = VK_NULL_HANDLE;
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	// A set is written each time it is used, and must not be written again
+	// while a frame under way reads it: they go round.
+	static constexpr unsigned Sets = 96;
+	VkDescriptorSet sets[Sets] = {};
+	unsigned next = 0;
+} pr;
+
+struct PresentConstants
+{
+	float rect[4], uv[4], tint[4];
+};
+
+VkShaderModule presentModule(const uint32_t *words, size_t bytes)
+{
+	VkShaderModuleCreateInfo info{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+	info.codeSize = bytes;
+	info.pCode = words;
+	VkShaderModule module = VK_NULL_HANDLE;
+	vkCreateShaderModule(g_vulkan_context->GetDevice(), &info, nullptr, &module);
+	return module;
+}
+
+bool presentInit()
+{
+	VkDevice device = g_vulkan_context->GetDevice();
+	VkDescriptorSetLayoutBinding binding{};
+	binding.binding = 0;
+	binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	binding.descriptorCount = 1;
+	binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkDescriptorSetLayoutCreateInfo setInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	setInfo.bindingCount = 1;
+	setInfo.pBindings = &binding;
+	if (vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &pr.setLayout) != VK_SUCCESS)
+		return false;
+	VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Present::Sets };
+	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	poolInfo.maxSets = Present::Sets;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &size;
+	if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &pr.pool) != VK_SUCCESS)
+		return false;
+	std::vector<VkDescriptorSetLayout> layouts(Present::Sets, pr.setLayout);
+	VkDescriptorSetAllocateInfo allocate{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = pr.pool;
+	allocate.descriptorSetCount = Present::Sets;
+	allocate.pSetLayouts = layouts.data();
+	if (vkAllocateDescriptorSets(device, &allocate, pr.sets) != VK_SUCCESS)
+		return false;
+	for (VkSampler *sampler : { &pr.linear, &pr.nearest })
+	{
+		VkSamplerCreateInfo info{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+		info.magFilter = info.minFilter = sampler == &pr.linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+		info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		info.maxLod = 0.f;
+		if (vkCreateSampler(device, &info, nullptr, sampler) != VK_SUCCESS)
+			return false;
+	}
+	VkPushConstantRange range{ VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PresentConstants) };
+	VkPipelineLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	layoutInfo.setLayoutCount = 1;
+	layoutInfo.pSetLayouts = &pr.setLayout;
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pPushConstantRanges = &range;
+	if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pr.layout) != VK_SUCCESS)
+		return false;
+	VkShaderModule vertex = presentModule(present_vertex_spirv, sizeof(present_vertex_spirv));
+	VkShaderModule fragment = presentModule(present_picture_spirv, sizeof(present_picture_spirv));
+	if (vertex == VK_NULL_HANDLE || fragment == VK_NULL_HANDLE)
+		return false;
+	VkPipelineShaderStageCreateInfo stages[2] = {};
+	stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vertex;
+	stages[0].pName = "main";
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = fragment;
+	stages[1].pName = "main";
+	VkPipelineVertexInputStateCreateInfo input{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+	VkPipelineInputAssemblyStateCreateInfo assembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+	assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPipelineViewportStateCreateInfo viewport{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+	viewport.viewportCount = 1;
+	viewport.scissorCount = 1;
+	VkPipelineRasterizationStateCreateInfo raster{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_CULL_MODE_NONE;
+	raster.lineWidth = 1.f;
+	VkPipelineMultisampleStateCreateInfo multisample{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	// Blended by the tint's alpha: a picture laid over what a target holds
+	// (the ambient light's average); the screen's is opaque.
+	VkPipelineColorBlendAttachmentState blend{};
+	blend.blendEnable = VK_TRUE;
+	blend.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	blend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	blend.colorBlendOp = VK_BLEND_OP_ADD;
+	blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	blend.alphaBlendOp = VK_BLEND_OP_ADD;
+	blend.colorWriteMask = 0xf;
+	VkPipelineColorBlendStateCreateInfo blending{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+	blending.attachmentCount = 1;
+	blending.pAttachments = &blend;
+	const VkDynamicState dynamics[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamic{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+	dynamic.dynamicStateCount = 2;
+	dynamic.pDynamicStates = dynamics;
+	VkGraphicsPipelineCreateInfo info{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+	info.stageCount = 2;
+	info.pStages = stages;
+	info.pVertexInputState = &input;
+	info.pInputAssemblyState = &assembly;
+	info.pViewportState = &viewport;
+	info.pRasterizationState = &raster;
+	info.pMultisampleState = &multisample;
+	info.pColorBlendState = &blending;
+	info.pDynamicState = &dynamic;
+	info.layout = pr.layout;
+	// The swapchain's pass; the targets' passes differ only in what they load
+	// and leave, so the one pipeline draws into them too.
+	info.renderPass = renderPass;
+	const VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &pr.pipeline);
+	vkDestroyShaderModule(device, vertex, nullptr);
+	vkDestroyShaderModule(device, fragment, nullptr);
+	return result == VK_SUCCESS;
+}
+
+void presentShutdown()
+{
+	VkDevice device = g_vulkan_context->GetDevice();
+	if (pr.pipeline != VK_NULL_HANDLE)
+		vkDestroyPipeline(device, pr.pipeline, nullptr);
+	if (pr.layout != VK_NULL_HANDLE)
+		vkDestroyPipelineLayout(device, pr.layout, nullptr);
+	for (VkSampler sampler : { pr.linear, pr.nearest })
+		if (sampler != VK_NULL_HANDLE)
+			vkDestroySampler(device, sampler, nullptr);
+	if (pr.pool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(device, pr.pool, nullptr);
+	if (pr.setLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(device, pr.setLayout, nullptr);
+	pr = Present();
+}
+
+void presentRecord(VkCommandBuffer cmd, const Presented& p, int width, int height)
+{
+	if (pr.pipeline == VK_NULL_HANDLE || p.picture == nullptr || p.picture->view == VK_NULL_HANDLE)
+		return;
+	const VkDescriptorSet set = pr.sets[pr.next++ % Present::Sets];
+	const VkDescriptorImageInfo image{ p.nearest ? pr.nearest : pr.linear, p.picture->view, p.picture->layout };
+	VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+	write.dstSet = set;
+	write.descriptorCount = 1;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write.pImageInfo = &image;
+	vkUpdateDescriptorSets(g_vulkan_context->GetDevice(), 1, &write, 0, nullptr);
+	const VkViewport viewport{ 0.f, 0.f, (float)width, (float)height, 0.f, 1.f };
+	const VkRect2D scissor{ { 0, 0 }, { (uint32_t)width, (uint32_t)height } };
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pr.pipeline);
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pr.layout, 0, 1, &set, 0, nullptr);
+	PresentConstants constants;
+	memcpy(constants.rect, p.rect, sizeof(constants.rect));
+	memcpy(constants.uv, p.uv, sizeof(constants.uv));
+	memcpy(constants.tint, p.tint, sizeof(constants.tint));
+	vkCmdPushConstants(cmd, pr.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants),
+			&constants);
+	vkCmdDraw(cmd, 6, 1, 0, 0);
+}
+
+// ---------------------------------------------------------- 3D scenes
+
+// The library's views in space are a mesh of their own (ui::beginScene): its
+// pictures in perspective, which the kit does not draw. It is drawn into a
+// picture the size of the screen, premultiplied, then made straight again,
+// and the page shows that picture where the scene belongs.
+struct ScenePass
+{
+	bool tried = false, ready = false;
+	VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
+	VkPipelineLayout meshLayout = VK_NULL_HANDLE, resolveLayout = VK_NULL_HANDLE;
+	VkPipeline mesh = VK_NULL_HANDLE, resolve = VK_NULL_HANDLE;
+	static constexpr unsigned Sets = 512;
+	VkDescriptorSet sets[Sets] = {};
+	unsigned next = 0;
+	Vulkan::StreamBuffer stream;
+	Vulkan::Texture white;
+	Picture *whitePicture = nullptr;
+	Target drawn, straight;
+} sc;
+
+VkPipeline scenePipeline(VkShaderModule vertex, VkShaderModule fragment, VkPipelineLayout layout, bool mesh)
+{
+	VkPipelineShaderStageCreateInfo stages[2] = {};
+	stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vertex;
+	stages[0].pName = "main";
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = fragment;
+	stages[1].pName = "main";
+	const VkVertexInputBindingDescription binding{ 0, sizeof(ImDrawVert), VK_VERTEX_INPUT_RATE_VERTEX };
+	const VkVertexInputAttributeDescription attributes[3] = {
+		{ 0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ImDrawVert, pos) },
+		{ 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ImDrawVert, uv) },
+		{ 2, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(ImDrawVert, col) },
+	};
+	VkPipelineVertexInputStateCreateInfo input{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+	if (mesh)
+	{
+		input.vertexBindingDescriptionCount = 1;
+		input.pVertexBindingDescriptions = &binding;
+		input.vertexAttributeDescriptionCount = 3;
+		input.pVertexAttributeDescriptions = attributes;
+	}
+	VkPipelineInputAssemblyStateCreateInfo assembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+	assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPipelineViewportStateCreateInfo viewport{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+	viewport.viewportCount = 1;
+	viewport.scissorCount = 1;
+	VkPipelineRasterizationStateCreateInfo raster{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_CULL_MODE_NONE;
+	raster.lineWidth = 1.f;
+	VkPipelineMultisampleStateCreateInfo multisample{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	VkPipelineColorBlendAttachmentState blend{};
+	blend.colorWriteMask = 0xf;
+	if (mesh)
+	{
+		// Premultiplied: each triangle over what is behind it, the alpha
+		// gathering how much of the screen the scene covers.
+		blend.blendEnable = VK_TRUE;
+		blend.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		blend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		blend.colorBlendOp = VK_BLEND_OP_ADD;
+		blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		blend.alphaBlendOp = VK_BLEND_OP_ADD;
+	}
+	VkPipelineColorBlendStateCreateInfo blending{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+	blending.attachmentCount = 1;
+	blending.pAttachments = &blend;
+	const VkDynamicState dynamics[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamic{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+	dynamic.dynamicStateCount = 2;
+	dynamic.pDynamicStates = dynamics;
+	VkGraphicsPipelineCreateInfo info{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+	info.stageCount = 2;
+	info.pStages = stages;
+	info.pVertexInputState = &input;
+	info.pInputAssemblyState = &assembly;
+	info.pViewportState = &viewport;
+	info.pRasterizationState = &raster;
+	info.pMultisampleState = &multisample;
+	info.pColorBlendState = &blending;
+	info.pDynamicState = &dynamic;
+	info.layout = layout;
+	info.renderPass = targetClearPass;
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	vkCreateGraphicsPipelines(g_vulkan_context->GetDevice(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
+	return pipeline;
+}
+
+bool sceneInit()
+{
+	sc.tried = true;
+	VkDevice device = g_vulkan_context->GetDevice();
+	VkDescriptorSetLayoutBinding binding{};
+	binding.binding = 0;
+	binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	binding.descriptorCount = 1;
+	binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkDescriptorSetLayoutCreateInfo setInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	setInfo.bindingCount = 1;
+	setInfo.pBindings = &binding;
+	if (vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &sc.setLayout) != VK_SUCCESS)
+		return false;
+	VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ScenePass::Sets };
+	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	poolInfo.maxSets = ScenePass::Sets;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &size;
+	if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &sc.pool) != VK_SUCCESS)
+		return false;
+	std::vector<VkDescriptorSetLayout> layouts(ScenePass::Sets, sc.setLayout);
+	VkDescriptorSetAllocateInfo allocate{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = sc.pool;
+	allocate.descriptorSetCount = ScenePass::Sets;
+	allocate.pSetLayouts = layouts.data();
+	if (vkAllocateDescriptorSets(device, &allocate, sc.sets) != VK_SUCCESS)
+		return false;
+	VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerInfo.magFilter = samplerInfo.minFilter = VK_FILTER_LINEAR;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	if (vkCreateSampler(device, &samplerInfo, nullptr, &sc.sampler) != VK_SUCCESS)
+		return false;
+	const VkPushConstantRange range{ VK_SHADER_STAGE_VERTEX_BIT, 0, 8 };
+	VkPipelineLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	layoutInfo.setLayoutCount = 1;
+	layoutInfo.pSetLayouts = &sc.setLayout;
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pPushConstantRanges = &range;
+	if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &sc.meshLayout) != VK_SUCCESS)
+		return false;
+	layoutInfo.pushConstantRangeCount = 0;
+	if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &sc.resolveLayout) != VK_SUCCESS)
+		return false;
+	VkShaderModule meshVertex = presentModule(scene_vertex_spirv, sizeof(scene_vertex_spirv));
+	VkShaderModule meshFragment = VK_NULL_HANDLE;
+	VkShaderModule fullscreen = presentModule(fsr_vertex_spirv, sizeof(fsr_vertex_spirv));
+	VkShaderModule resolveFragment = presentModule(scene_resolve_spirv, sizeof(scene_resolve_spirv));
+	meshFragment = presentModule(scene_mesh_spirv, sizeof(scene_mesh_spirv));
+	sc.mesh = scenePipeline(meshVertex, meshFragment, sc.meshLayout, true);
+	sc.resolve = scenePipeline(fullscreen, resolveFragment, sc.resolveLayout, false);
+	for (VkShaderModule module : { meshVertex, meshFragment, fullscreen, resolveFragment })
+		if (module != VK_NULL_HANDLE)
+			vkDestroyShaderModule(device, module, nullptr);
+	if (sc.mesh == VK_NULL_HANDLE || sc.resolve == VK_NULL_HANDLE)
+		return false;
+	if (!sc.stream.Create(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 8u << 20))
+		return false;
+	// One white pixel: what the plain-coloured triangles sample.
+	if (!sc.white.Create(1, 1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_VIEW_TYPE_2D,
+			VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+		return false;
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	sc.white.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	static const VkClearColorValue white = { { 1.f, 1.f, 1.f, 1.f } };
+	static const VkImageSubresourceRange whole = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	vkCmdClearColorImage(cmd, sc.white.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &white, 1, &whole);
+	sc.white.TransitionToLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	sc.whitePicture = makePicture(sc.white.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	sc.ready = true;
+	return true;
+}
+
+VkDescriptorSet sceneSet(VkImageView view, VkImageLayout layout)
+{
+	const VkDescriptorSet set = sc.sets[sc.next++ % ScenePass::Sets];
+	const VkDescriptorImageInfo image{ sc.sampler, view, layout };
+	VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+	write.dstSet = set;
+	write.descriptorCount = 1;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write.pImageInfo = &image;
+	vkUpdateDescriptorSets(g_vulkan_context->GetDevice(), 1, &write, 0, nullptr);
+	return set;
+}
+
+void beginTargetPass(VkCommandBuffer cmd, Target& target)
+{
+	VkClearValue clear{};
+	clear.color = { { 0.f, 0.f, 0.f, 0.f } };
+	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+	begin.renderPass = targetClearPass;
+	begin.framebuffer = target.framebuffer;
+	begin.renderArea = { { 0, 0 }, { (uint32_t)target.width, (uint32_t)target.height } };
+	begin.clearValueCount = 1;
+	begin.pClearValues = &clear;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	const VkViewport viewport{ 0.f, 0.f, (float)target.width, (float)target.height, 0.f, 1.f };
+	const VkRect2D scissor{ { 0, 0 }, { (uint32_t)target.width, (uint32_t)target.height } };
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
+void sceneShutdown()
+{
+	VkDevice device = g_vulkan_context->GetDevice();
+	destroyTarget(sc.drawn);
+	destroyTarget(sc.straight);
+	sc.stream.Destroy(false);
+	sc.white.Destroy(false);
+	retire(sc.whitePicture);
+	for (VkPipeline pipeline : { sc.mesh, sc.resolve })
+		if (pipeline != VK_NULL_HANDLE)
+			vkDestroyPipeline(device, pipeline, nullptr);
+	for (VkPipelineLayout layout : { sc.meshLayout, sc.resolveLayout })
+		if (layout != VK_NULL_HANDLE)
+			vkDestroyPipelineLayout(device, layout, nullptr);
+	if (sc.sampler != VK_NULL_HANDLE)
+		vkDestroySampler(device, sc.sampler, nullptr);
+	if (sc.pool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(device, sc.pool, nullptr);
+	if (sc.setLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(device, sc.setLayout, nullptr);
+	sc = ScenePass();
+}
+
+} // namespace
+
+void *scene(const Scene& mesh)
+{
+	if (!frameOpen || mesh.indices.empty())
+		return nullptr;
+	if (!sc.tried && !sceneInit())
+		diag::mark("vulkan: the 3D scenes' passes did not start");
+	if (!sc.ready)
+		return nullptr;
+	const int w = (int)extent.width, h = (int)extent.height;
+	if (!ensureTarget(sc.drawn, w, h) || !ensureTarget(sc.straight, w, h))
+		return nullptr;
+	const uint32_t vertexBytes = (uint32_t)(mesh.vertices.size() * sizeof(ImDrawVert));
+	const uint32_t indexBytes = (uint32_t)(mesh.indices.size() * sizeof(uint32_t));
+	if (!sc.stream.ReserveMemory(vertexBytes + indexBytes, 16))
+	{
+		static int said;
+		if (said++ < 3)
+			diag::mark("vulkan: a 3D scene of %u bytes is too large", vertexBytes + indexBytes);
+		return nullptr;
+	}
+	const uint32_t base = sc.stream.GetCurrentOffset();
+	uint8_t *host = static_cast<uint8_t *>(sc.stream.GetCurrentHostPointer());
+	memcpy(host, mesh.vertices.data(), vertexBytes);
+	memcpy(host + vertexBytes, mesh.indices.data(), indexBytes);
+	sc.stream.CommitMemory(vertexBytes + indexBytes);
+
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	beginTargetPass(cmd, sc.drawn);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sc.mesh);
+	const float screen[2] = { (float)w, (float)h };
+	vkCmdPushConstants(cmd, sc.meshLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(screen), screen);
+	const VkBuffer buffer = sc.stream.GetBuffer();
+	const VkDeviceSize vertexOffset = base;
+	vkCmdBindVertexBuffers(cmd, 0, 1, &buffer, &vertexOffset);
+	vkCmdBindIndexBuffer(cmd, buffer, base + vertexBytes, VK_INDEX_TYPE_UINT32);
+	for (const Scene::Run& run : mesh.runs)
+	{
+		if (run.count == 0)
+			continue;
+		Picture *picture = run.texture != nullptr ? static_cast<Picture *>(run.texture) : sc.whitePicture;
+		if (picture == nullptr || picture->view == VK_NULL_HANDLE)
+			continue;
+		const VkDescriptorSet set = sceneSet(picture->view, picture->layout);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sc.meshLayout, 0, 1, &set, 0, nullptr);
+		vkCmdDrawIndexed(cmd, run.count, 1, run.first, 0, 0);
+	}
+	vkCmdEndRenderPass(cmd);
+	sc.drawn.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	beginTargetPass(cmd, sc.straight);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sc.resolve);
+	const VkDescriptorSet set = sceneSet(sc.drawn.texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sc.resolveLayout, 0, 1, &set, 0, nullptr);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdEndRenderPass(cmd);
+	sc.straight.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	sc.straight.drawn = true;
+	return (void *)sc.straight.set;
+}
+
+void sceneRelease()
+{
+	if (sc.tried)
+		sceneShutdown();
+}
+
+} // namespace fe::display

@@ -41,3 +41,5 @@ write "$ps5/src/fg_spirv.inc" "SPIR-V of the frame generation passes." \
     fg_copy.frag fg_luma.frag fg_search.frag fg_tidy.frag fg_choose.frag fg_blend.frag fg_check.frag fg_cut.frag
 write "$ps5/src/look_spirv.inc" "SPIR-V of the picture's look (with AMD's ffx_cas.h and NVIDIA's NIS, MIT: ps5/third_party)." \
     look_signal.frag look_scale.frag look_cas.frag look_nis.comp look_down.frag
+write "$ps5/src/present_spirv.inc" "SPIR-V of the passes of the game's picture under the interface, and of its 3D scenes." \
+    present_vertex.vert present_picture.frag scene_vertex.vert scene_mesh.frag scene_resolve.frag

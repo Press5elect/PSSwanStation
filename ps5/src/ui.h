@@ -4,16 +4,17 @@
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
-	The interface is drawn with Dear ImGui's draw lists and fonts; its own code
-	does the layout and the controller navigation, so every screen behaves the
-	same way under a DualSense: the d-pad or the left stick moves, Cross
-	confirms, Circle goes back.
+	The interface is drawn by the interface kit (PS5_VKHomebrewUI, see
+	ui_widgets.cpp), in the theme chosen; its own code does the layout and the
+	controller navigation, so every screen behaves the same way under a
+	DualSense: the d-pad or the left stick moves, Cross confirms, Circle goes
+	back.
 */
 #pragma once
 
 #include "fe.h"
 
-#include <imgui.h>
+#include "ui_draw.h"
 
 #include <functional>
 #include <string>
@@ -106,15 +107,23 @@ constexpr const char *Moon = "\xef\x86\x86";		// f186
 
 enum Font { Body, Bold, Title, Huge };
 
+// The chosen theme's colours (the kit's theme, as the pages use them).
 struct Theme
 {
 	ImU32 background, backgroundLow;	// the screen behind everything
 	ImU32 panel, panelHigh;				// a panel, a row under the cursor
 	ImU32 accent, accentSoft;
-	ImU32 text, dim, faint;
+	ImU32 onAccent;						// text on the accent colour
+	ImU32 text, dim, faint;				// on a panel
+	ImU32 pageText, pageDim;			// straight on the page
 	ImU32 good, bad;
+	bool dark;
 };
 const Theme& theme();
+// The themes: PSSwanStation's own (0), then the interface kit's, in its order.
+std::vector<std::string> themeNames();
+std::string themeAbout(int index);
+const char *themeId();
 constexpr int AccentCount = 6;
 const char *accentName(int index);
 
@@ -122,10 +131,19 @@ const char *accentName(int index);
 void widgetsInit();
 // Sets the frame's scale and colours.
 void widgetsFrame();
+// Queues the frame's layers into the kit's renderer (before display::endFrame).
+void widgetsSubmit();
 
 // 1080-line units to pixels (the display's scale times the interface's).
 float px(float units);
 ImDrawList *draw();
+// The list under everything else on the page (washes, dimming).
+ImDrawList *background();
+// Between these, what is drawn is a 3D scene's mesh (display::scene draws it).
+void beginScene();
+const Scene& endScene();
+// Seconds since the last frame (a test run's: a sixtieth).
+float frameTime();
 float width();
 float height();
 // Seconds since the title started, for animations.
@@ -145,14 +163,19 @@ float textWrapped(ImVec2 at, float wrapWidth, ImU32 colour, const std::string& t
 
 // How high it would be, in pixels.
 float wrappedHeight(const std::string& text, float wrapWidth, Font font = Body, float size = 26);
+std::vector<std::string> wrapText(const std::string& text, float wrapWidth, Font font = Body, float size = 26);
 
 void panel(ImVec2 a, ImVec2 b, ImU32 colour, float rounding = 14);
 void outline(ImVec2 a, ImVec2 b, ImU32 colour, float rounding = 14, float thickness = 3);
+// The theme's focus indicator round a box, at an opacity.
+void focusRing(ImVec2 a, ImVec2 b, float rounding = 12, float amount = 1.f);
 ImU32 withAlpha(ImU32 colour, float alpha);
 ImU32 mix(ImU32 a, ImU32 b, float t);
 
 // The screen's background when no game is behind the interface.
 void backdrop();
+// Whether this frame has the theme's backdrop.
+bool backdropDrawn();
 // A picture spread over the whole screen behind everything, faintly: the
 // focused game's cover as the library's light.
 void wash(const Image& image, float alpha);
@@ -194,6 +217,9 @@ void hintBar(const std::vector<Hint>& hints, const std::string& left = "");
 void progressBar(ImVec2 a, ImVec2 b, float fraction);
 // A cover's placeholder: the game's name on a tinted card.
 void coverPlaceholder(ImVec2 a, ImVec2 b, const std::string& name, const std::string& region);
+// The same card as a picture (aspect: its width over its height), for the
+// views that carry covers in 3D; made once a game.
+Image placeholderImage(const std::string& name, const std::string& region, float aspect);
 // A picture fitted into a box (letterboxed), with rounded corners.
 void imageFit(const Image& image, ImVec2 a, ImVec2 b, float rounding = 10, ImU32 tint = IM_COL32_WHITE);
 

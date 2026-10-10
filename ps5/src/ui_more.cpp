@@ -54,7 +54,7 @@ const Item *panelList(Frame& f, const std::string& title, std::vector<Item>& ite
 	const float panelH = 96 + rowsHigh + noteH + 22;
 	const float x0 = (W - panelW) * 0.5f, y0 = std::max((H - panelH) * 0.5f, 70.f);
 	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(4, 6, 12, 150));
-	panel(at(x0, y0), at(x0 + panelW, y0 + panelH), IM_COL32(24, 30, 48, 252), 20);
+	panel(at(x0, y0), at(x0 + panelW, y0 + panelH), theme().panel, 20);
 	outline(at(x0, y0), at(x0 + panelW, y0 + panelH), IM_COL32(255, 255, 255, 24), 20, 1.5f);
 	textFit(at(x0 + 36, y0 + 28), px(panelW - 72), t.text, title, Bold, 32);
 	// (A row's list of choices, while it is open, is over this panel: the note
@@ -194,7 +194,7 @@ void textPage(Frame& f)
 			const bool focused = s.row == r && s.column == c;
 			panel(at(x, y), at(x + key, y + key - 10), focused ? t.accent : t.panelHigh, 12);
 			const char letter = address ? addressKeys[r][c] : keyLayers[s.layer][r][c];
-			textCentred(at(x + key * 0.5f, y + 18), focused ? IM_COL32(8, 12, 22, 255) : t.text, std::string(1, letter), Bold, 30);
+			textCentred(at(x + key * 0.5f, y + 18), focused ? theme().onAccent : t.text, std::string(1, letter), Bold, 30);
 		}
 	for (int c = 0; c < actionCount; c++)
 	{
@@ -203,7 +203,7 @@ void textPage(Frame& f)
 		const bool focused = s.row == actionRow && std::clamp(s.column * actionCount / columns, 0, actionCount - 1) == c;
 		const bool lit = (which == 0 && s.layer == 1) || (which == 1 && s.layer == 2);
 		panel(at(x, y), at(x + actionW, y + key - 10), focused ? t.accent : lit ? t.accentSoft : t.panelHigh, 12);
-		textCentred(at(x + actionW * 0.5f, y + 22), focused ? IM_COL32(8, 12, 22, 255) : t.text, actions[which], Bold, 24);
+		textCentred(at(x + actionW * 0.5f, y + 22), focused ? theme().onAccent : t.text, actions[which], Bold, 24);
 	}
 
 	// The pad.
@@ -1187,7 +1187,7 @@ void whatsNewPage(Frame& f)
 	const float inset = 28, y0 = top + inset, y1 = bottom - inset;
 	const float tx = x0 + 48, bulletX = tx + 34, tw = x1 - 40 - bulletX;
 	const ImU32 sectionColour[4] = { t.accent, t.good, t.accent, IM_COL32(240, 190, 90, 255) };
-	const ImU32 body = IM_COL32(214, 220, 234, 255);
+	const ImU32 body = theme().text;
 
 	// Heights first, in units, so the box knows how far it scrolls.
 	std::vector<float> heights(news.lines.size());
@@ -1318,7 +1318,7 @@ void updatePage(Frame& f)
 			const float notesH = toUnits(wrappedHeight(notes, px(tw - 24), Body, 22));
 			const float scroll = scrollBox(f, boxTop, boxBottom, x1 - 24, notesH);
 			draw()->PushClipRect(at(tx, boxTop), at(x1 - 30, boxBottom), true);
-			textWrapped(at(tx, boxTop - scroll), px(tw - 24), IM_COL32(200, 208, 226, 255), notes, Body, 22);
+			textWrapped(at(tx, boxTop - scroll), px(tw - 24), theme().text, notes, Body, 22);
 			draw()->PopClipRect();
 			if (notesH > boxBottom - boxTop)
 				hintText = "Up and Down, or a stick: scroll";
@@ -2148,6 +2148,29 @@ float drawNotice(const host::Message& m, float y)
 	return h;
 }
 
+namespace
+{
+// Draws `fill` clipped to each part of the screen outside the game's picture:
+// the picture is under the interface's layers, so nothing may cover it.
+template <typename Fn>
+void besidePicture(ImDrawList *list, ImVec2 p0, ImVec2 p1, Fn fill)
+{
+	const float W = width(), H = height();
+	const ImVec2 parts[4][2] = {
+		{ ImVec2(0, 0), ImVec2(W, p0.y) }, { ImVec2(0, p1.y), ImVec2(W, H) },
+		{ ImVec2(0, p0.y), ImVec2(p0.x, p1.y) }, { ImVec2(p1.x, p0.y), ImVec2(W, p1.y) },
+	};
+	for (const auto& part : parts)
+	{
+		if (part[1].x - part[0].x < 1.f || part[1].y - part[0].y < 1.f)
+			continue;
+		list->PushClipRect(part[0], part[1], true);
+		fill();
+		list->PopClipRect();
+	}
+}
+}
+
 void drawBorder(ImDrawList *list, void *texture, float u, float v, ImVec2 p0, ImVec2 p1)
 {
 	const float W = width(), H = height();
@@ -2171,7 +2194,9 @@ void drawBorder(ImDrawList *list, void *texture, float u, float v, ImVec2 p0, Im
 			sw = H * pictureAspect;
 		}
 		const ImVec2 a((W - sw) * 0.5f, (H - sh) * 0.5f);
-		list->AddImage((ImTextureID)soft, a, ImVec2(a.x + sw, a.y + sh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(150, 150, 150, 255));
+		besidePicture(list, p0, p1, [&] {
+			list->AddImage((ImTextureID)soft, a, ImVec2(a.x + sw, a.y + sh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(150, 150, 150, 255));
+		});
 		// Darker towards the screen's edges, so the picture stays what is looked at.
 		const ImU32 none = IM_COL32(0, 0, 0, 0), edge = IM_COL32(0, 0, 0, 150);
 		list->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(p0.x, H), edge, none, none, edge);
@@ -2182,7 +2207,7 @@ void drawBorder(ImDrawList *list, void *texture, float u, float v, ImVec2 p0, Im
 		// A quiet gradient in the accent colour.
 		const Theme& t = theme();
 		const ImU32 top = mix(IM_COL32(6, 8, 14, 255), t.accent, 0.20f), bottom = mix(IM_COL32(2, 3, 6, 255), t.accent, 0.04f);
-		list->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(W, H), top, top, bottom, bottom);
+		besidePicture(list, p0, p1, [&] { list->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(W, H), top, top, bottom, bottom); });
 	}
 	else
 	{
@@ -2216,11 +2241,8 @@ void drawBorder(ImDrawList *list, void *texture, float u, float v, ImVec2 p0, Im
 			uv0.y = (1 - part) * 0.5f;
 			uv1.y = 1 - uv0.y;
 		}
-		list->AddImage((ImTextureID)picture.id, ImVec2(0, 0), ImVec2(W, H), uv0, uv1);
+		besidePicture(list, p0, p1, [&] { list->AddImage((ImTextureID)picture.id, ImVec2(0, 0), ImVec2(W, H), uv0, uv1); });
 	}
-	// The picture's own place is black under it (a game's picture is opaque,
-	// but its first frames may not be there yet).
-	list->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 255));
 }
 
 void drawScanlines(ImDrawList *list, ImVec2 p0, ImVec2 p1)
@@ -2296,7 +2318,7 @@ bool idleSwan(bool allowed)
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
 	const float time = (float)(clock() - since);
-	ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(4, 7, 18, 255),
+	background()->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(width(), height()), IM_COL32(4, 7, 18, 255),
 			IM_COL32(4, 7, 18, 255), IM_COL32(1, 2, 6, 255), IM_COL32(1, 2, 6, 255));
 	const float in_ = motion() == MotionOff ? 1.f : std::clamp(time / 2.f, 0.f, 1.f);
 	waves(0.5f * in_);

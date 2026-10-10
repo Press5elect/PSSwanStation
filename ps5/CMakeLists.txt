@@ -19,9 +19,11 @@ cmake_minimum_required(VERSION 3.20)
 project(swanstation_ps5 C CXX)
 
 set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
-set(IMGUI_DIR "${ROOT}/../imgui" CACHE PATH "Dear ImGui (v1.92)")
 set(LIBSMB2_DIR "${ROOT}/../deps-src/libsmb2" CACHE PATH "libsmb2")
 set(RCHEEVOS_DIR "${ROOT}/../deps-src/rcheevos" CACHE PATH "rcheevos (v12)")
+# BlackBearReloaded's ps5-homebrew-ui kit, through mihawk-99's PS5_VKHomebrewUI
+# (its Vulkan backend), at the revision ps5/tools/build.sh checks.
+set(HUI_DIR "${ROOT}/../PS5_VKHomebrewUI" CACHE PATH "PS5_VKHomebrewUI (the interface kit)")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -219,7 +221,8 @@ set(frontend_sources
 	src/gamedb.cpp
 	src/history.cpp
 	src/diag.cpp
-	src/texture.cpp)
+	src/texture.cpp
+	src/hui_platform.cpp)
 if(SWANSTATION_PS5)
 	list(APPEND frontend_sources
 		src/ps5/pad_ps5.cpp
@@ -244,27 +247,37 @@ set(core_glue_sources
 	${ROOT}/src/libretro/libretro_host_interface.cpp
 	${ROOT}/src/libretro/libretro_settings_interface.cpp)
 
-set(imgui_sources
-	${IMGUI_DIR}/imgui.cpp
-	${IMGUI_DIR}/imgui_draw.cpp
-	${IMGUI_DIR}/imgui_tables.cpp
-	${IMGUI_DIR}/imgui_widgets.cpp
-	${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
+# The interface kit: shapes, SDF text, themes, components, springs, the mixer
+# and its cues. Not its OpenGL backend, its own console layer or its app (the
+# designs, the shell, the demo content), and not its stb_vorbis: music.cpp's
+# copy serves both. Its Vulkan backend draws through the same function table as
+# the rest of the title (dep/vulkan-loader), forced in ahead of its headers.
+file(GLOB hui_sources
+	${HUI_DIR}/src/gfx/draw_list.cpp ${HUI_DIR}/src/gfx/font.cpp ${HUI_DIR}/src/gfx/renderer.cpp
+	${HUI_DIR}/src/gfx/triangulate.cpp ${HUI_DIR}/src/gfx/vk/vk_renderer.cpp
+	${HUI_DIR}/src/ui/*.cpp ${HUI_DIR}/src/ui/components/*.cpp
+	${HUI_DIR}/src/core/*.cpp ${HUI_DIR}/src/audio/*.cpp)
+add_library(hui STATIC ${hui_sources})
+target_include_directories(hui PUBLIC ${HUI_DIR}/src)
+target_include_directories(hui PRIVATE ${ROOT}/dep/vulkan-loader/include)
+target_compile_options(hui PRIVATE -std=c++20 -w -fno-exceptions)
+set_source_files_properties(${HUI_DIR}/src/gfx/vk/vk_renderer.cpp PROPERTIES COMPILE_OPTIONS
+	"-include;${ROOT}/dep/vulkan-loader/include/vulkan_loader.h")
 
-add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources} ${imgui_sources})
-target_link_libraries(swanstation PRIVATE core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos
+add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources})
+target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos
 	glslang glslang-default-resource-limits)
-target_include_directories(swanstation PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends ${ROOT}/src/libretro
+target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen)
-# ImGui's Vulkan backend draws through the core's function table
-# (dep/vulkan-loader), which is filled from the RADV linked into the title.
-target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKAN_NO_PROTOTYPES
-	IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DISABLE_DEMO_WINDOWS
+# Vulkan is reached through the core's function table (dep/vulkan-loader),
+# which is filled from the RADV linked into the title.
+target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES
 	FE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 # The fonts and the logo are assembled into ui_widgets.cpp's object.
+file(GLOB hui_fonts ${CMAKE_CURRENT_SOURCE_DIR}/assets/hui/fonts/*.huifont)
 set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS
-	"${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Medium.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/Roboto-Bold.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf;${CMAKE_CURRENT_SOURCE_DIR}/assets/logo-box.png")
+	"${hui_fonts};${CMAKE_CURRENT_SOURCE_DIR}/assets/logo-box.png")
 set_source_files_properties(${frontend_sources} PROPERTIES COMPILE_OPTIONS "-std=c++20")
 # The two decoders in it are other people's C, compiled as they are.
 set_source_files_properties(src/music.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20;-w")
