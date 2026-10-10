@@ -170,6 +170,12 @@ public:
   /// Checks for settings changes, std::move() the old settings away for comparing beforehand.
   void CheckForSettingsChanges(const Settings& old_settings);
 
+#ifdef SWANSTATION_STANDALONE
+  /// The input as it is now given to the controllers, and the run-ahead's
+  /// rollback that a change of it asks for done at once (System::CatchUpRunahead).
+  bool CatchUpRunahead();
+#endif
+
 private:
   /// Switches the GPU renderer by saving state, recreating the display window, and restoring state (if needed).
   void RecreateSystem();

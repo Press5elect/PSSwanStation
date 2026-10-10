@@ -50,6 +50,11 @@
 #include "common/vulkan/context.h"
 #include "core/system.h"
 
+// The core's (libretro_host_interface.cpp): the input as it is now, and the
+// run-ahead's rollback a change of it asks for, done at once.
+bool swanstation_runahead_active();
+bool swanstation_catch_up_runahead();
+
 #include <miniz.h>
 
 #include <algorithm>
@@ -104,6 +109,8 @@ std::string firstDiscSerial;
 std::string errorText;
 retro_system_av_info av{};
 double pacing;
+// Changes of input the run-ahead took between two frames (runFrame).
+uint64_t runaheadEarly;
 // Frames the emulator ran in the last second.
 int ranThisSecond;
 double secondStarted;
@@ -1765,6 +1772,22 @@ void runFrame()
 		}
 		if (pacing > 2.0)
 			pacing = 0;
+		// Run-ahead: a change of input makes the next frame of the game go
+		// back and run the frame before again with it, two frames in one
+		// refresh, which at 120 Hz can miss the refresh (the game slows for a
+		// moment, and a screen with a variable refresh rate dims). In a refresh
+		// without a frame of the game, the pads are read now and that is done
+		// here, so the next frame costs what any other does.
+		if (ran == 0 && recorder::mode() != recorder::Playing && swanstation_runahead_active()
+#if defined(SWANSTATION_HOST)
+				&& getenv("SWANSTATION_RUNAHEAD_LATE") == nullptr
+#endif
+				)
+		{
+			takeFrameInput();
+			if (swanstation_catch_up_runahead() && runaheadEarly++ == 0)
+				diag::mark("run-ahead: a change of input is taken in the refresh between two frames");
+		}
 		// Black frame insertion: at twice the game's rate, the refresh between
 		// two of its frames shows nothing, as a picture tube does.
 		blackNow = even && settings.blackFrames && settings.frameGeneration == 0 && ran == 0;

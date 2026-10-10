@@ -23,6 +23,11 @@ Build 20
     screen ran at 120. The graphics driver decided from one quick look
     at the screen just as it was changing mode; it now waits up to 1.5 s
     for the mode to settle, and keeps 120 Hz with variable refresh rate.
+  - With run-ahead, pressing a button slowed the game for a moment, and
+    with variable refresh rate the screen dimmed a little. A change of
+    input makes run-ahead run the frame before again, two frames' work
+    in one refresh. At 120 Hz that work is now done in the refresh
+    between two of the game's frames, with the pads read then.
   Not yet run on my console.
 
 Build 19

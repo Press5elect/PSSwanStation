@@ -917,6 +917,27 @@ void HostInterface::retro_run_frame()
     m_audio_stream->UploadToFrontend();
 }
 
+#ifdef SWANSTATION_STANDALONE
+bool HostInterface::CatchUpRunahead()
+{
+  if (!System::IsValid() || g_settings.runahead_frames == 0)
+    return false;
+  UpdateControllers();
+  return System::CatchUpRunahead();
+}
+
+// For the title, which does not include this interface's header.
+bool swanstation_runahead_active()
+{
+  return System::IsValid() && g_settings.runahead_frames > 0;
+}
+
+bool swanstation_catch_up_runahead()
+{
+  return g_host_interface != nullptr && g_host_interface->CatchUpRunahead();
+}
+#endif
+
 unsigned HostInterface::retro_get_region()
 {
   return System::IsPALRegion() ? RETRO_REGION_PAL : RETRO_REGION_NTSC;
