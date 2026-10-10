@@ -19,6 +19,19 @@ Build 19
     Blueprint) and the season (scarf, Halloween, Christmas, New Year).
     Settings, Interface: Swan, Swan dresses for the theme, Seasonal
     touches.
+  Changed
+  - The menu and the in-game menu are in groups (Games and PSSwanStation;
+    The game, Extras and PSSwanStation), and every settings page is too.
+  - Settings that were only information are gone: the pad's battery (the
+    console never gives it to a title), Select and Start (the Buttons page
+    has them), the boot log's place, the texture packs' place (in a game's
+    details), the folder in About, Memory cards in Games and network (it
+    is in the menu). Start-up sound is under Sound; "Interface sounds" is
+    now its volume (0% is off).
+  - The emulator's Log Level is gone from Advanced (Verbose logging sets
+    it); its aspect ratio is "Picture shape", with the title's words for
+    it, as are its messages and the one-card-per-game choice.
+  - The About page names the interface kit and its fonts.
   Not yet run on my console.
 
 Build 18

@@ -2616,11 +2616,9 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 			"its exact rate, with a frame dropped or shown twice now and then. By the clock: its exact rate, each "
 			"frame handed to the display the moment it is due, which is right for a display with a variable "
 			"refresh rate (and for PAL games on one); on other displays it behaves as the second."));
-	if (forGame)
-		items.push_back(fact("Display output", "For every game",
-				"60 Hz or 120 Hz is one setting for every game: the console reads it when PSSwanStation starts, before "
-				"any game is chosen. It is in Settings, Picture."));
-	else
+	// 60 Hz or 120 Hz is one setting for every game: the console reads it
+	// when PSSwanStation starts, before any game is chosen.
+	if (!forGame)
 	{
 		options::Frontend& f = options::frontend();
 		Item item = choice("Display output", f.displayMode, { "60 Hz", "120 Hz", "120 Hz, variable refresh rate" },
@@ -2725,10 +2723,11 @@ void moreSettings(int kind, std::vector<Item>& items)
 	case 7:
 	{
 		items.push_back(toggle("Verbose logging", &f.verboseLog,
-				"Writes everything the emulator says into the boot log (" + shownRoot() + "psswanstation-boot.log), not "
-				"only its warnings and errors, with its log level at Developer; and, while a game runs, a line every "
-				"ten seconds about its speed, the pictures shown, the sound and the free memory. For finding what "
-				"went wrong; the log grows quickly, so leave it off otherwise."));
+				"Writes everything the emulator says into the boot log (" + shownRoot() + "psswanstation-boot.log, kept "
+				"for this run and the two before it), not only its warnings and errors, with its log level at "
+				"Developer; and, while a game runs, a line every ten seconds about its speed, the pictures shown, the "
+				"sound and the free memory. For finding what went wrong; the log grows quickly, so leave it off "
+				"otherwise."));
 		items.push_back(header("Recordings of what you press"));
 		const double fps = host::coreFps() > 1.0 ? host::coreFps() : 60.0;
 		const recorder::Mode mode = recorder::mode();
@@ -2736,9 +2735,14 @@ void moreSettings(int kind, std::vector<Item>& items)
 		const std::string shownFolder = folder.compare(0, rootDir.size(), rootDir) == 0
 				? shownRoot() + folder.substr(rootDir.size()) : folder;
 		if (!host::running())
-			items.push_back(fact("Record", "Start a game first",
+		{
+			Item item = action(icon::Camera, "Record what I press",
 					"A recording keeps what you press in a game, frame by frame, from the moment it starts; played back, "
-					"the game runs the same way again. Start a game, then come back here (Menu, Settings, Debug)."));
+					"the game runs the same way again. Start a game, then come back here (Menu, Settings, Debug).", {},
+					false);
+			item.value = "Start a game first";
+			items.push_back(item);
+		}
 		else if (mode == recorder::Recording)
 		{
 			Item item = action(icon::Cross, "Stop recording", "Ends the recording. It is kept in " + shownFolder + ".",
@@ -2789,56 +2793,71 @@ void moreSettings(int kind, std::vector<Item>& items)
 			};
 			items.push_back(item);
 		}
-		items.push_back(fact("Boot log", shownRoot() + "psswanstation-boot.log",
-				"What PSSwanStation did, from its start: kept for this run and the two before it (.1.log, .2.log)."));
 		break;
 	}
-	case 0:
-		items.push_back(toggle("Clock", &f.clock, "The time, in the library's header. It is the console's clock; a console "
-				"whose clock was never set shows none."));
-		{
-			static const int minutes[5] = { 0, 2, 5, 10, 20 };
-			int now_ = 0;
-			for (int i = 0; i < 5; i++)
-				if (minutes[i] == f.idleMinutes)
-					now_ = i;
-			items.push_back(choice("The swan takes the screen", now_, { "Never", "After 2 minutes", "After 5 minutes",
-					"After 10 minutes", "After 20 minutes" },
-					"When no button was pressed for this long in the library or a menu, the screen goes dark and the swan "
-					"swims across it, which spares a screen that keeps what it shows for long. Any button brings the "
-					"menus back. Not while a game is on the screen.",
-					[](int i) { options::frontend().idleMinutes = minutes[i]; }));
-		}
-		items.push_back(toggle("Ask for updates at start", &f.updateCheck, "Asks the releases page, when PSSwanStation "
-				"starts, whether a newer build is out, and says so in the library's header. Nothing is fetched until "
-				"you say so (Menu, Update)."));
-		break;
-	case 2:
-		items.push_back(choice("Sound set", f.soundSet, sound::setNames(),
-				"What the menus sound like. As the theme has it: each theme brings its own. PSSwanStation: the "
-				"title's own drops of water, computed when it starts. Glass: soft chimes in one key. Paper: warm, "
-				"wooden, tactile. Glass and Paper are the interface kit's recordings (BlackBearReloaded's "
-				"ps5-homebrew-ui); a sound one of them has not recorded is the other's.",
-				[](int i) { options::frontend().soundSet = i; sound::play(sound::Toggle); }));
-		items.push_back(choice("Interface sounds volume", f.soundVolume / 10,
-				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
-				"How loud the menus' sounds are, under the Volume above. The music has its own, below.",
-				[](int i) { options::frontend().soundVolume = i * 10; sound::play(sound::Move); }));
-		items.push_back(choice("Menu music", f.music, sound::musicNames(),
-				"Music while the library or a menu has the screen. The title's own is a quiet piece computed when it "
-				"is first played, like its sounds. My music folder: every .ogg, .mp3 and .wav in " + shownRoot()
-				+ "music, one after another in an order shuffled at each start (the first six minutes of each). The "
-				"interface kit's songs: its three, First Light, Open Strings and Quiet Hours, the same way.\n\n"
-				+ (f.music >= 2 ? sound::musicStatus() : std::string()),
-				[](int i) { options::frontend().music = i; }));
-		items.push_back(choice("Music volume", f.musicVolume / 10,
-				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
-				"How loud the menus' music is, under the Volume above.",
-				[](int i) { options::frontend().musicVolume = i * 10; }));
-		break;
 	case 3:
-		items.push_back(action(icon::Gamepad, "Buttons", "Which button of the pad presses which of the PlayStation's, "
-				"and which fire again and again while held (turbo).", [] { push(Page::Buttons); }));
+	{
+		items.push_back(header("Players"));
+		// Who is holding a controller.
+		std::string who;
+		int connected = 0;
+		for (int i = 0; i < platform::MaxPads; i++)
+			if (platform::pad(i).connected)
+			{
+				connected++;
+				who += (who.empty() ? "" : ", ") + std::to_string(i + 1);
+			}
+		items.push_back(fact("Controllers", connected == 0 ? std::string("None") : connected == 1 ? std::string("Player 1")
+				: "Players " + who,
+				"Player 1 is whoever started PSSwanStation. Every other player is another user logged in on the console "
+				"with a controller of their own (press the PS button on it and choose a user), in the order they "
+				"joined; a controller that joins while PSSwanStation runs is taken up within a few seconds. Any of "
+				"them moves through these menus."));
+		static const char *const modes[4] = { "Disabled", "Port1Only", "Port2Only", "BothPorts" };
+		static const char *const tapKey = "swanstation_ControllerPorts_MultitapMode";
+		int mode = 0;
+		if (const char *now = options::get(tapKey))
+			for (int i = 0; i < 4; i++)
+				if (!strcmp(now, modes[i]))
+					mode = i;
+		items.push_back(choice("Multitap", mode, { "Off", "In port 1", "In port 2", "In both ports" },
+				"For games made for three or four players. In port 1: the four players are on the multitap, which "
+				"is what most of those games expect. In port 2: player 1 is in port 1 and the others on the multitap. "
+				"Leave it off for games for one or two: some do not see a controller behind a multitap.",
+				[](int i) { options::set(tapKey, modes[i], false); }));
+		for (int player = 0; player < 4; player++)
+		{
+			Item item = choice(format("Player %d's controller", player + 1), f.controller[player],
+					{ "Digital controller", "DualShock", "Analog joystick", "None", "neGcon", "GunCon (light gun)" },
+					"What the game finds plugged in for this player. DualShock suits most games; a few early ones only "
+					"know the digital controller. The neGcon is Namco's twisting controller, which racing games of "
+					"the time steer finely with: the left stick (or the pad leant, see Tilt steering) is its twist, "
+					"R2 and L2 its two analogue buttons. The GunCon is a light gun: the sticks move its aim, as does "
+					"turning the pad when its motion sensor answers; R2 or Cross fires, L2 or Circle fires away "
+					"from the screen (which reloads), Square and Triangle are its two buttons.",
+					[player](int i) {
+						options::frontend().controller[player] = i;
+						host::applyControllers();
+					});
+			if (player >= 2 && mode == 0)
+			{
+				item.enabled = false;
+				item.value = "Needs the multitap";
+			}
+			items.push_back(std::move(item));
+		}
+
+		items.push_back(header("The pad"));
+		items.push_back(action(icon::Gamepad, "Buttons", "Which button of the pad presses which of the PlayStation's "
+				"(the touch pad's halves are Select and Start), and which fire again and again while held (turbo).",
+				[] { push(Page::Buttons); }));
+		items.push_back(choice("Stick dead zone", (int)std::lround(f.deadZone * 20.f),
+				{ "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%" },
+				"How far a stick must move before the game sees it.",
+				[](int i) { options::frontend().deadZone = (float)i * 0.05f; }));
+		items.push_back(toggle("Vibration", &f.rumble, "Passes the game's vibration to the DualSense."));
+		items.push_back(toggle("Player lights", &f.playerLights, "Each pad's light bar in its player's colour: blue, "
+				"red, green and pink for players 1 to 4."));
 		{
 			Item item = choice("Tilt steering", f.motion, { "Off", "On" },
 					"Player 1's pad, leant to the left or right like a steering wheel, moves the left stick that way: "
@@ -2856,40 +2875,32 @@ void moreSettings(int kind, std::vector<Item>& items)
 			invert.enabled = f.motion != 0;
 			items.push_back(invert);
 		}
-		items.push_back(toggle("Player lights", &f.playerLights, "Each pad's light bar in its player's colour: blue, "
-				"red, green and pink for players 1 to 4."));
-		items.push_back(fact("Battery", "Not shown", "A pad's charge is not shown: of the console's libraries a title "
-				"can call, none that this title knows of gives it. The console's own control centre (the PS button) shows it."));
 		break;
+	}
 	case 4:
+	{
+		items.push_back(header("Where the games are"));
 		{
-			Item item = action(icon::Network, "Phone and web control", "Control PSSwanStation from a phone or a computer "
-					"on the same network, in its browser: scan the code this opens.", [] { push(Page::Web); });
-			item.value = web::listening() ? "On" : "Off";
-			items.push_back(item);
+			std::string folders;
+			for (const std::string& folder : smb::gameFolders())
+				folders += (folders.empty() ? "" : ", ") + folder;
+			items.push_back(fact("Folders", shownRoot(),
+					"Games go in " + shownRoot() + "games, BIOS files in bios, covers in covers, your own cheat "
+					"files in cheats, replacement pictures (texture packs) in textures/<serial>/. Memory cards, states "
+					"and settings are kept in data."));
+			items.push_back(toggle("USB drives", &f.usb,
+					"Lets PSSwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
+					"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs a resident "
+					"Lapy service or the ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
+					"starts."));
+			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
+					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
+					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "
+					"itself. PSSwanStation reads it when it starts."));
 		}
-		{
-			Item item = action(icon::Card, "Memory cards", "What is saved on each card: copy, delete, bring in, put out, "
-					"and go back to an earlier copy.", [] { push(Page::Cards); }, !host::running());
-			if (host::running())
-			{
-				item.value = "Close the game first";
-				item.info += " Not while a game runs: the emulator holds its card.";
-			}
-			items.push_back(item);
-		}
-		{
-			static const int counts[4] = { 0, 5, 10, 20 };
-			int now_ = 2;
-			for (int i = 0; i < 4; i++)
-				if (counts[i] == f.cardBackups)
-					now_ = i;
-			items.push_back(choice("Card backups", now_, { "None", "The last 5", "The last 10", "The last 20" },
-					"When a game closes and its memory card is not what it was, a copy of the card is kept (in "
-					+ shownRoot() + "data/saves/backups), and of each card the newest few. The memory card manager "
-					"goes back to one.",
-					[](int i) { options::frontend().cardBackups = counts[i]; }));
-		}
+		items.push_back(toggle("Load network games into memory", &f.ramCache,
+				"Reads a game from the network share completely before it starts, so the game never waits for the "
+				"network while it runs. Off starts sooner and reads as the game asks."));
 		{
 			const std::string address = smb::wakeAddress();
 			Item item = action(icon::Bolt, "Wake the server", address.empty()
@@ -2903,16 +2914,33 @@ void moreSettings(int kind, std::vector<Item>& items)
 			item.value = address.empty() ? "Not set" : address;
 			items.push_back(item);
 		}
+
+		items.push_back(header("Saving"));
+		items.push_back(toggle("Save when a game is closed", &f.autoSaveOnExit,
+				"Keeps a state of the game as it is when you close it, apart from the ten state slots."));
+		items.push_back(toggle("Continue where I left off", &f.autoLoadOnStart,
+				"Starts a game from the state kept when it was last closed, when there is one. The game's details "
+				"page (Triangle) can still start it from the beginning."));
+		items.push_back(toggle("Sleep-safe saving", &f.sleepSafe,
+				"Saves the game's resume state every five minutes of play and whenever the console's own menu (the PS "
+				"button) opens over it, quietly and without a pause. When the console closes PSSwanStation (rest "
+				"mode, or closing it from the console's menu) the next start offers to continue from there. It uses "
+				"the same state as \"Save when a game is closed\". Not yet tried on a console: if PSSwanStation "
+				"stops when a game starts with this on, switch it off."));
 		{
-			Item item = action(icon::Download, "Fetch the newest cheat database", "The cheats and patches come from the "
-					"chtdb project's cheat collection, which grows. A release of PSSwanStation does not carry it (its entries "
-					"belong to their authors): this fetches the project's newest release from its own page and uses it "
-					"from then on (it is kept in " + shownRoot() + "data). Now: " + cheats::summary() + ".\n\n"
-					+ cheats::refreshStatus(),
-					[] { cheats::refresh(); }, !cheats::refreshing() && httpAvailable());
-			item.value = cheats::refreshing() ? "Fetching\xe2\x80\xa6" : !httpAvailable() ? "No network" : "";
-			items.push_back(item);
+			static const int counts[4] = { 0, 5, 10, 20 };
+			int now_ = 2;
+			for (int i = 0; i < 4; i++)
+				if (counts[i] == f.cardBackups)
+					now_ = i;
+			items.push_back(choice("Card backups", now_, { "None", "The last 5", "The last 10", "The last 20" },
+					"When a game closes and its memory card is not what it was, a copy of the card is kept (in "
+					+ shownRoot() + "data/saves/backups), and of each card the newest few. The memory card manager "
+					"(Menu, Memory cards) goes back to one.",
+					[](int i) { options::frontend().cardBackups = counts[i]; }));
 		}
+
+		items.push_back(header("My files"));
 		{
 			const std::string share = smb::filesFolder();
 			const std::string shareName = share.empty() ? std::string("(none named)") : share;
@@ -2992,22 +3020,28 @@ void moreSettings(int kind, std::vector<Item>& items)
 				items.push_back(item);
 			}
 		}
+
+		items.push_back(header("More"));
 		{
-			const std::string serial = host::game().serial;
-			std::string where;
-			const int files = host::texturePackFiles(serial, &where);
-			items.push_back(fact("Texture packs", host::running() ? (files > 0 ? format("%d files for this game", files)
-					: std::string("None for this game")) : std::string("By game"),
-					"Replacement pictures for a game's backgrounds and other 2D art, in the usual vram-write format (files "
-					"named vram-write-<number>.png). They go in " + shownRoot() + "textures/<serial>/ (for one game: "
-					"textures/SLUS-12345/) or, on a USB drive, in " + std::string(storage::UsbFolder) + "/textures/<serial>/ at "
-					"the top of the drive (the folder textures inside the drive's games folder, where build 15 looked, "
-					"is still read after it), and are used when \"Enable VRAM Write Texture Replacement\" is on "
-					"(Enhancement). This emulator knows that one kind of pack, not the newer kind that replaces a 3D "
-					"game's textures." + (files > 0 ? "\n\nThis game's is " + where + "." : std::string())));
+			Item item = action(icon::Network, "Phone and web control", "Control PSSwanStation from a phone or a computer "
+					"on the same network, in its browser: scan the code this opens.", [] { push(Page::Web); });
+			item.value = web::listening() ? "On" : "Off";
+			items.push_back(item);
+		}
+		{
+			Item item = action(icon::Download, "Fetch the newest cheat database", "The cheats and patches come from the "
+					"chtdb project's cheat collection, which grows. A release of PSSwanStation does not carry it (its entries "
+					"belong to their authors): this fetches the project's newest release from its own page and uses it "
+					"from then on (it is kept in " + shownRoot() + "data). Now: " + cheats::summary() + ".\n\n"
+					+ cheats::refreshStatus(),
+					[] { cheats::refresh(); }, !cheats::refreshing() && httpAvailable());
+			item.value = cheats::refreshing() ? "Fetching\xe2\x80\xa6" : !httpAvailable() ? "No network" : "";
+			items.push_back(item);
 		}
 		break;
+	}
 	case 5:
+		items.push_back(header("Shortcuts"));
 		items.push_back(toggle("Shortcuts", &f.hotkeys,
 				"While a game runs, OPTIONS held with another button does something at once: R2 fast forward, L2 "
 				"rewind, R1 and L1 save and load a state. With this on, the menu opens when "
@@ -3016,6 +3050,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 		items.push_back(choice("Fast forward speed", f.fastForward, { "2x", "3x", "4x", "8x", "As fast as it goes" },
 				"How fast the game runs while OPTIONS and R2 are held. The console may not manage the highest.",
 				[](int i) { options::frontend().fastForward = i; }));
+		items.push_back(header("Rewind"));
 		items.push_back(toggle("Rewind", &f.rewind,
 				"Keeps the last while of play so that OPTIONS and L2 can go back through it. The states are kept in "
 				"memory only, never written to the console's storage, and are gone when the game closes. Taking them "
@@ -3135,9 +3170,6 @@ void pauseMoreItems(std::vector<Item>& items)
 			item.value = netplay::state() == netplay::State::Playing ? "Playing" : "Starting";
 		items.push_back(item);
 	}
-	if (options::frontend().hotkeys)
-		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
-				"menu: what to hold.", [] { push(Page::Shortcuts); }));
 	items.push_back(action(icon::Clock, "Speedrun timer", "A timer with splits over the game, started and split by hand "
 			"or by the game's memory, with your personal best.", [] { push(Page::Speedrun); }));
 	{
@@ -3148,6 +3180,9 @@ void pauseMoreItems(std::vector<Item>& items)
 			item.value = format("%d watched", (int)memsearch::watches().size());
 		items.push_back(item);
 	}
+	if (options::frontend().hotkeys)
+		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
+				"menu: what to hold.", [] { push(Page::Shortcuts); }));
 }
 
 }
