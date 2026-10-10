@@ -265,6 +265,7 @@ std::vector<Field> fields()
 		{ "contrast", &c.contrast, nullptr, 0, 20 },
 		{ "saturation", &c.saturation, nullptr, 0, 20 },
 		{ "gamma", &c.gamma, nullptr, 0, 20 },
+		{ "grain", &c.grain, nullptr, 0, 3 },
 		{ "volume", &c.volume, nullptr, 0, 100 },
 		{ "show_fps", nullptr, &c.showFps, 0, 1 },
 		{ "pacing", &c.pacing, nullptr, 0, 2 },
@@ -364,7 +365,7 @@ std::vector<PictureField>& pictureFields()
 	if (list.empty())
 	{
 		static const char *const names[] = { "scaling", "scaler", "fsr_sharpness", "linear_filter", "signal", "brightness",
-				"contrast", "saturation", "gamma", "pacing", "black_frames", "frame_generation", "fg_quality", "fg_cap", "fg_videos",
+				"contrast", "saturation", "gamma", "grain", "pacing", "black_frames", "frame_generation", "fg_quality", "fg_cap", "fg_videos",
 				"fg_mode", "fg_runahead", "crt", "border", "preset" };
 		for (const Field& field : fields())
 			for (const char *name : names)

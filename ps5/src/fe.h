@@ -336,6 +336,7 @@ struct Frontend
 	int signal = 0;				// 0 as it is, 1 the dither undone, 2 S-Video, 3 composite
 	// The colours, each in steps of 5% from 50% (0) to 150% (20); 10 unchanged.
 	int brightness = 10, contrast = 10, saturation = 10, gamma = 10;
+	int grain = 0;				// film grain over the picture: 0 off, 1 light, 2 medium, 3 strong
 	int volume = 100;
 	bool showFps = false;
 	// How frames are timed: 0 by the display (one frame of the game for each

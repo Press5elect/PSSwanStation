@@ -111,6 +111,7 @@ struct Look
 	int cell = 1;			// texels to one of the PlayStation's pixels (the resolution scale)
 	int crt = 0;			// 0 none, else crt-guest-advanced with the preset crtPresetNames()[crt - 1]
 	float brightness = 1, contrast = 1, saturation = 1, gamma = 1;
+	int grain = 0;			// film grain: 0 none, 1 light, 2 medium, 3 strong
 	bool plain() const;		// nothing to do
 };
 std::vector<std::string> crtPresetNames();

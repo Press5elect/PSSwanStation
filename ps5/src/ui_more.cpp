@@ -2502,6 +2502,7 @@ const PresetLook presetLook[] = {
 	{ "contrast", { -1, -1, -1, 10 } },
 	{ "saturation", { -1, -1, -1, 10 } },
 	{ "gamma", { -1, -1, -1, 10 } },
+	{ "grain", { -1, -1, -1, 0 } },
 	{ "black_frames", { -1, -1, -1, 0 } },
 };
 
@@ -2660,6 +2661,10 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		items.push_back(pictureChoice(forGame, "gamma", "Gamma", gammas, "Above 1.00 lightens the middle tones, below "
 				"darkens them; black and white stay."));
 	}
+	items.push_back(pictureChoice(forGame, "grain", "Film grain", { "Off", "Light", "Medium", "Strong" },
+			"A fine, moving grain over the picture, as film has: a new pattern every frame, strongest in the middle "
+			"tones. It softens flat colour and banding, and gives pre-rendered backgrounds a little life. Each grain is "
+			"two pixels at 1080p and four at 4K."));
 	items.push_back(pictureChoice(forGame, "border", "Beside the picture",
 			{ "Black", "The picture's light", "A gradient", "A picture file", "The picture carried on" },
 			"What fills the screen left and right of a 4:3 picture. The picture's light: the picture itself, blurred "
