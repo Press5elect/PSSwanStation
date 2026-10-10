@@ -405,6 +405,9 @@ struct Frontend
 	bool colourBlind = false;	// good and bad in blue and orange instead of green and red
 	int accent = 0;
 	int theme = 0;				// the interface's theme: 0 PSSwanStation's own, then the kit's thirty
+	int swanMoves = 0;			// the swan: 0 lively, 1 calm, 2 still
+	int swanSeason = 0;			// its seasonal touches: 0 by the date, 1 none, 2 winter, 3 Halloween, 4 Christmas, 5 New Year
+	bool swanThemed = true;		// its look follows the theme
 	int sort = 0;				// library: 0 name, 1 last played, 2 most played, 3 year, 4 size
 	int filter = 0;				// 0 all, 1 favourites, 2 not played yet, 3 hidden
 	int regionFilter = 0;		// 0 all, 1 USA, 2 Europe, 3 Japan

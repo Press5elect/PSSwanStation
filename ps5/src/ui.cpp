@@ -275,6 +275,7 @@ void launch(const library::Game& game, int slot, int disc)
 	if (motion() == MotionFull && !network)
 	{
 		chosen = game;
+		swanCue(SwanCue::Cheer);
 		push(Page::Launch, slot, disc);
 		return;
 	}
@@ -1078,7 +1079,7 @@ void drawHeader()
 		{
 			// It sits there and looks about.
 			swanPlace(a, b, origin, size);
-			swan(origin, size, motion() == MotionFull ? swanIdle(clock()) : SwanPose(), headerBoxAlpha);
+			swan(origin, size, swanLive(clock(), origin, size), headerBoxAlpha);
 		}
 	}
 	if (headerNameAlpha > 0.01f)
@@ -1206,6 +1207,9 @@ void libraryWash(const std::string& coverPath)
 			withAlpha(page, 0.16f), withAlpha(page, 0.67f), withAlpha(page, 0.67f));
 }
 
+// Where the game under the cursor is on the screen, in pixels (0: not known).
+ImVec2 focusedAt;
+
 // One game of the grid: its cover (or a card with its name), the name under
 // it and, on the shelf, when it was played.
 void drawCell(LibraryView& view, int index, float x, float y, float cell, bool focused, const std::string& under)
@@ -1231,7 +1235,10 @@ void drawCell(LibraryView& view, int index, float x, float y, float cell, bool f
 	else
 		coverPlaceholder(a, b, game.name, game.region);
 	if (focused)
+	{
 		outline(ImVec2(a.x - px(4), a.y - px(4)), ImVec2(b.x + px(4), b.y + px(4)), t.accent, 13, 4);
+		focusedAt = ImVec2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+	}
 	if (game.discs.size() > 1)
 	{
 		const std::string discs = format("%d discs", (int)game.discs.size());
@@ -1681,6 +1688,7 @@ int shelvesView(LibraryView& view, bool active, float bottom)
 	glowAt(ImVec2((ringA.x + ringB.x) * 0.5f, (ringA.y + ringB.y) * 0.5f), (ringB.x - ringA.x) * 0.78f,
 			withAlpha(t.accent, 0.28f + 0.14f * breathe));
 	shelfCard(view, focus, ringA, ringB, 26, 1.f);
+	focusedAt = ImVec2((ringA.x + ringB.x) * 0.5f, (ringA.y + ringB.y) * 0.5f);
 	focusRing(ImVec2(ringA.x - px(5), ringA.y - px(5)), ImVec2(ringB.x + px(5), ringB.y + px(5)), 30);
 	draw()->PopClipRect();
 	view.fresh = false;
@@ -1734,6 +1742,7 @@ void libraryPage(bool active)
 	const bool grid = viewMode == 1;
 	const float top = 128, bottom = H - 64;
 	coverLookups = 0;
+	focusedAt = ImVec2(0, 0);
 	int focus = -1;		// the game under the cursor
 
 	if (count == 0 && !view.all.empty())
@@ -2008,6 +2017,22 @@ void libraryPage(bool active)
 			textWrapped(at(px0, y), px(px1 - px0), t.dim, meta.info.description, Body, 21, px(bottom - 24 - y));
 	}
 
+	// The swan in the header follows the cursor: it turns to the game, and
+	// starts at fast scrolling.
+	{
+		static int focusBefore = -1, sourceSeen = -1;
+		if (focus >= 0 && (focus != focusBefore || source != sourceSeen))
+		{
+			if (focusBefore >= 0 && source == sourceSeen && active)
+				swanCue(SwanCue::Move);
+			focusBefore = focus;
+			sourceSeen = source;
+			swanWatch(focusedAt.x > 0 ? focusedAt : ImVec2(width() * 0.6f, height() * 0.5f));
+		}
+		if (active && count > 0 && (hit(L2) || hit(R2)))
+			swanCue(SwanCue::Startle);
+	}
+
 	// The bottom line: where the cursor is and what the game is, or what the
 	// library is busy with.
 	std::string left = libraryStatus();
@@ -2204,6 +2229,21 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"fades, and a game starts at once. Off: nothing moves at all - no start-up screen, and lists and "
 				"pictures jump to their places.",
 				[](int i) { options::frontend().animations = i; }));
+		items.push_back(choice("Swan", f.swanMoves, swanMoveNames(),
+				"What the swan in the corner does. Lively: it looks about, feeds, preens, stretches its wings and "
+				"drifts on the water; it turns its head to the game under the cursor, starts when you scroll fast, "
+				"cheers when a game starts, and dozes off when nothing is pressed for a while. Calm: it only looks "
+				"about, now and then. Still: it sits as the mark does. With the animations reduced or off it is "
+				"always still.",
+				[](int i) { options::frontend().swanMoves = i; }));
+		items.push_back(toggle("Swan dresses for the theme", &f.swanThemed,
+				"The swan takes the theme's look: an inked outline in Brutal, Sketch, Hazard and Contrast (and a "
+				"thin one on light pages), a wireframe in Blueprint, pastel feathers in Candy and Clay, and square "
+				"pixels in Pixel. Off: always the white swan of the mark.", nullptr));
+		items.push_back(choice("Seasonal touches", f.swanSeason, swanSeasonNames(),
+				"By the date, the swan wears a scarf in winter, a witch's hat at Halloween, a red hat through "
+				"December to Christmas and a party hat at New Year. Or choose one to wear now, or none.",
+				[](int i) { options::frontend().swanSeason = i; }));
 		{
 			Item item = toggle("Start-up animation", &f.splash,
 					"How PSSwanStation opens: the swan paddles along the bottom of the screen, takes the lift up to "
@@ -4189,13 +4229,21 @@ bool runSplash()
 // animations full; otherwise a game starts at once.
 void launchPage(Frame& f)
 {
-	const float u = std::clamp((float)((clock() - f.opened) / 1.05), 0.f, 1.f);
-	const float t = (float)(clock() - f.opened);
+	// First it cheers in its box, then it goes.
+	const float cheer = swanCheerTime();
+	const float u = std::clamp((float)((clock() - f.opened - cheer) / 1.05), 0.f, 1.f);
+	const float t = (float)(clock() - f.opened - cheer);
 	headerSwanAway = true;
 	ImVec2 headerA, headerB, from;
 	float fromSize = 0;
 	headerBox(headerA, headerB);
 	swanPlace(headerA, headerB, from, fromSize);
+	if (t < 0)
+	{
+		swan(from, fromSize, swanLive(clock(), from, fromSize));
+		consumeInput();
+		return;
+	}
 
 	SwanPose pose;
 	// It turns round first (the screen's middle is to its right), then goes.
@@ -4278,6 +4326,7 @@ void menuSounds()
 	pendingSound = -1;
 	if (in.pressed == 0 && in.repeat == 0)
 		return;
+	swanCue(SwanCue::Touch);
 	if (stack.empty() ? (host::running() || splash.state != Splash::Over)
 			: (stack.back().page == Page::Launch || stack.back().page == Page::Loading))
 		return;
@@ -4430,12 +4479,52 @@ bool lookTest()
 }
 #endif
 
+#if defined(SWANSTATION_HOST)
+// A sheet of the swan's poses, for looking at on a PC: SWANSTATION_SWAN_SHEET
+// set, the page is the swan in each pose, large, in the theme of frontend.cfg
+// (and the season of swan_season).
+bool swanSheet()
+{
+	if (getenv("SWANSTATION_SWAN_SHEET") == nullptr)
+		return false;
+	backdrop();
+	SwanPose poses[10];
+	const char *names[10] = { "rest", "look back", "feed", "preen", "wings", "asleep", "startled", "watching", "flying",
+			"love" };
+	poses[1].look = 1;
+	poses[2].look = -0.9f;
+	poses[3].preen = 1;
+	poses[4].wings = 1;
+	poses[4].beat = 1.2f;
+	poses[4].stretch = 0.4f;
+	poses[5].sleep = 1;
+	poses[6].stretch = 1;
+	poses[6].wings = 0.55f;
+	poses[6].beat = 0.6f;
+	poses[7].lean = 0.8f;
+	poses[7].face = -1;
+	poses[8].fly = 1;
+	poses[8].beat = 1.3f;
+	poses[9].look = 0.55f;
+	poses[9].heart = 0.35f;
+	const float cellW = width() / 5, cellH = height() / 2;
+	for (int i = 0; i < 10; i++)
+	{
+		const float x = (i % 5) * cellW, y = (i / 5) * cellH;
+		const float size = cellW * 0.9f;
+		swan(ImVec2(x + cellW * 0.05f, y + cellH * 0.02f), size, poses[i]);
+		textCentred(ImVec2(x + cellW * 0.5f, y + cellH * 0.86f), theme().pageText, names[i], Bold, 26);
+	}
+	return true;
+}
+#endif
+
 void frame()
 {
 	widgetsFrame();
 	imagesFrame();
 #if defined(SWANSTATION_HOST)
-	if (generationTest() || lookTest())
+	if (generationTest() || lookTest() || swanSheet())
 		return;
 #endif
 	readInput();

@@ -2328,7 +2328,7 @@ bool idleSwan(bool allowed)
 	const float size = H * 0.20f;
 	const float x = W * 0.88f - (W * 0.76f) * (motion() == MotionOff ? 0.5f : along) - size * 0.5f;
 	const float y = H * 0.80f - size * 0.78f + std::sin(time * 1.1f) * 4.f;
-	SwanPose pose = motion() == MotionFull ? swanIdle(clock()) : SwanPose();
+	SwanPose pose = swanLive(clock(), at(x, y), px(size));
 	// It turns round at each side.
 	const float turn = std::min(std::fmod(time, crossing), crossing - std::fmod(time, crossing));
 	pose.face = (lap < 1.f ? 1.f : -1.f) * (motion() == MotionOff ? 1.f : std::clamp(turn / 0.8f, 0.f, 1.f) * 2.f - 1.f
@@ -3084,6 +3084,8 @@ void detailsMoreItems(std::vector<Item>& items)
 		item.choose = [path = game.path](int i) {
 			library::setFavourite(path, i != 0);
 			cue(i != 0 ? sound::FavouriteOn : sound::FavouriteOff);
+			if (i != 0)
+				swanCue(SwanCue::Love);
 		};
 		items.push_back(item);
 	}
