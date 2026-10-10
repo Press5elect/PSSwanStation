@@ -1825,10 +1825,11 @@ void *generatedOwn(void *texture, int width, int height, float u, float v, bool 
 	return (void *)g.between.set;
 }
 
-// The other way of making the frames between the game's: swordpdf's
-// ps5-framegen (third_party/ps5-framegen), AMD FSR3's optical flow with an
-// interpolation that tries several movements for every 2 x 2 pixels and keeps
-// what has not changed for 8 frames (a HUD, text) where it is.
+// The other way of making the frames between the game's: AMD FidelityFX
+// SDK's FSR3 optical flow, run on plain Vulkan by swordpdf's ps5-framegen
+// (third_party/ps5-framegen), whose interpolation tries several movements for
+// every 2 x 2 pixels and keeps what has not changed for 8 frames (a HUD,
+// text) where it is.
 //
 // It makes the frames at fixed moments, 1 / (n + 1) of the way apart, n of
 // them (up to 3) between two of the game's, all at once when the second

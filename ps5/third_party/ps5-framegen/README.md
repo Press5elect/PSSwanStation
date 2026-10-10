@@ -9,6 +9,7 @@ The frame generation of [swordpdf/ps5-framegen](https://github.com/Swordpdf/ps5-
 - `tools/`: what compiles `shaders/` into `fg_shaders.inc` (GPL-3.0-or-later);
 - `algorithm.md`: how it works, from its `docs/`.
 
-PSSwanStation uses it as the second way of making frames between the game's (Settings, Picture, "Generation method", "Optical
-flow"), beside its own; `ps5/src/display.cpp` (`generatedFlow`) drives it. To bring in a newer revision, copy these files again
+The optical flow is AMD's (FidelityFX SDK 2.3.0, FSR3); ps5-framegen is what runs it on plain Vulkan and its interpolation.
+PSSwanStation uses it as the second way of making frames between the game's (Settings, Picture, "Generation method", "AMD
+FSR3 optical flow"), beside its own; `ps5/src/display.cpp` (`generatedFlow`) drives it. To bring in a newer revision, copy these files again
 and change the revision above and in `ps5/licenses/README.txt`.

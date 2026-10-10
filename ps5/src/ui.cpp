@@ -2467,8 +2467,8 @@ void aboutItems(std::vector<Item>& items)
 	items.push_back(fact("Interface kit", "GPL-3.0-or-later",
 			"The menus' shapes, text, themes and sounds are BlackBearReloaded's ps5-homebrew-ui, with the Vulkan "
 			"backend of PS5_VKHomebrewUI."));
-	items.push_back(fact("ps5-framegen", "GPL-3.0, MIT", "The optical flow frame generation is swordpdf's ps5-framegen "
-			"(GPL-3.0-or-later), with AMD FidelityFX SDK 2.3.0's FSR3 optical flow in its shaders (MIT)."));
+	items.push_back(fact("AMD FSR3 optical flow", "MIT", "The optical flow frame generation is AMD FidelityFX SDK 2.3.0's "
+			"FSR3 optical flow (MIT), run on Vulkan by swordpdf's ps5-framegen (GPL-3.0-or-later)."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));

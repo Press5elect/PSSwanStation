@@ -62,10 +62,11 @@ NVIDIA Image Scaling         MIT              NIS-LICENSE.txt          github.co
 crt-guest-advanced           GPL-2.0-or-      GPL-3.0.txt              github.com/libretro/slang-shaders, by
 (the picture tube)           later                                     guest(r): compiled to SPIR-V, used under
                                                                        GPL-3.0 as its licence allows
-ps5-framegen (frame          GPL-3.0-or-later GPL-3.0.txt              github.com/Swordpdf/ps5-framegen at
-generation, optical flow)    (its shaders:    (its shaders:            64362101757c, by swordpdf, unmodified
-                             MIT)             FSR3-LICENSE.txt)        (ps5/third_party/ps5-framegen): AMD
-                                                                       FidelityFX SDK 2.3.0's FSR3 optical flow
+AMD FSR3 optical flow (the   MIT (the         FSR3-LICENSE.txt,        AMD FidelityFX SDK 2.3.0's FSR3 optical
+second frame generation),    shaders);        GPL-3.0.txt              flow, run on Vulkan by
+through ps5-framegen         GPL-3.0-or-later                          github.com/Swordpdf/ps5-framegen at
+                             (ps5-framegen)                            64362101757c (swordpdf), unmodified
+                                                                       (ps5/third_party/ps5-framegen)
 PS5SX2's USB pad decoder     GPL-3.0-or-later GPL-3.0.txt              github.com/Swordpdf/PS5SX2 at 6ccf48047a12,
 (USB controllers)                                                      by swordpdf: OrbisUsbPadDecode.h unmodified
                                                                        (ps5/third_party/ps5sx2-usbpad); the reader

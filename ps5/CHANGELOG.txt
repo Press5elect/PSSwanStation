@@ -3,7 +3,8 @@ PSSwanStation - what changed
 
 Build 20
   Added
-  - A second way of making frames between the game's: optical flow,
+  - A second way of making frames between the game's: AMD FSR3's
+    optical flow, from AMD's FidelityFX SDK, run on the console through
     swordpdf's ps5-framegen (Settings, Picture, Generation method). On my
     test pictures its frames are about half as far from the true ones as
     the title's own. The title's own stays, and is the default.
