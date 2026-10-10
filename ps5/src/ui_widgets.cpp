@@ -723,6 +723,13 @@ std::string themeAbout(int index)
 	return std::string(t.family) + ". " + t.summary + ".";
 }
 
+int themeSounds()
+{
+	if (kitTheme == nullptr || kitTheme == &swanTheme)
+		return 1;
+	return kitTheme->sounds == hui::audio::SoundSet::paper ? 3 : 2;
+}
+
 const char *themeId()
 {
 	return kitTheme != nullptr ? kitTheme->id : "psswanstation";

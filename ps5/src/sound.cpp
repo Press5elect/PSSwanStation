@@ -7,11 +7,18 @@
 	comes up and paddles along the bottom of the screen, a dive, the lift's
 	doors, its motor on the way up, its bell, the doors opening, and wings.
 
-	Nothing here is a recording. Each sound is a few sine waves and some
-	filtered noise, computed when the title starts into 48 kHz stereo and handed
-	to audio.cpp to mix. The animation's sound is one piece laid out on the
-	animation's own times (splashtime, fe.h), so the two cannot drift apart
+	The title's own sounds are not recordings. Each is a few sine waves and
+	some filtered noise, computed when the title starts into 48 kHz stereo and
+	handed to audio.cpp to mix. The animation's sound is one piece laid out on
+	the animation's own times (splashtime, fe.h), so the two cannot drift apart
 	event by event.
+
+	The menus' sounds can instead be one of the interface kit's two recorded
+	sets (PS5_VKHomebrewUI's assets/audio/sfx, GPL-3.0-or-later, laid into
+	<title folder>assets/hui/sfx by the build): Glass, soft tuned chimes, and
+	Paper, warm and wooden. They are read on a thread of their own when the
+	title starts; a sound one set lacks is the other's, and the title's own
+	until they are read.
 */
 #include "fe.h"
 
@@ -19,6 +26,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <dirent.h>
+#include <map>
+#include <mutex>
+#include <thread>
 
 namespace fe::sound
 {
@@ -216,6 +228,136 @@ std::shared_ptr<const std::vector<int16_t>> finished(const Track& track)
 
 std::shared_ptr<const std::vector<int16_t>> sounds[Count];
 
+// ------------------------------------------------------ the kit's recordings
+
+using Frames = std::shared_ptr<const std::vector<int16_t>>;
+
+// Each cue's takes, by the cue's name ("focus" for focus_01.wav, focus_02.wav).
+struct Bank
+{
+	std::map<std::string, std::vector<Frames>> cues;
+	std::map<std::string, unsigned> turn;
+};
+Bank banks[2];		// Glass, Paper
+std::mutex bankMutex;
+bool banksAsked = false;
+
+uint32_t le32(const uint8_t *p)
+{
+	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+// The kit's recordings: 48 kHz, 16-bit, one or two channels.
+Frames readWav(const std::string& path)
+{
+	std::vector<uint8_t> data;
+	if (!readFile(path, data) || data.size() < 44 || memcmp(data.data(), "RIFF", 4) != 0
+			|| memcmp(data.data() + 8, "WAVE", 4) != 0)
+		return nullptr;
+	int channels = 0, bits = 0;
+	size_t at = 12;
+	while (at + 8 <= data.size())
+	{
+		const uint32_t size = le32(data.data() + at + 4);
+		const uint8_t *body = data.data() + at + 8;
+		const size_t room = data.size() - at - 8;
+		if (memcmp(data.data() + at, "fmt ", 4) == 0 && room >= 16)
+		{
+			channels = body[2] | (body[3] << 8);
+			bits = body[14] | (body[15] << 8);
+		}
+		else if (memcmp(data.data() + at, "data", 4) == 0)
+		{
+			if (bits != 16 || channels < 1 || channels > 2)
+				return nullptr;
+			const size_t frames = std::min((size_t)size, room) / (size_t)(2 * channels);
+			auto out = std::make_shared<std::vector<int16_t>>(frames * 2);
+			for (size_t i = 0; i < frames; i++)
+				for (int side = 0; side < 2; side++)
+				{
+					const uint8_t *s = body + (i * (size_t)channels + (size_t)(channels > 1 ? side : 0)) * 2;
+					(*out)[i * 2 + (size_t)side] = (int16_t)(s[0] | (s[1] << 8));
+				}
+			return out;
+		}
+		at += 8 + (size_t)size + (size & 1);
+	}
+	return nullptr;
+}
+
+void loadBanks()
+{
+	static const char *const names[2] = { "glass", "paper" };
+	for (int set = 0; set < 2; set++)
+	{
+		const std::string dir = appDir + "assets/hui/sfx/" + names[set] + "/";
+		Bank bank;
+		int count = 0;
+		if (DIR *list = opendir(dir.c_str()))
+		{
+			while (const dirent *entry = readdir(list))
+			{
+				const std::string name = entry->d_name;
+				if (extension(name) != ".wav")
+					continue;
+				// focus_01.wav: the cue is what comes before the last underscore.
+				const size_t cut = name.rfind('_');
+				if (cut == std::string::npos)
+					continue;
+				if (Frames frames = readWav(dir + name))
+				{
+					bank.cues[name.substr(0, cut)].push_back(frames);
+					count++;
+				}
+			}
+			closedir(list);
+		}
+		diag::mark("sound: the kit's %s set: %d recordings", names[set], count);
+		std::lock_guard<std::mutex> lock(bankMutex);
+		banks[set] = std::move(bank);
+	}
+}
+
+// What each of the menus' sounds is called in the kit's sets.
+const char *cueOf(Id id)
+{
+	switch (id)
+	{
+	case Move: return "focus";
+	case Select: return "select";
+	case Back: return "back";
+	case Tab: return "tab";
+	case Key: return "type";
+	case Unlock: return "notify";
+	case Open: return "modal_open";
+	case Close: return "modal_close";
+	case Toggle: return "toggle";
+	case Refuse: return "error";
+	case Launch: return "launch";
+	case FavouriteOn: return "favorite_on";
+	case FavouriteOff: return "favorite_off";
+	case Saved: return "saved";
+	default: return nullptr;
+	}
+}
+
+// The next take of a cue from set (0 Glass, 1 Paper), or the other set's.
+Frames kitSound(int set, Id id)
+{
+	const char *cue = cueOf(id);
+	if (cue == nullptr)
+		return nullptr;
+	std::lock_guard<std::mutex> lock(bankMutex);
+	for (int which : { set, 1 - set })
+	{
+		Bank& bank = banks[which];
+		const auto found = bank.cues.find(cue);
+		if (found != bank.cues.end() && !found->second.empty())
+			return found->second[bank.turn[cue]++ % found->second.size()];
+	}
+	return nullptr;
+}
+
 // Where the head is on its way along the bottom, as the picture has it:
 // 1 at the right of the screen, 0 in the middle.
 float headPan(double time)
@@ -333,6 +475,52 @@ void makeMenu()
 		drop(track, 0.004, 760, 1010, 0.035, 0.10f, 0);
 		sounds[Key] = finished(track);
 	}
+	{
+		// A page opened: a drop that climbs, and another above it.
+		Track track(0.22);
+		drop(track, 0.002, 560, 980, 0.080, 0.15f, -0.15f);
+		drop(track, 0.070, 840, 1460, 0.070, 0.10f, 0.15f);
+		sounds[Open] = finished(track);
+	}
+	{
+		// Closed: the same, falling.
+		Track track(0.22);
+		drop(track, 0.002, 1100, 760, 0.080, 0.13f, 0.15f);
+		drop(track, 0.070, 820, 520, 0.080, 0.10f, -0.15f);
+		sounds[Close] = finished(track);
+	}
+	{
+		// A switch: a tick and a short drop.
+		Track track(0.10);
+		click(track, 0.002, 0.06f, 83);
+		drop(track, 0.006, 980, 1240, 0.030, 0.09f, 0);
+		sounds[Toggle] = finished(track);
+	}
+	{
+		// Refused: low and soft, so the end of a list does not scold.
+		Track track(0.14);
+		drop(track, 0.002, 330, 250, 0.090, 0.10f, 0);
+		sounds[Refuse] = finished(track);
+	}
+	{
+		// A favourite: two bright drops up, or down when taken away.
+		Track up(0.20), down(0.20);
+		drop(up, 0.002, 990, 1480, 0.050, 0.11f, -0.2f);
+		drop(up, 0.060, 1320, 1980, 0.060, 0.09f, 0.2f);
+		drop(down, 0.002, 1480, 1100, 0.050, 0.10f, 0.2f);
+		drop(down, 0.060, 1100, 760, 0.060, 0.08f, -0.2f);
+		sounds[FavouriteOn] = finished(up);
+		sounds[FavouriteOff] = finished(down);
+	}
+	{
+		// Saved: a soft tick under a drop.
+		Track track(0.14);
+		click(track, 0.002, 0.04f, 97);
+		drop(track, 0.010, 700, 1050, 0.070, 0.10f, 0);
+		sounds[Saved] = finished(track);
+	}
+	// A game starting rings the lift's bell.
+	sounds[Launch] = sounds[Chime];
 }
 
 #if defined(SWANSTATION_HOST)
@@ -373,7 +561,8 @@ void init()
 #if defined(SWANSTATION_HOST)
 	if (const char *dir = getenv("SWANSTATION_SOUND_DUMP"))
 	{
-		static const char *names[Count] = { "splash", "flight", "chime", "move", "select", "back", "tab", "key", "unlock" };
+		static const char *names[Count] = { "splash", "flight", "chime", "move", "select", "back", "tab", "key", "unlock",
+			"open", "close", "toggle", "refuse", "launch", "favourite-on", "favourite-off", "saved" };
 		for (int i = 0; i < Count; i++)
 			writeWav(std::string(dir) + "/" + names[i] + ".wav", *sounds[i]);
 		writeWav(std::string(dir) + "/music.wav", *ownMusicForTest());
@@ -383,9 +572,34 @@ void init()
 
 void play(Id id)
 {
-	if (id < 0 || id >= Count || !(id <= Chime ? options::frontend().splashSound : options::frontend().uiSounds))
+	const options::Frontend& settings = options::frontend();
+	if (id < 0 || id >= Count || !(id <= Chime ? settings.splashSound : settings.uiSounds))
 		return;
-	audio::playSound(sounds[id]);
+	if (id <= Chime)
+	{
+		audio::playSound(sounds[id]);
+		return;
+	}
+	if (!banksAsked)
+	{
+		banksAsked = true;
+		std::thread(loadBanks).detach();
+	}
+	// The set chosen, or the theme's (the title's own theme: its own sounds).
+	const int set = settings.soundSet != 0 ? settings.soundSet : ui::themeSounds();
+	Frames frames = set >= 2 ? kitSound(set - 2, id) : nullptr;
+	// The kit's takes are recorded quieter than the title's own: lifted a little.
+	audio::playSound(frames ? frames : sounds[id], frames ? settings.soundVolume * 3 / 2 : settings.soundVolume);
+}
+
+std::vector<std::string> setNames()
+{
+	return { "As the theme has it", "PSSwanStation", "Glass", "Paper" };
+}
+
+std::vector<std::string> musicNames()
+{
+	return { "None", "The title's own", "My music folder", "The interface kit's songs" };
 }
 
 void stop()

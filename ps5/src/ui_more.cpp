@@ -2814,11 +2814,22 @@ void moreSettings(int kind, std::vector<Item>& items)
 				"you say so (Menu, Update)."));
 		break;
 	case 2:
-		items.push_back(choice("Menu music", f.music, { "None", "The title's own", "My file" },
+		items.push_back(choice("Sound set", f.soundSet, sound::setNames(),
+				"What the menus sound like. As the theme has it: each theme brings its own. PSSwanStation: the "
+				"title's own drops of water, computed when it starts. Glass: soft chimes in one key. Paper: warm, "
+				"wooden, tactile. Glass and Paper are the interface kit's recordings (BlackBearReloaded's "
+				"ps5-homebrew-ui); a sound one of them has not recorded is the other's.",
+				[](int i) { options::frontend().soundSet = i; sound::play(sound::Toggle); }));
+		items.push_back(choice("Interface sounds volume", f.soundVolume / 10,
+				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
+				"How loud the menus' sounds are, under the Volume above. The music has its own, below.",
+				[](int i) { options::frontend().soundVolume = i * 10; sound::play(sound::Move); }));
+		items.push_back(choice("Menu music", f.music, sound::musicNames(),
 				"Music while the library or a menu has the screen. The title's own is a quiet piece computed when it "
-				"is first played, like the other sounds. My file: menu.ogg, menu.mp3 or menu.wav in " + shownRoot()
-				+ "music, played round and round (the first six minutes of it).\n\n" + (f.music == 2 ? sound::musicStatus()
-				: std::string()),
+				"is first played, like its sounds. My music folder: every .ogg, .mp3 and .wav in " + shownRoot()
+				+ "music, one after another in an order shuffled at each start (the first six minutes of each). The "
+				"interface kit's songs: its three, First Light, Open Strings and Quiet Hours, the same way.\n\n"
+				+ (f.music >= 2 ? sound::musicStatus() : std::string()),
 				[](int i) { options::frontend().music = i; }));
 		items.push_back(choice("Music volume", f.musicVolume / 10,
 				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
@@ -3070,7 +3081,10 @@ void detailsMoreItems(std::vector<Item>& items)
 		item.current = library::favourite(game.path) ? 1 : 0;
 		item.value = item.choices[(size_t)item.current];
 		item.info = "Favourites have a heart on their cover, and the library can show them alone (Square, in the library).";
-		item.choose = [path = game.path](int i) { library::setFavourite(path, i != 0); };
+		item.choose = [path = game.path](int i) {
+			library::setFavourite(path, i != 0);
+			cue(i != 0 ? sound::FavouriteOn : sound::FavouriteOff);
+		};
 		items.push_back(item);
 	}
 	{

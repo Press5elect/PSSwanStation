@@ -30,7 +30,10 @@ recipe, sce_module/libc.prx                                            libc.prx 
 LLVM libc++, libc++abi,      Apache-2.0 WITH  Apache-2.0.txt           the ps5-payload-dev SDK's release
 libunwind, compiler-rt       LLVM-exception                            archives
 OpenBIOS (built-in BIOS)     MIT              OpenBIOS-LICENSE.txt     PCSX-Redux project
-Dear ImGui                   MIT              DearImGui-LICENSE.txt    github.com/ocornut/imgui
+Interface kit (the menus'    GPL-3.0-or-later GPL-3.0.txt              github.com/mihawk-99/PS5_VKHomebrewUI:
+shapes, text, themes,                                                  BlackBearReloaded's ps5-homebrew-ui with
+components, mixer; its                                                 a Vulkan backend; assets/hui holds its
+sounds and songs)                                                      recordings and songs, unmodified
 libsmb2                      LGPL-2.1         LGPL-2.1.txt             github.com/sahlberg/libsmb2
 libnfs                       LGPL-2.1;        LGPL-2.1.txt,            github.com/sahlberg/libnfs
                              protocol files   BSD-2-Clause.txt
@@ -63,8 +66,12 @@ QR Code generator (the web   MIT              MIT.txt                  github.co
 panel's code)                                                          (Project Nayuki), cpp/ unmodified
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,
                              domain                                    github.com/mackron/dr_libs
-Roboto (font)                Apache-2.0       Apache-2.0.txt           Google
-Font Awesome Free (symbols)  SIL OFL 1.1      OFL-1.1.txt              fontawesome.com (the font file only)
+Inter, Montserrat, Press     SIL OFL 1.1      OFL-1.1.txt              the interface kit's third_party/fonts,
+Start 2P, Patrick Hand                                                 baked again by ps5/tools/bake-fonts.sh
+(fonts)                                                                with accented letters (in eboot.bin)
+DejaVu Sans Mono (font)      Bitstream Vera   DejaVu-LICENSE.txt       the same (in eboot.bin)
+Font Awesome Free (symbols)  SIL OFL 1.1      OFL-1.1.txt              fontawesome.com (its icons, baked by
+                                                                       ps5/tools/bake-fonts.sh)
 Cheat and patch database     its authors'     -                        NOT PART OF THIS TITLE. The title can
                                                                        fetch it from github.com/duckstation/chtdb's
                                                                        own releases when asked to (Settings,

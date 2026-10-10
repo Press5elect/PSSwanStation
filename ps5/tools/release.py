@@ -68,7 +68,7 @@ LOCAL = {
     "ps5-vulkan": ("PS5_VULKAN_DIR", SRC.parent / "PS5_Vulkan"),
     "platform": ("PS5_PAYLOAD_SDK_FORK", SRC.parent / "PS5_PayloadSDK"),
     "radv": ("PS5_MESA_DIR", SRC.parent / "PS5_Mesa"),
-    "imgui": ("IMGUI_DIR", SRC.parent / "imgui"),
+    "ps5-vkhomebrewui": ("HUI_DIR", SRC.parent / "PS5_VKHomebrewUI"),
     "libsmb2": ("LIBSMB2_DIR", SRC.parent / "deps-src/libsmb2"),
     "rcheevos": ("RCHEEVOS_DIR", SRC.parent / "deps-src/rcheevos"),
     "lapy": ("LAPY_SOURCE_DIR", SRC.parent / "deps-src/lapy-source"),

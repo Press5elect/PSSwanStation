@@ -30,6 +30,8 @@ extern uint32_t confirmButton, cancelButton;
 bool hit(uint32_t button);
 bool nav(uint32_t button);
 void consumeInput();
+// The sound this frame's confirm makes, instead of the usual (sound::Id).
+void cue(int id);
 // When a button was last pressed, by the animations' clock.
 extern double lastInputAt;
 
