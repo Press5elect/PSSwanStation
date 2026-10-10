@@ -41,7 +41,7 @@ Build 19
   - Film grain (Picture: Off, Light, Medium, Strong): a fine moving grain
     over the picture, a new pattern every frame, strongest in the middle
     tones; a game's own setting like the rest of the Picture page.
-  Not yet run on my console.
+  Looks right on my console.
 
 Build 18
   Added
