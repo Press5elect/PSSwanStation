@@ -264,24 +264,74 @@ int main(int, char **)
 	// A frame that takes long is a screen that stood still: the log says when
 	// and for how long, and the marks before it say what was being done.
 	double frameBegan = now();
+	// Frames that took longer than a refresh and a half, counted with what
+	// each part of them took and whether a button was held, and said in the
+	// boot log every ten seconds there were any.
+	struct Slow
+	{
+		int frames = 0, slow = 0, held = 0, slowHeld = 0;
+		double worst = 0, part[6] = {}, began = 0;
+	} slow;
+	slow.began = now();
 	while (!ui::quitRequested())
 	{
 		const double time = now();
-		if (time - frameBegan > 0.75)
-			diag::mark("main: the screen stood still for %.1f s", time - frameBegan);
+		const double took = time - frameBegan;
+		if (took > 0.75)
+			diag::mark("main: the screen stood still for %.1f s", took);
 		frameBegan = time;
+		double at[7];
+		at[0] = now();
 		platform::padPoll();
+		at[1] = now();
 		if (!display::beginFrame())
 		{
 			usleep(10000);
 			continue;
 		}
+		at[2] = now();
+		const bool playing = !ui::blocksEmulation() && host::running();
 		if (!ui::blocksEmulation())
 			host::runFrame();
+		at[3] = now();
 		host::tick();
+		at[4] = now();
 		ui::frame();
 		ui::widgetsSubmit();
+		at[5] = now();
 		display::endFrame();
+		at[6] = now();
+		if (playing)
+		{
+			const float rate = display::refreshRate();
+			const double limit = rate > 1.f ? 1.5 / rate : 0.025;
+			const bool held = platform::pad(0).buttons != 0;
+			const double length = at[6] - at[0];
+			slow.frames++;
+			slow.held += held;
+			if (length > limit)
+			{
+				slow.slow++;
+				slow.slowHeld += held;
+				if (length > slow.worst)
+				{
+					slow.worst = length;
+					for (int i = 0; i < 6; i++)
+						slow.part[i] = at[i + 1] - at[i];
+				}
+			}
+			if (time - slow.began >= 10.0)
+			{
+				if (slow.slow > 0)
+					diag::mark("main: %d of %d frames slow (%d of them with a button held; a button was held in %d frames); "
+							"worst %.1f ms: pad %.1f, wait %.1f, game %.1f, tick %.1f, interface %.1f, present %.1f",
+							slow.slow, slow.frames, slow.slowHeld, slow.held, slow.worst * 1e3, slow.part[0] * 1e3,
+							slow.part[1] * 1e3, slow.part[2] * 1e3, slow.part[3] * 1e3, slow.part[4] * 1e3,
+							slow.part[5] * 1e3);
+				slow = Slow();
+				slow.began = time;
+			}
+		}
 		// The web panel's requests, between frames.
 		web::tick();
 		// The library has been on the screen for a while: this start worked.
