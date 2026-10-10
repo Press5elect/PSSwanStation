@@ -159,7 +159,7 @@ The library shows your games from three places, each a tab once it has games: In
 | Touch pad | Search |
 | OPTIONS | The menu |
 
-**Views.** Covers (a grid, with lately played games on a shelf above), List, and five that stand the covers in space as cases: Flow, Row, Wall, Cascade and Wheel. Aurora layout files (`.cfljson`) in `layouts/` are offered too. Choose a view under Square or in Settings, Interface, "Library view".
+**Views.** Shelves (the game under the cursor large at the top, with shelves of lately played games, favourites and every game under it; Up and Down change shelf), Covers (a grid, with lately played games on a shelf above), List, and five that stand the covers in space as cases: Flow, Row, Wall, Cascade and Wheel. Aurora layout files (`.cfljson`) in `layouts/` are offered too. Choose a view under Square or in Settings, Interface, "Library view".
 
 **Search.** Press the touch pad: type with the D-pad keyboard on the left (Cross types, Square deletes, Triangle is a space). Every game from all three places whose name has those letters is listed on the right as you type.
 
@@ -284,9 +284,9 @@ Settings (in the menu) holds PSSwanStation's own sections and every setting of t
 
 | Section | What it holds |
 | --- | --- |
-| Interface | Library view, clock, size (up to 140%), high contrast, colour-blind safe colours, animations, interface sounds, start-up sound, show frame rate, ask for updates at start, the swan screen saver |
+| Interface | Library view, theme, accent colour, clock, size (up to 140%), high contrast, colour-blind safe colours, animations, the swan (lively, calm or still; dressed for the theme; seasonal touches), interface sounds, start-up sound, show frame rate, ask for updates at start, the swan screen saver |
 | Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, beside the picture, frame pacing, display output, black frame insertion, frame generation |
-| Sound | Volume, menu music |
+| Sound | Volume, sound set, interface sounds volume, menu music (the kit's songs, or your own .ogg files in `music/`) |
 | Controllers | Each player's controller type, multitap, rumble, player lights, turbo, button remapping |
 | Shortcuts and rewind | The held-OPTIONS shortcuts, fast forward speed, rewind and its memory |
 | Games and network | USB drives, covers, network games into memory, where your files are kept, files on the share, Wake-on-LAN, save when closed, continue where I left off, sleep-safe saving, card backups, the cheat database, phone and web control |

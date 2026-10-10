@@ -1,6 +1,26 @@
 PSSwanStation - what changed
 ============================
 
+Build 19
+  Added
+  - A new look: the interface is drawn by the PS5 homebrew UI kit, with
+    31 themes (Settings, Interface, Theme), each with its own fonts,
+    panels and sounds.
+  - Shelves, the library's new first view: the game under the cursor
+    large at the top, shelves of what was played lately, favourites and
+    every game under it. The other views are all still there.
+  - Sound sets (Glass, Paper, the theme's or PSSwanStation's own), a
+    volume for the interface sounds, and menu music playlists: the kit's
+    songs or your own (.ogg in music/).
+  - The swan lives: it looks about, feeds, preens, flaps, drifts and
+    dozes off; it turns to the game under the cursor, starts at fast
+    scrolling, cheers when a game starts. It dresses for the theme (a
+    pixel swan in Pixel, inked in Brutal and Sketch, a wireframe in
+    Blueprint) and the season (scarf, Halloween, Christmas, New Year).
+    Settings, Interface: Swan, Swan dresses for the theme, Seasonal
+    touches.
+  Not yet run on my console.
+
 Build 18
   Added
   - Install again (Update page, Square): fetches the newest build again
