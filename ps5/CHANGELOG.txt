@@ -32,6 +32,10 @@ Build 19
     it); its aspect ratio is "Picture shape", with the title's words for
     it, as are its messages and the one-card-per-game choice.
   - The About page names the interface kit and its fonts.
+  - "The picture's light" (Picture, Beside the picture) is the picture
+    itself, blurred wide and soft over the whole screen and brighter, with
+    a soft shadow round the picture, instead of a dim average of its
+    colours.
   Not yet run on my console.
 
 Build 18

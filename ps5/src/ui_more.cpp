@@ -2180,12 +2180,13 @@ void drawBorder(ImDrawList *list, void *texture, float u, float v, ImVec2 p0, Im
 		return;
 	if (kind == 1)
 	{
-		// The picture's own light: a few pixels of it, averaged over the last
-		// half second, spread over the whole screen and turned down.
+		// The picture's own light: the picture blurred wide and soft, over the
+		// whole screen, as a lit screen throws its colours on the wall behind.
 		void *soft = display::ambient(texture, u, v);
 		if (soft == nullptr)
 			return;
-		// Spread so that it covers the screen, keeping the picture's shape.
+		// Spread to cover the screen, keeping the picture's shape, and a
+		// little larger still, so the blur's soft edge is off the screen.
 		const float pictureAspect = (p1.x - p0.x) / std::max(p1.y - p0.y, 1.f);
 		float sw = W, sh = W / pictureAspect;
 		if (sh < H)
@@ -2193,14 +2194,29 @@ void drawBorder(ImDrawList *list, void *texture, float u, float v, ImVec2 p0, Im
 			sh = H;
 			sw = H * pictureAspect;
 		}
+		sw *= 1.12f;
+		sh *= 1.12f;
 		const ImVec2 a((W - sw) * 0.5f, (H - sh) * 0.5f);
 		besidePicture(list, p0, p1, [&] {
-			list->AddImage((ImTextureID)soft, a, ImVec2(a.x + sw, a.y + sh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(150, 150, 150, 255));
+			list->AddImage((ImTextureID)soft, a, ImVec2(a.x + sw, a.y + sh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(235, 235, 235, 255));
 		});
-		// Darker towards the screen's edges, so the picture stays what is looked at.
-		const ImU32 none = IM_COL32(0, 0, 0, 0), edge = IM_COL32(0, 0, 0, 150);
+		// Dimmer towards the screen's far edges, so the picture stays what is
+		// looked at, and a soft shadow where the picture stands on the light.
+		const ImU32 none = IM_COL32(0, 0, 0, 0), edge = IM_COL32(0, 0, 0, 110), shade = IM_COL32(0, 0, 0, 120);
 		list->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(p0.x, H), edge, none, none, edge);
 		list->AddRectFilledMultiColor(ImVec2(p1.x, 0), ImVec2(W, H), none, edge, edge, none);
+		const float reach = std::min(px(40.f), p0.x);
+		if (reach > 1.f)
+		{
+			list->AddRectFilledMultiColor(ImVec2(p0.x - reach, p0.y), ImVec2(p0.x, p1.y), none, shade, shade, none);
+			list->AddRectFilledMultiColor(ImVec2(p1.x, p0.y), ImVec2(p1.x + reach, p1.y), shade, none, none, shade);
+		}
+		if (p0.y > 1.f)
+		{
+			const float up = std::min(px(40.f), p0.y);
+			list->AddRectFilledMultiColor(ImVec2(p0.x, p0.y - up), ImVec2(p1.x, p0.y), none, none, shade, shade);
+			list->AddRectFilledMultiColor(ImVec2(p0.x, p1.y), ImVec2(p1.x, p1.y + up), shade, shade, none, none);
+		}
 	}
 	else if (kind == 2)
 	{
@@ -2605,8 +2621,8 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	}
 	items.push_back(pictureChoice(forGame, "border", "Beside the picture",
 			{ "Black", "The picture's light", "A gradient", "A picture file" },
-			"What fills the screen left and right of a 4:3 picture. The picture's light: its own colours, soft and "
-			"dim, as a lit screen throws them on a wall. A picture file: " + shownRoot() + "borders/<serial>.png "
+			"What fills the screen left and right of a 4:3 picture. The picture's light: the picture itself, blurred "
+			"wide and soft over the whole screen, as a lit screen throws its colours on the wall behind it. A picture file: " + shownRoot() + "borders/<serial>.png "
 			"for one game (SLUS-12345.png), or default.png for all; .jpg works too.",
 			[] { display::forgetAmbient(); }));
 	items.push_back(pictureChoice(forGame, "pacing", "Frame pacing",

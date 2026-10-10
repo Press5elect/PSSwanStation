@@ -149,6 +149,11 @@ struct Target
 	bool drawn = false;
 };
 Target captureTarget, ambientTarget;
+// The picture's light (ambient): the blur's levels, 256 x 192 down to 16 x
+// 12, and two frames of its history.
+constexpr int BlurLevels = 5;
+Target blurLevels[BlurLevels];
+Target blurHistory[2];
 // The swapchain's render pass again, for those: one that clears first and one
 // that draws over what is there; both leave the picture readable by a shader.
 VkRenderPass targetClearPass = VK_NULL_HANDLE, targetBlendPass = VK_NULL_HANDLE;
@@ -623,7 +628,12 @@ void shutdown()
 	lookShutdown();
 	generationShutdown();
 	fsrShutdown();
-	for (Target *target : { &captureTarget, &ambientTarget })
+	std::vector<Target *> targets = { &captureTarget, &ambientTarget };
+	for (Target& level : blurLevels)
+		targets.push_back(&level);
+	for (Target& history : blurHistory)
+		targets.push_back(&history);
+	for (Target *target : targets)
 	{
 		retire(target->set);
 		if (target->framebuffer != VK_NULL_HANDLE)
@@ -2456,26 +2466,88 @@ bool capture(void *texture, float u, float v, int width, int height, std::vector
 	return ok;
 }
 
+// The light the picture throws on the screen around it: the picture, blurred
+// soft and wide. Blurring is done by size alone, with the linear sampler:
+// the picture is halved four times down to a few pixels and doubled back up
+// (each step blends four pixels into one, and back), which is a wide, smooth
+// blur for the cost of nine tiny blits and no shader of its own. The result
+// is eased into the frame before it, so a cut in the game is a soft change
+// of light and not a flash.
+int blurShown = 0;
+
 void *ambient(void *texture, float u, float v)
 {
-	// A few pixels: stretched over the screen they are only colours.
-	constexpr int Width = 32, Height = 24;
-	if (texture == nullptr || !frameOpen || !ensureTarget(ambientTarget, Width, Height))
+	if (texture == nullptr || !frameOpen)
 		return nullptr;
-	// Each frame a little of the picture is blended in, sampled a little
-	// elsewhere each time: over half a second that is its average, which a
-	// single sample of a large picture is not.
-	static unsigned turn;
-	turn++;
-	const float shiftU = (((turn * 7u) % 16u) / 16.f - 0.5f) * u / Width;
-	const float shiftV = (((turn * 11u) % 16u) / 16.f - 0.5f) * v / Height;
-	drawInto(ambientTarget, texture, u, v, 0.10f, shiftU, shiftV);
+	int w = 256, h = 192;
+	for (int i = 0; i < BlurLevels; i++, w /= 2, h /= 2)
+		if (!ensureTarget(blurLevels[i], w, h, VK_FORMAT_UNDEFINED, shaderPass))
+			return nullptr;
+	for (Target& history : blurHistory)
+		if (!ensureTarget(history, 256, 192, VK_FORMAT_UNDEFINED, shaderPass))
+			return nullptr;
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	VkClearValue clear{};
+	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
+	const auto blit = [&](Target& target, Picture *from, float u1, float v1, float alpha, bool over) {
+		VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+		begin.renderPass = shaderPass;
+		begin.framebuffer = target.framebuffer;
+		begin.renderArea = { { 0, 0 }, { (uint32_t)target.width, (uint32_t)target.height } };
+		begin.clearValueCount = 1;
+		begin.pClearValues = &clear;
+		if (!over)
+			vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+		Presented p{};
+		p.picture = from;
+		const float r[4] = { -1.f, -1.f, 1.f, 1.f }, uv[4] = { 0.f, 0.f, u1, v1 };
+		const float tint[4] = { 1.f, 1.f, 1.f, alpha };
+		memcpy(p.rect, r, sizeof(r));
+		memcpy(p.uv, uv, sizeof(uv));
+		memcpy(p.tint, tint, sizeof(tint));
+		presentRecord(cmd, p, target.width, target.height);
+		target.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		target.drawn = true;
+	};
+	const auto end = [&] { vkCmdEndRenderPass(cmd); };
+	// Down: the game's picture, then each level from the one above.
+	blit(blurLevels[0], static_cast<Picture *>(texture), u, v, 1.f, false);
+	end();
+	for (int i = 1; i < BlurLevels; i++)
+	{
+		blit(blurLevels[i], blurLevels[i - 1].set, 1.f, 1.f, 1.f, false);
+		end();
+	}
+	// Up: each level from the one below, twice over, which blurs it again.
+	for (int i = BlurLevels - 2; i >= 0; i--)
+	{
+		blit(blurLevels[i], blurLevels[i + 1].set, 1.f, 1.f, 1.f, false);
+		end();
+	}
+	// Eased into the frame before: the history's other copy takes the old
+	// one, then a part of the new light over it.
+	Target& previous = blurHistory[blurShown];
+	Target& next = blurHistory[blurShown ^ 1];
+	const bool first = !previous.drawn;
+	blit(next, first ? blurLevels[0].set : previous.set, 1.f, 1.f, 1.f, false);
+	if (!first)
+		blit(next, blurLevels[0].set, 1.f, 1.f, 0.18f, true);
+	end();
+	blurShown ^= 1;
+	// The blend leaves its alpha in the history (the pipeline writes the
+	// tint's); the interface draws by alpha, so the light is copied out
+	// opaque.
+	if (!ensureTarget(ambientTarget, 256, 192, VK_FORMAT_UNDEFINED, shaderPass))
+		return nullptr;
+	blit(ambientTarget, next.set, 1.f, 1.f, 1.f, false);
+	end();
 	return (void *)ambientTarget.set;
 }
 
 void forgetAmbient()
 {
-	ambientTarget.drawn = false;
+	for (Target& history : blurHistory)
+		history.drawn = false;
 }
 
 bool writePng(const std::string& path, const uint8_t *rgba, int width, int height)
