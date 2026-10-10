@@ -189,11 +189,38 @@ struct SwanPose
 	float beat = 0;		// where the wings are in their beat, in radians
 	float tilt = 0;		// turned about its body, in radians
 	float face = 1;		// 1 facing left, as in the mark; -1 right; between, it is turning round
+	float wings = 0;	// its wings open on the water (a stretch, a flap, a cheer), beating with `beat`
+	float preen = 0;	// its head back in the feathers of its wing
+	float sleep = 0;	// its head tucked on its back, eyes shut
+	float stretch = 0;	// its neck up tall: startled, or proud
+	float lean = 0;		// its head forward and down, at something below and ahead
+	float lift = 0;		// up off the water, in sides of its square (a hop)
+	float drift = 0;	// moved sideways, in sides of its square
+	float heart = 0;	// a heart rising from it, 0 to 1 as it goes (0: none)
 };
 // `origin` is the top left of the bird's square, `size` its side, in pixels.
-void swan(ImVec2 origin, float size, const SwanPose& pose, float alpha = 1.f, ImDrawList *list = nullptr);
+// How it looks follows the theme (and the season) unless `plain`.
+void swan(ImVec2 origin, float size, const SwanPose& pose, float alpha = 1.f, ImDrawList *list = nullptr,
+		bool plain = false);
 // The pose of a swan sitting in its box at `time`: it looks about.
 SwanPose swanIdle(double time);
+// The swan that lives in the header (and on the idle screen): it looks about,
+// preens, flaps, drifts, dozes off when nothing is pressed for a while, and
+// answers what happens in the library. `origin` and `size` are where it is,
+// so it can turn to what it watches. As the "Swan" setting has it.
+SwanPose swanLive(double time, ImVec2 origin, float size);
+enum class SwanCue { Move, Startle, Cheer, Love, Touch };
+// Something happened: the cursor moved (many moves at once startle it), a
+// game starts, a favourite was made, a button was pressed (it wakes).
+void swanCue(SwanCue cue);
+// What the cursor is on, in pixels: the swan turns its head to it for a while
+// after it changes.
+void swanWatch(ImVec2 target);
+// How long a game's start waits for the swan to cheer, in seconds.
+float swanCheerTime();
+// The names of the "Swan", "Swan's look" and "Seasonal touches" choices.
+std::vector<std::string> swanMoveNames();
+std::vector<std::string> swanSeasonNames();
 // The mark's box (water, light, rounded corners), without the bird.
 void logoBox(ImVec2 a, ImVec2 b, float alpha = 1.f);
 // Where the bird sits in a box: its square's origin and side.
