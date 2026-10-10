@@ -231,13 +231,16 @@ float fill();
 unsigned underruns();
 // One of the interface's sounds: 48 kHz stereo frames, mixed into the output
 // from now on, whether a game runs or not.
-void playSound(std::shared_ptr<const std::vector<int16_t>> frames);
+// `gain`: percent, under the volume.
+void playSound(std::shared_ptr<const std::vector<int16_t>> frames, int gain = 100);
 // Fades out what is playing of them.
 void stopSounds();
 // The menus' music: 48 kHz stereo frames played round and round, faded in;
 // null fades out what plays. `volume` 0..100.
 void setMusic(std::shared_ptr<const std::vector<int16_t>> frames);
 void setMusicVolume(int percent);
+// How many times the music has played through to its end and started again.
+unsigned musicRounds();
 // The game's sound is not heard (fast forward, rewind); the ring is emptied.
 void setMuted(bool muted);
 }
@@ -260,8 +263,24 @@ enum Id
 	Tab,
 	Key,
 	Unlock,		// an achievement was earned
+	// And: a page or drawer opened, closed; a switch flipped; refused (the
+	// end of a list); a game started; a favourite set, taken away; saved.
+	Open,
+	Close,
+	Toggle,
+	Refuse,
+	Launch,
+	FavouriteOn,
+	FavouriteOff,
+	Saved,
 	Count
 };
+// The sound sets: 0 as the theme has it, 1 the title's own (computed),
+// 2 Glass, 3 Paper (the interface kit's recordings).
+std::vector<std::string> setNames();
+// What the music setting can be: none, the title's own, the kit's songs,
+// the music folder.
+std::vector<std::string> musicNames();
 void init();
 // The first three are not heard when "Start-up sound" is off, the others
 // when "Interface sounds" is.
@@ -376,7 +395,9 @@ struct Frontend
 	bool splash = true;			// the start-up animation
 	bool splashSound = true;	// and its sound
 	bool uiSounds = true;		// the menus' sounds
-	int music = 0;				// in the menus: 0 none, 1 the title's own, 2 the file in the music folder
+	int music = 0;				// in the menus: 0 none, 1 the title's own, 2 the music folder, 3 the kit's songs
+	int soundSet = 0;			// 0 as the theme has it, 1 the title's own, 2 Glass, 3 Paper
+	int soundVolume = 80;		// the interface's sounds, percent
 	int musicVolume = 60;
 	int animations = 0;			// 0 everything moves, 1 little does, 2 nothing does
 	int uiScale = 100;			// percent
@@ -914,6 +935,8 @@ void init();
 void frame();
 // Queues the frame's interface layers (ui_widgets.cpp), before display::endFrame.
 void widgetsSubmit();
+// The sound set the theme brings: 1 the title's own, 2 Glass, 3 Paper.
+int themeSounds();
 // Whether the title should end.
 bool quitRequested();
 // The emulator must not run this frame (a menu is over the game).

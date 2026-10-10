@@ -1772,6 +1772,7 @@ Item toggle(const std::string& label, bool *value, const std::string& info, std:
 	item.value = item.choices[item.current];
 	item.choose = [value, changed](int index) {
 		*value = index != 0;
+		cue(sound::Toggle);
 		options::saveFrontend();
 		if (changed)
 			changed();
@@ -3894,8 +3895,34 @@ bool blocksEmulation()
 
 // The menus' sounds, by what was pressed while a menu has the pad: not in a
 // game, and not while an animation has the screen.
+// The sound a confirm or a step back makes is played when the frame is done:
+// opening a page sounds as opening, leaving one as closing, and a page may
+// name another (a switch, a favourite) with cue().
+int pendingSound = -1;
+size_t depthBefore = 0;
+
+void cue(int id)
+{
+	pendingSound = id;
+}
+
+void playPendingSound()
+{
+	if (pendingSound < 0)
+		return;
+	int id = pendingSound;
+	pendingSound = -1;
+	if (id == sound::Select && stack.size() > depthBefore)
+		id = sound::Open;
+	else if (id == sound::Back && stack.size() < depthBefore && !stack.empty())
+		id = sound::Close;
+	sound::play((sound::Id)id);
+}
+
 void menuSounds()
 {
+	depthBefore = stack.size();
+	pendingSound = -1;
 	if (in.pressed == 0 && in.repeat == 0)
 		return;
 	if (stack.empty() ? (host::running() || splash.state != Splash::Over)
@@ -3907,10 +3934,10 @@ void menuSounds()
 	if (hit(confirmButton))
 	{
 		if (!typing)
-			sound::play(sound::Select);
+			pendingSound = sound::Select;
 	}
 	else if (hit(cancelButton))
-		sound::play(sound::Back);
+		pendingSound = sound::Back;
 	else if (hit(L1 | R1 | Options) || (!typing && hit(Triangle | TouchLeft | TouchRight)))
 		sound::play(sound::Tab);
 	else if (nav(Up | Down | Left | Right | L2 | R2))
@@ -4194,6 +4221,7 @@ void frame()
 		deferred = nullptr;
 		run();
 	}
+	playPendingSound();
 	const bool wantPause = host::running() && !stack.empty();
 	if (host::running() && host::paused() != wantPause)
 		host::setPaused(wantPause);

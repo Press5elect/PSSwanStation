@@ -13,7 +13,8 @@
 #                     repository) prepared with tools/setup-native-dependencies.sh,
 #                     tools/build-radv.sh release and tools/rebuild-libc.sh
 #   PS5_PAYLOAD_SDK   the payload SDK fork (default: PS5_Vulkan's)
-#   IMGUI_DIR         Dear ImGui v1.92 (default: ../imgui)
+#   HUI_DIR           PS5_VKHomebrewUI, the interface kit, checked out at the
+#                     revision below (default: ../PS5_VKHomebrewUI)
 #   LIBSMB2_DIR       libsmb2 (default: ../deps-src/libsmb2)
 #   RCHEEVOS_DIR      rcheevos v12 (default: ../deps-src/rcheevos)
 #   GLSLANG_DIR       glslang 16.6.0 (default: ../deps-src/glslang)
@@ -51,7 +52,10 @@ vk=$(cd -- "${PS5_VULKAN_DIR:-$src/../PS5_Vulkan}" && pwd)
 export PS5_VULKAN_DIR="$vk"
 export PS5_PAYLOAD_SDK=${PS5_PAYLOAD_SDK:-$vk/.deps/native/ps5-payload-sdk}
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang-18 || command -v clang)}
-imgui=${IMGUI_DIR:-$src/../imgui}
+hui=${HUI_DIR:-$src/../PS5_VKHomebrewUI}
+# The interface kit's revision: mihawk-99/PS5_VKHomebrewUI (BlackBearReloaded's
+# ps5-homebrew-ui with a Vulkan backend), as PS5_VulkanTemplate pins it.
+hui_revision=2188642afbcc8d84d36149124f3d9e39dc1b1a05
 libsmb2=${LIBSMB2_DIR:-$src/../deps-src/libsmb2}
 rcheevos=${RCHEEVOS_DIR:-$src/../deps-src/rcheevos}
 lapy=${LAPY_HELPER_DIR:-$src/../deps-src/lapy}
@@ -61,6 +65,11 @@ if [[ $release == 1 ]]; then
     [[ -z ${NETWORK_PATH:-} ]] || { echo "build.sh: a release carries no network.cfg (NETWORK_PATH is set)" >&2; exit 2; }
     [[ -z $(git -C "$src" status --porcelain --untracked-files=no) ]] \
         || { echo "build.sh: a release is built from committed source; commit first" >&2; exit 2; }
+fi
+# The kit must be the pinned revision: its code and its sounds are in the title.
+if [[ $(git -C "$hui" rev-parse HEAD 2>/dev/null) != "$hui_revision" ]]; then
+    echo "build.sh: $hui is not PS5_VKHomebrewUI at $hui_revision" >&2
+    exit 2
 fi
 build="$src/build-ps5"
 out=${1:-$build/dist}
@@ -72,13 +81,13 @@ tool="$vk/build/host/ps5-native-tool"
 missing=0
 for file in "$PS5_PAYLOAD_SDK/bin/prospero-clang++" \
         "$vk/.deps/native/radv-release/lib/libvulkan_radeon.ps5.a" \
-        "$vk/runtime/libc.prx" "$tool" "$imgui/imgui.cpp" "$libsmb2/lib/libsmb2.c" \
+        "$vk/runtime/libc.prx" "$tool" "$hui/src/gfx/vk/vk_renderer.cpp" "$libsmb2/lib/libsmb2.c" \
         "$rcheevos/src/rc_client.c" "$lapy/lapy.elf" "$lapy/lapy-manifest.json"; do
     [[ -e $file ]] || { echo "missing: $file" >&2; missing=1; }
 done
 if (( missing )); then
     echo "Prepare $vk first (tools/setup-native-dependencies.sh, tools/build-radv.sh release," >&2
-    echo "tools/rebuild-libc.sh), and check IMGUI_DIR, LIBSMB2_DIR, RCHEEVOS_DIR and LAPY_HELPER_DIR." >&2
+    echo "tools/rebuild-libc.sh), and check HUI_DIR, LIBSMB2_DIR, RCHEEVOS_DIR and LAPY_HELPER_DIR." >&2
     exit 2
 fi
 (cd "$vk/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
@@ -87,7 +96,7 @@ fi
 mkdir -p "$build"
 cmake -S "$ps5" -B "$build" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$ps5/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
-    -DIMGUI_DIR="$imgui" -DLIBSMB2_DIR="$libsmb2" -DRCHEEVOS_DIR="$rcheevos" \
+    -DHUI_DIR="$hui" -DLIBSMB2_DIR="$libsmb2" -DRCHEEVOS_DIR="$rcheevos" \
     ${GLSLANG_DIR:+-DGLSLANG_DIR="$GLSLANG_DIR"} > "$build/configure.log" 2>&1 \
     || { cat "$build/configure.log" >&2; exit 2; }
 cmake --build "$build" --target swanstation --parallel "${JOBS:-$(nproc)}"
@@ -142,6 +151,11 @@ if [[ -f "$database/metadat/developer/Sony - PlayStation.dat" ]]; then
 else
     echo "No game database staged: $database is not a libretro-database checkout" >&2
 fi
+# The interface kit's sounds and songs (GPL-3.0-or-later): its two recorded
+# sets of the menus' sounds and its three songs. Its fonts are in eboot.bin.
+mkdir -p "$app/assets/hui/sfx" "$app/assets/hui/music"
+cp -r -- "$hui/assets/audio/sfx/glass" "$hui/assets/audio/sfx/paper" "$app/assets/hui/sfx/"
+cp -- "$hui"/assets/audio/music/*.ogg "$app/assets/hui/music/"
 # The picture tube: crt-guest-advanced from the libretro slang shaders
 # (GPL-2.0-or-later), compiled for the title's chain runner.
 slang=${SLANG_SHADERS_DIR:-$src/../deps-src/slang-shaders}
@@ -177,7 +191,7 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     echo "PS5_Vulkan:  $(git -C "$vk" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "SDK:         $(cat "$PS5_PAYLOAD_SDK/.ps5-sdk-revision" 2>/dev/null || echo unknown)"
     grep -h -E '^(revision|sdk):' "$vk/.deps/native/radv-release/PROVENANCE.txt" 2>/dev/null | sed 's/^/RADV /'
-    echo "Dear ImGui:  $(git -C "$imgui" describe --tags --always 2>/dev/null || echo unknown)"
+    echo "UI kit:      $(git -C "$hui" rev-parse HEAD 2>/dev/null || echo unknown) (PS5_VKHomebrewUI)"
     echo "libsmb2:     $(git -C "$libsmb2" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "libnfs:      $(git -C "${LIBNFS_DIR:-$src/../deps-src/libnfs}" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "slang-shaders: $(git -C "$slang" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -187,7 +201,7 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     echo "eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)"
 } > "$app/BUILD.txt"
 # Every part as data, with the revision it was built from.
-python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$imgui" "$libsmb2" "$rcheevos" "$lapy" \
+python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$hui" "$libsmb2" "$rcheevos" "$lapy" \
     "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}" "${LIBNFS_DIR:-$src/../deps-src/libnfs}" "$slang" \
     "${GLSLANG_DIR:-$src/../deps-src/glslang}"
 # Everything is readable and writable over FTP; the program's own files as the

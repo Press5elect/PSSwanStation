@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PSSwanStation - licenses/components.json of a staged title folder.
 
-    stage-notices.py APP_DIR SRC VULKAN_DIR SDK_DIR IMGUI_DIR LIBSMB2_DIR RCHEEVOS_DIR LAPY_DIR DATABASE_DIR
+    stage-notices.py APP_DIR SRC VULKAN_DIR SDK_DIR HUI_DIR LIBSMB2_DIR RCHEEVOS_DIR LAPY_DIR DATABASE_DIR
 
 Called by ps5/tools/build.sh. It writes every part of the title as data: what
 it is, its licence, which of the folder's files it is in, and the source it
@@ -32,7 +32,7 @@ def at(repo, remote=None):
 
 
 def main():
-    app, src, vulkan, sdk, imgui, libsmb2, rcheevos, lapy, database = (Path(a) for a in sys.argv[1:10])
+    app, src, vulkan, sdk, hui, libsmb2, rcheevos, lapy, database = (Path(a) for a in sys.argv[1:10])
     libnfs = Path(sys.argv[10]) if len(sys.argv) > 10 else src.parent / "deps-src/libnfs"
     slang = Path(sys.argv[11]) if len(sys.argv) > 11 else src.parent / "deps-src/slang-shaders"
     glslang = Path(sys.argv[12]) if len(sys.argv) > 12 else src.parent / "deps-src/glslang"
@@ -43,7 +43,7 @@ def main():
         name="PSSwanStation: SwanStation (the emulator, with the libraries in its tree: libchdr with LZMA and zstd, "
              "xxHash, Xbyak, stb, libretro-common, OpenBIOS) and the PS5 frontend in ps5/ (with miniz, stb_vorbis, "
              "dr_mp3, AMD's FSR 1 and CAS headers, NVIDIA Image Scaling, Project Nayuki's QR Code generator, the sandbox elevation "
-             "client, Roboto and Font Awesome Free)",
+             "client and Font Awesome Free's icons)",
         licence="GPL-3.0 as a whole; each library's own in licenses/README.txt",
         artifacts=["eboot.bin", "sce_sys/", "README.txt", "CHANGELOG.txt", "LEGAL.txt", "licenses/"],
         source=title))
@@ -70,7 +70,15 @@ def main():
         licence="Apache-2.0 WITH LLVM-exception", artifacts=["eboot.bin"],
         source=dict(kind="fixed", revision="ps5-payload-dev SDK release archives",
                     url="https://github.com/ps5-payload-dev/sdk/releases")))
-    parts.append(dict(id="imgui", name="Dear ImGui", licence="MIT", artifacts=["eboot.bin"], source=at(imgui)))
+    parts.append(dict(
+        id="ps5-vkhomebrewui",
+        name="the interface kit: BlackBearReloaded's ps5-homebrew-ui through mihawk-99's PS5_VKHomebrewUI (its "
+             "Vulkan backend): shapes, text, themes, components, springs and the mixer, in eboot.bin; its fonts "
+             "re-baked by ps5/tools/bake-fonts.sh (Inter, Montserrat, Press Start 2P and Patrick Hand under the "
+             "SIL OFL 1.1, DejaVu Sans Mono under the Bitstream Vera licence), and its recorded sounds and songs "
+             "in assets/hui",
+        licence="GPL-3.0-or-later; the fonts OFL-1.1 and Bitstream Vera (licenses/README.txt)",
+        artifacts=["eboot.bin", "assets/hui/"], source=at(hui, "https://github.com/mihawk-99/PS5_VKHomebrewUI")))
     parts.append(dict(id="libsmb2", name="libsmb2 (network shares)", licence="LGPL-2.1-or-later", artifacts=["eboot.bin"],
                       source=at(libsmb2)))
     parts.append(dict(id="libnfs", name="libnfs (NFS shares)", licence="LGPL-2.1-or-later; its protocol files BSD-2-Clause",

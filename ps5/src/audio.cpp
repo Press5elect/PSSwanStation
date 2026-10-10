@@ -51,6 +51,7 @@ struct Voice
 	std::shared_ptr<const std::vector<int16_t>> frames;	// stereo
 	size_t at = 0;
 	int fading = -1;		// frames of a fade-out left, or -1
+	int gain = 100;			// percent, under the volume
 };
 constexpr int FadeFrames = 1920;		// 40 ms
 std::vector<Voice> voices;
@@ -60,6 +61,7 @@ std::shared_ptr<const std::vector<int16_t>> musicNow, musicWanted;
 size_t musicAt;
 float musicGain;						// 0..1, moving towards 1 or 0
 std::atomic<int> musicVolume{60};
+std::atomic<unsigned> musicLaps{0};
 std::atomic<bool> muted{false};
 constexpr float MusicFade = 1.f / (48000.f * 1.2f);		// per frame: 1.2 s from silence to full
 
@@ -93,7 +95,12 @@ void mixMusic(int16_t *out, size_t frames)
 		const float gain = musicGain * level;
 		out[i * 2] = (int16_t)std::clamp((int)(out[i * 2] + data[musicAt * 2] * gain), -32768, 32767);
 		out[i * 2 + 1] = (int16_t)std::clamp((int)(out[i * 2 + 1] + data[musicAt * 2 + 1] * gain), -32768, 32767);
-		musicAt = (musicAt + 1) % total;
+		if (++musicAt >= total)
+		{
+			// Round again: a playlist (sound.cpp) moves to its next piece now.
+			musicAt = 0;
+			musicLaps++;
+		}
 	}
 }
 
@@ -102,9 +109,9 @@ void mixVoices(int16_t *out, size_t frames)
 {
 	if (voices.empty())
 		return;
-	const int gain = volume;
 	for (Voice& voice : voices)
 	{
+		const int gain = volume * voice.gain / 100;
 		const std::vector<int16_t>& data = *voice.frames;
 		const size_t total = data.size() / 2;
 		for (size_t i = 0; i < frames && voice.at < total; i++, voice.at++)
@@ -205,15 +212,16 @@ void push(const int16_t *samples, size_t frames)
 	}
 }
 
-void playSound(std::shared_ptr<const std::vector<int16_t>> frames)
+void playSound(std::shared_ptr<const std::vector<int16_t>> frames, int gain)
 {
-	if (!frames || frames->size() < 2)
+	if (!frames || frames->size() < 2 || gain <= 0)
 		return;
 	std::lock_guard<std::mutex> lock(mutex);
 	if (voices.size() >= 12)
 		return;
 	Voice voice;
 	voice.frames = std::move(frames);
+	voice.gain = std::clamp(gain, 0, 200);
 	voices.push_back(std::move(voice));
 }
 
@@ -226,6 +234,11 @@ void setMusic(std::shared_ptr<const std::vector<int16_t>> frames)
 void setMusicVolume(int percent)
 {
 	musicVolume = std::clamp(percent, 0, 100);
+}
+
+unsigned musicRounds()
+{
+	return musicLaps;
 }
 
 void setMuted(bool mute)

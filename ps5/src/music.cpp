@@ -3,21 +3,24 @@
 
 	SPDX-License-Identifier: GPL-3.0-or-later
 
-	Two kinds, by the setting. The title's own is computed like its other
-	sounds (sound.cpp): slow chords of soft sine tones over forty-eight
-	seconds, a few bell notes over them, made so that its end runs into its
-	beginning. The user's own is a file, <root>music/menu.wav, .ogg or .mp3,
-	decoded whole (the first six minutes of it) and brought to the output's
-	48 kHz. Either is made on a thread of its own the first time it is wanted,
-	and handed to audio.cpp, which plays it round and round and fades it in
-	and out.
+	By the setting. The title's own is computed like its other sounds
+	(sound.cpp): slow chords of soft sine tones over forty-eight seconds, a few
+	bell notes over them, made so that its end runs into its beginning. A
+	playlist is the files of <root>music (.ogg, .mp3, .wav), or the interface
+	kit's three songs (PS5_VKHomebrewUI's assets/audio/music, laid into
+	<title folder>assets/hui/music by the build), in an order shuffled at
+	each start: each piece is decoded whole (the first six minutes of it) and
+	brought to the output's 48 kHz on a thread of its own, the next one while
+	this one plays, and audio.cpp crossfades to it when this one ends.
 
 	The decoders are stb_vorbis (Sean Barrett) and dr_mp3 (David Reid), both in
 	the public domain (ps5/third_party).
 */
 #include "fe.h"
 
+#include <algorithm>
 #include <atomic>
+#include <dirent.h>
 #include <cmath>
 #include <cstring>
 #include <mutex>
@@ -48,10 +51,22 @@ constexpr double TwoPi = 6.283185307179586;
 constexpr size_t MostFrames = (size_t)(Rate * 360);		// six minutes
 
 std::mutex mutex;
-Frames own, file;
-bool ownAsked, fileAsked;
+Frames own;
+bool ownAsked;
 std::string fileNote = "No file yet.";
 std::atomic<bool> fileBusy{false};
+
+// A playlist: its files, shuffled; the piece playing and the next, decoded.
+struct Playlist
+{
+	int kind = -1;					// the music setting it was made for
+	std::vector<std::string> files;
+	size_t at = 0;					// which file `now` is
+	Frames now, next;
+	bool nextAsked = false;
+	unsigned rounds = 0;			// audio::musicRounds() when `now` began
+};
+Playlist list;
 
 // ------------------------------------------------------------ the title's own
 
@@ -271,36 +286,91 @@ Frames decodeMp3(const std::vector<uint8_t>& data)
 	return out;
 }
 
-void loadFile()
+Frames decodeFile(const std::string& path, std::string& note)
 {
-	std::string found, note;
-	Frames frames;
-	for (const char *name : { "menu.ogg", "menu.mp3", "menu.wav" })
+	std::vector<uint8_t> data;
+	const std::string name = baseName(path);
+	// A piece of music, not an album: a file this large is not read.
+	if (!readFile(path, data) || data.size() > (96u << 20))
 	{
-		const std::string path = rootDir + "music/" + name;
-		if (!fileExists(path))
-			continue;
-		found = name;
-		std::vector<uint8_t> data;
-		// A piece of music, not an album: a file this large is not read.
-		if (!readFile(path, data) || data.size() > (96u << 20))
-			note = std::string(name) + " could not be read (it may be too large: 96 MB at most).";
-		else
-		{
-			frames = extension(path) == ".ogg" ? decodeOgg(data) : extension(path) == ".mp3" ? decodeMp3(data)
-					: decodeWav(data);
-			note = frames ? format("%s, %d:%02d", name, (int)(frames->size() / 2 / 48000 / 60),
-					(int)(frames->size() / 2 / 48000 % 60))
-					: std::string(name) + " is not a sound file this can play.";
-		}
-		break;
+		note = name + " could not be read (it may be too large: 96 MB at most).";
+		return nullptr;
 	}
-	if (found.empty())
-		note = "No file yet: put menu.ogg, menu.mp3 or menu.wav in " + shownRoot() + "music.";
+	Frames frames = extension(path) == ".ogg" ? decodeOgg(data) : extension(path) == ".mp3" ? decodeMp3(data)
+			: decodeWav(data);
+	note = frames ? format("%s, %d:%02d", name.c_str(), (int)(frames->size() / 2 / 48000 / 60),
+			(int)(frames->size() / 2 / 48000 % 60))
+			: name + " is not a sound file this can play.";
+	return frames;
+}
+
+std::vector<std::string> musicFiles(const std::string& dir)
+{
+	std::vector<std::string> files;
+	if (DIR *d = opendir(dir.c_str()))
+	{
+		while (const dirent *entry = readdir(d))
+		{
+			const std::string name = entry->d_name;
+			const std::string ext = extension(name);
+			if (name[0] != '.' && (ext == ".ogg" || ext == ".mp3" || ext == ".wav"))
+				files.push_back(dir + name);
+		}
+		closedir(d);
+	}
+	std::sort(files.begin(), files.end());
+	return files;
+}
+
+// Decodes file `index` of the playlist into its `next` (or `now`, when nothing plays).
+void decodeInto(size_t index, bool first)
+{
+	std::string path, note;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if (index >= list.files.size())
+			return;
+		path = list.files[index];
+	}
+	Frames frames = decodeFile(path, note);
 	diag::mark("music: %s", note.c_str());
 	std::lock_guard<std::mutex> lock(mutex);
-	file = frames;
-	fileNote = note;
+	fileNote = format("%zu piece%s, in an order shuffled at each start. Now: %s", list.files.size(),
+			list.files.size() == 1 ? "" : "s", note.c_str());
+	if (first)
+		list.now = frames;
+	else
+		list.next = frames;
+}
+
+void makePlaylist(int kind)
+{
+	const std::string dir = kind == 2 ? rootDir + "music/" : appDir + "assets/hui/music/";
+	std::vector<std::string> files = musicFiles(dir);
+	// Shuffled once a start: the same order then goes round.
+	uint32_t seed = (uint32_t)(now() * 1000.0) | 1u;
+	for (size_t i = files.size(); i > 1; i--)
+	{
+		seed = seed * 1664525u + 1013904223u;
+		std::swap(files[i - 1], files[(seed >> 8) % i]);
+	}
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		list = Playlist();
+		list.kind = kind;
+		list.files = files;
+		if (files.empty())
+			fileNote = kind == 2 ? "No music yet: put .ogg, .mp3 or .wav files in " + shownRoot() + "music."
+					: "The interface kit's songs are missing from the title's folder (assets/hui/music).";
+	}
+	if (!files.empty())
+	{
+		fileBusy = true;
+		std::thread([] {
+			decodeInto(0, true);
+			fileBusy = false;
+		}).detach();
+	}
 }
 
 }
@@ -324,25 +394,48 @@ void music(bool wanted)
 		}
 		piece = own;
 	}
-	else if (wanted && settings.music == 2)
+	else if (wanted && (settings.music == 2 || settings.music == 3))
 	{
-		std::lock_guard<std::mutex> lock(mutex);
-		if (!fileAsked)
+		bool fresh = false;
 		{
-			fileAsked = true;
-			fileBusy = true;
-			std::thread([] {
-				loadFile();
-				fileBusy = false;
-			}).detach();
+			std::lock_guard<std::mutex> lock(mutex);
+			fresh = list.kind != settings.music;
 		}
-		piece = file;
+		if (fresh)
+			makePlaylist(settings.music);
+		std::lock_guard<std::mutex> lock(mutex);
+		piece = list.now;
+		if (list.now && list.files.size() > 1)
+		{
+			// The next piece is read while this one plays...
+			if (!list.nextAsked && !fileBusy)
+			{
+				list.nextAsked = true;
+				const size_t index = (list.at + 1) % list.files.size();
+				fileBusy = true;
+				std::thread([index] {
+					decodeInto(index, false);
+					fileBusy = false;
+				}).detach();
+			}
+			// ...and takes its place when this one has played through.
+			if (list.next && audio::musicRounds() != list.rounds)
+			{
+				list.now = list.next;
+				list.next = nullptr;
+				list.nextAsked = false;
+				list.at = (list.at + 1) % list.files.size();
+				piece = list.now;
+			}
+		}
 	}
 	static Frames playing;
 	if (piece != playing)
 	{
 		playing = piece;
 		audio::setMusic(piece);
+		std::lock_guard<std::mutex> lock(mutex);
+		list.rounds = audio::musicRounds();
 	}
 }
 
