@@ -4,16 +4,20 @@ PSSwanStation - what changed
 Build 20
   Added
   - A second way of making frames between the game's: AMD FSR3's
-    optical flow, from AMD's FidelityFX SDK, run on the console through
-    swordpdf's ps5-framegen (Settings, Picture, Generation method). On my
-    test pictures its frames are about half as far from the true ones as
-    the title's own. The title's own stays, and is the default.
+    optical flow, from AMD's FidelityFX SDK (Settings, Picture,
+    Generation method). On my test pictures its frames are about half
+    as far from the true ones as the title's own. The title's own
+    stays, and is the default.
   - USB controllers the console does not take as its own (an
     experiment): a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or
-    another USB gamepad, read by PSSwanStation itself (after PS5SX2),
-    as the next player or together with player 1. Settings, Controllers,
-    USB controllers; off at first. Only devices that say what they are
-    are read; Sony's controllers are left to the console.
+    another USB gamepad, read by PSSwanStation itself, as the next
+    player or together with player 1. Settings, Controllers, USB
+    controllers; off at first. Only devices that say what they are are
+    read; Sony's controllers are left to the console.
+  Fixed
+  - With AMD FSR3 optical flow, the picture's look was skipped: film
+    grain, colours, the scaling filter, sharpening and the picture tube.
+    They are drawn over its frames now, as over the title's own.
   Not yet run on my console.
 
 Build 19

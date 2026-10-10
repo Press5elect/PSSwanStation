@@ -360,7 +360,7 @@ struct Frontend
 	int fgCap = 0;				// 0 up to the screen's rate, 1 up to 60 a second
 	int fgVideos = 0;			// 0 videos too, 1 not while a video plays (the PlayStation's MDEC decoding)
 	int fgMode = 0;				// 0 between the game's last two pictures, 1 ahead of the last (no waiting)
-	int fgMethod = 0;			// how they are made: 0 the title's own, 1 AMD FSR3's optical flow (through swordpdf's ps5-framegen)
+	int fgMethod = 0;			// how they are made: 0 the title's own, 1 AMD FSR3's optical flow
 	bool fgRunAhead = false;	// one frame of run-ahead while it is on, to take back its delay
 	bool fgDebug = false;		// the movement shown in colours
 	// 0 off, 1 soft scanlines, 2 scanlines, 3 scanlines and a shadow mask; 4 on,

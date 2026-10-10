@@ -2746,9 +2746,8 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		items.push_back(pictureChoice(forGame, "fg_method", "Generation method", { "PSSwanStation's own", "AMD FSR3 optical flow" },
 				"Two ways of finding how the picture moved and drawing the pictures between. PSSwanStation's own: its "
 				"movement search, with the quality, ahead and movement view settings below. AMD FSR3 optical flow: the "
-				"optical flow of AMD's FidelityFX SDK (FSR3), which finds the movement without the game's help, run on "
-				"the console through swordpdf's ps5-framegen, whose interpolation tries several movements for every few "
-				"pixels and keeps what has not changed for a while (a score, a map) still; on test pictures its "
+				"optical flow of AMD's FidelityFX SDK (FSR3), which finds the movement without the game's help; its "
+				"interpolation tries several movements for every few pixels and keeps what has not changed for a while (a score, a map) still; on test pictures its "
 				"made pictures are about half as far from the true ones as the title's own. It makes one, two or three "
 				"pictures between two of the game's, at even steps, so a rate that does not divide the screen's (a PAL "
 				"game at 120 Hz) moves a little less evenly; and it makes none ahead.", [] { display::forgetGenerated(); }));
@@ -2944,8 +2943,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 		{
 			Item item = choice("USB controllers", f.usbPads, { "Off", "On", "On, and look harder" },
 					"An experiment: controllers the console does not take as its own, on a USB cable - a PS3 pad, a "
-					"DualShock 3, an Xbox 360 pad, other USB gamepads - read by PSSwanStation itself (after swordpdf's "
-					"PS5SX2). It has not yet been seen to work on a console: the boot log's \"usbpad\" lines say what "
+					"DualShock 3, an Xbox 360 pad, other USB gamepads - read by PSSwanStation itself. It has not yet been seen to work on a console: the boot log's \"usbpad\" lines say what "
 					"the console offers and what the controller sends. On: through the kernel's own USB nodes, only a "
 					"device that says what it is. Look harder: also through the console's USB library, opening every "
 					"device that is not Sony's and not a drive or a hub to ask what it is. Sony's PS4 and PS5 "
