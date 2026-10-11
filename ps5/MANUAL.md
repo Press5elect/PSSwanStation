@@ -1,10 +1,10 @@
 # PSSwanStation Manual
 
-For build 17 · October 2026
+For build 20 · October 2026
 
 ## About PSSwanStation
 
-PSSwanStation plays PlayStation (PS1) games on a jailbroken PS5, with an interface made for the controller. Inside it is SwanStation, the libretro fork of DuckStation; it draws with Vulkan through the RADV driver built into the title. This manual covers build 17.
+PSSwanStation plays PlayStation (PS1) games on a jailbroken PS5, with an interface made for the controller. Inside it is SwanStation, the libretro fork of DuckStation; it draws with Vulkan through the RADV driver built into the title. This manual covers build 20.
 
 **What you need**
 
@@ -197,6 +197,8 @@ The DualSense works as a PlayStation controller, button for button; the touch pa
 
 **More players.** Player 1 is whoever started PSSwanStation. A second person presses the PS button on their controller and chooses a user, and becomes player 2 within a couple of seconds. For three or four players, switch the Multitap on in Settings, Controllers: "In port 1" suits most four-player games. Leave it off otherwise, as some one- or two-player games don't see a controller behind a multitap.
 
+**USB controllers** (an experiment; Settings, Controllers, "USB controllers", off at first). PSSwanStation reads some controllers plugged into the console's USB ports itself: a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or another USB gamepad. They can be the next player or play together with player 1. Only devices that say what they are are read; Sony's controllers are left to the console. Not yet tried on my console.
+
 **Closing.** Menu, Close ends the game. In the library, Circle asks whether to close PSSwanStation; Cross answers yes.
 
 **Screenshots and video** are the console's own: use the Create button.
@@ -229,11 +231,13 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 | Picture tube | Scanlines (soft or full), a shadow mask, or crt-guest-advanced in five kinds; and presets brought in from USB |
 | Video signal | As it is, dither smoothed, S-Video or composite |
 | Brightness, Contrast, Colour, Gamma | 50% to 150% |
+| Film grain | Off, Light, Medium or Strong: a fine grain over the picture that moves every frame, strongest in the middle tones |
 | Beside the picture | Black, the picture's own light (the picture blurred over the whole screen), a gradient, a picture from `borders/`, or the picture carried on past its edges, blurred |
 | Frame pacing | By the display, the game's own speed, or the game's own speed by the clock (for variable refresh rate) |
 | Display output | 60 Hz, 120 Hz, or 120 Hz with variable refresh rate; from the next start |
 | Black frame insertion | At 120 Hz, a black refresh between a 60 fps game's frames |
-| Frame generation | Pictures made between the game's, with quality, mode and rate settings |
+| Frame generation | Pictures made between the game's, with a generation method, quality, mode and rate settings |
+| Generation method (under Frame generation) | The title's own (the default), or AMD FSR3's optical flow, from AMD's FidelityFX SDK |
 
 **Scaling filters.** Smooth blends neighbouring pixels; square pixels shows them as squares; sharp bilinear keeps pixels even and crisp at any size. FSR 1 and NIS follow edges, then sharpen; CAS sharpens fine detail without halos. FSR and NIS pay off most at a lower internal resolution (3x or 4x). A picture larger than the screen (8x on a 1080p screen) is made smaller by averaging, whichever filter is chosen.
 
@@ -245,6 +249,7 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 
 **Frame generation** (Off or On) makes pictures between the game's own: a 30 fps game moves at 60 on a 60 Hz screen, or up to 120 at 120 Hz. It never changes the game's speed or sound. Its settings:
 
+- **Generation method:** the title's own, which is the default, or AMD FSR3's optical flow. On my test pictures its frames are about half as far from the true ones as the title's own. Its frames take the picture's look (film grain, colours, scaling filter, sharpening and picture tube) like the title's own;
 - **Quality:** Performance, Balanced, or Quality (checks each movement from both pictures' side);
 - **Mode:** between the game's last two pictures, or ahead of the latest (no waiting, more mistakes where movement turns);
 - **Up to the screen's rate**, or up to 60 a second at 120 Hz;
