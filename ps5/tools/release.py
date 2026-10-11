@@ -173,9 +173,11 @@ def has_commit(remote, revision):
         return done.returncode == 0
 
 
-def check_pins(parts):
-    """Every revision the title was built from is one GitHub has."""
-    missing, not_yet = [], []
+def check_pins(parts, unpublished=()):
+    """Every revision the title was built from is one GitHub has, but for the
+    parts named in `unpublished`, whose archive is then their published copy
+    (SOURCES.txt says so)."""
+    missing, not_yet, allowed = [], [], {}
     for p in parts:
         src = p["source"]
         if src["kind"] != "git":
@@ -186,10 +188,25 @@ def check_pins(parts):
         for revision in filter(None, (src["revision"], src.get("built_with_sdk"))):
             remote = "https://github.com/mihawk-99/PS5_PayloadSDK" if revision == src.get("built_with_sdk") else src["remote"]
             if not has_commit(remote, revision):
+                if p["id"] in unpublished and revision == src["revision"]:
+                    allowed[p["id"]] = remote
+                    continue
                 (not_yet if p["id"] == "psswanstation" else missing).append("%s: %s at %s" % (p["id"], remote, revision[:12]))
     if missing:
         refuse("GitHub does not have:\n  - " + "\n  - ".join(missing))
-    return not_yet
+    return not_yet, allowed
+
+
+def on_top_of(repo, revision):
+    """The last commit of the local repository's origin/main under a revision,
+    and how many commits the revision adds to it."""
+    base = subprocess.run(["git", "-C", str(repo), "merge-base", revision, "origin/main"], capture_output=True,
+                          text=True).stdout.strip()
+    if not base:
+        return None, 0
+    count = subprocess.run(["git", "-C", str(repo), "rev-list", "--count", base + ".." + revision], capture_output=True,
+                           text=True).stdout.strip()
+    return base, int(count or 0)
 
 
 def archive(repo, revision, prefix, dest, paths=()):
@@ -208,6 +225,9 @@ def main():
     parser.add_argument("--out")
     parser.add_argument("--offline", action="store_true", help="do not ask GitHub whether it has every revision")
     parser.add_argument("--notes", help="the release's text; {{COMMIT}}, {{ZIP}}, {{ZIP_SHA256}} and {{BUILD}} are filled in")
+    parser.add_argument("--unpublished", default="", metavar="IDS",
+                        help="parts (comma-separated ids) whose revision GitHub may not have: their attached archive "
+                             "is their published source, and SOURCES.txt says on what of GitHub's it is built")
     parser.add_argument("--attach-limit", type=int, default=0, metavar="MIB",
                         help="also write attach/: every file the release page carries, in one folder, an archive "
                              "larger than this many MiB cut into parts (0: no parts)")
@@ -220,7 +240,8 @@ def main():
         refuse("%s is not a built title folder (RELEASE=1 ps5/tools/build.sh)" % folder)
     parts = json.loads((folder / "licenses/components.json").read_text())
     head = check_folder(folder, parts)
-    not_yet = [] if args.offline else check_pins(parts)
+    unpublished = tuple(filter(None, args.unpublished.split(",")))
+    not_yet, allowed = ([], {}) if args.offline else check_pins(parts, unpublished)
 
     out = Path(args.out) if args.out else SRC / "build-ps5" / ("release-build%d" % build)
     shutil.rmtree(out, ignore_errors=True)
@@ -256,6 +277,11 @@ def main():
             where += " (only what the title is made from: %s)" % ", ".join(src["paths"])
         if src.get("built_with"):
             where += "; built with " + src["built_with"]
+        if p["id"] in allowed:
+            base, count = on_top_of(repo, src["revision"])
+            where += ("\n  This revision is not on GitHub: this archive is its published source. It is %s at %s "
+                      "and %d commit%s on top." % (allowed[p["id"]], base, count, "" if count == 1 else "s")
+                      if base else "\n  This revision is not on GitHub: this archive is its published source.")
         sources.append((name + ".tar.gz", p["name"], where))
         if src.get("built_with_sdk"):
             sname = "%s-sdk-%s" % (p["id"], src["built_with_sdk"][:12])
