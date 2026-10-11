@@ -28,7 +28,9 @@ Build 20
     input makes run-ahead run the frame before again, two frames' work
     in one refresh. At 120 Hz that work is now done in the refresh
     between two of the game's frames, with the pads read then.
-  Not yet run on my console.
+  On my console: 120 Hz at every start and with variable refresh rate,
+  run-ahead without the slowdown, AMD FSR3 optical flow. USB controllers
+  I have not tried there yet.
 
 Build 19
   Added
