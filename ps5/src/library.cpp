@@ -343,6 +343,29 @@ void run(int source, bool force)
 	SourceState& state = sources[source];
 	std::vector<Found> found;
 	std::string status;
+	if (source == Optical)
+	{
+		// The discs in the drives, one game each (discdrive.cpp found them).
+		std::vector<Game> games;
+		for (const discdrive::Disc& disc : discdrive::discs())
+		{
+			Game game;
+			game.path = discdrive::streamPath(disc);
+			game.name = disc.name;
+			game.fileTitle = disc.name;
+			game.size = disc.bytes;
+			game.source = Optical;
+			games.push_back(game);
+		}
+		diag::mark("library: Disc: %d disc(s)", (int)games.size());
+		std::lock_guard<std::mutex> lock(state.mutex);
+		state.list = std::move(games);
+		state.generation++;
+		state.status.clear();
+		state.scanned = true;
+		state.busy = false;
+		return;
+	}
 	if (source == Internal)
 	{
 		walkLocal(rootDir + "games", 0, found);
@@ -532,13 +555,15 @@ unsigned generation(int source)
 
 std::string sourceName(int source)
 {
-	return source == Internal ? "Internal" : source == Usb ? "USB" : "Network";
+	return source == Internal ? "Internal" : source == Usb ? "USB" : source == Optical ? "Disc" : "Network";
 }
 
 bool sourceAvailable(int source)
 {
 	if (source == Usb)
 		return options::frontend().usb;
+	if (source == Optical)
+		return options::frontend().discDrive;
 	return true;
 }
 
@@ -554,6 +579,8 @@ std::string sourceHint(int source)
 		return "Put your games in a folder named psx (or ps1, playstation) at the top of the drive, "
 				"then press Square to scan.";
 	}
+	if (source == Optical)
+		return "Put a PlayStation disc in a USB CD or DVD drive plugged into the console.";
 	if (smb::gameFolders().empty())
 		return "Name your share or FTP server in " + shownRoot() + "network.cfg (path = 192.168.1.10/Games/PSX, "
 				"or path = ftp://192.168.1.10/games/psx), then restart PSSwanStation.";

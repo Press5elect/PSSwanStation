@@ -40,6 +40,7 @@
 #include "display.h"
 #include "memcard.h"
 #include "netplay.h"
+#include "pacing_wait.h"
 #include "memsearch.h"
 #include "recorder.h"
 #include "speedrun.h"
@@ -1269,6 +1270,7 @@ bool init()
 	retro_set_input_poll(inputPoll);
 	retro_set_input_state(inputState);
 	diag::mark("core: retro_init");
+	pacingwait::startProbe();
 	retro_init();
 	retro_system_info info{};
 	retro_get_system_info(&info);
@@ -1378,6 +1380,8 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	nameTextureFolders();
 	retro_game_info info{};
 	info.path = path.c_str();
+	// A disc played from its drive: the drive watcher leaves it alone.
+	discdrive::setPlaying(discdrive::isDrivePath(path));
 	bool loaded = retro_load_game(path.empty() ? nullptr : &info);
 	// The core starts its BIOS when a disc image cannot be opened, as a console
 	// with an empty tray would; a game that was asked for and is not there is
@@ -1406,6 +1410,9 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 		hwRenderSet = false;
 		options::loadGame("");
 		smb::releaseImages();
+		discdrive::setPlaying(false);
+		if (discdrive::isRamPath(path))
+			discdrive::releaseRam();
 		current = GameInfo();
 		return false;
 	}
@@ -1422,10 +1429,10 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	diag::mark("game: running, serial %s, disc %d of %d, %.2f fps, %u x %u; the start took %.1f s", current.serial.c_str(),
 			discIndex() + 1, std::max(discCount(), 1), av.timing.fps, av.geometry.base_width, av.geometry.base_height,
 			now() - startBegan);
-	rememberSerial(path, current.serial);
+	rememberSerial(discdrive::keptPath(path), current.serial);
 	if (!path.empty())
 	{
-		history::begin(path);
+		history::begin(discdrive::keptPath(path));
 		if (discCount() > 1)
 			history::setDisc(path, discIndex());
 	}
@@ -1517,12 +1524,19 @@ void stop()
 	speedrun::unload();
 	options::loadGame("");
 	smb::releaseImages();
+	// A disc copied into memory: the memory is given back.
+	if (discdrive::isRamPath(current.path))
+		discdrive::releaseRam();
+	discdrive::setPlaying(false);
 	current = GameInfo();
 	{
 		std::lock_guard<std::mutex> lock(messageMutex);
 		messageList.clear();
 	}
 	diag::mark("game: stopped");
+	for (const std::string& line : { pacingwait::takeLine(), pacingwait::clockLine() })
+		if (!line.empty())
+			diag::mark("%s", line.c_str());
 	// What the game wrote (its memory card, a state) goes to the share.
 	netfiles::gameClosed();
 }
@@ -1749,11 +1763,11 @@ void runFrame()
 			clockNext = t;
 		if (clockNext > t)
 		{
-			// Sleeping is coarse: the last third of a millisecond is waited out.
-			const double left = clockNext - t;
-			if (left > 0.0006)
-				usleep((useconds_t)((left - 0.0003) * 1e6));
-			while ((t = now()) < clockNext) {}
+			// Sleeping is coarse and wakes late: sleep for what is left less
+			// the margin measured at start, then wait out the rest giving the
+			// core away, spinning only its end (pacing_wait.h, from Crux2).
+			pacingwait::waitUntilSeconds(clockNext);
+			t = now();
 		}
 		const int due = std::min(1 + (int)((t - clockNext) / period), 2);
 		for (int i = 0; i < due; i++)
@@ -2256,8 +2270,9 @@ void sleepSafeSave(const char *why)
 		marker += "discs=" + disc + "\n";
 	// The game the library started; a test's game started some other way is
 	// kept by its path alone.
-	if (launchedGame.path != current.path)
-		marker = "path=" + current.path + "\nname=" + current.title + "\nfile=" + fileTitle(current.path) + "\n";
+	const std::string kept = discdrive::keptPath(current.path);
+	if (launchedGame.path != kept)
+		marker = "path=" + kept + "\nname=" + current.title + "\nfile=" + fileTitle(kept) + "\n";
 	const std::string path = statePath(ResumeSlot);
 	const std::string reason = why;
 	waitForResume();

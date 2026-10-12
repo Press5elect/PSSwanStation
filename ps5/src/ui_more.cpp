@@ -28,6 +28,7 @@
 #include "update.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <ctime>
@@ -1405,11 +1406,12 @@ void safeStartPage(Frame& f)
 				storage::syncDisplayMode(appDir + "sce_sys/param.json", 0);
 				inform("Done", "From the next start the display output is 59.94 Hz. Close PSSwanStation and start it again.");
 			}));
-	items.push_back(action(icon::Shield, "Stay in the sandbox", "Switches off USB drives and keeping your files outside the "
-			"title folder, which are what make PSSwanStation leave its sandbox when it starts. Your files outside stay "
-			"where they are.", [] {
+	items.push_back(action(icon::Shield, "Stay in the sandbox", "Switches off USB drives, the USB disc drive, USB controllers "
+			"and keeping your files outside the title folder, which are what make PSSwanStation leave its sandbox when it "
+			"starts. Your files outside stay where they are.", [] {
 				options::Frontend& o = options::frontend();
 				o.usb = false;
+				o.discDrive = false;
 				o.filesAt = 0;
 				options::saveFrontend();
 				inform("Done", "From the next start PSSwanStation stays in its sandbox and uses the files in its own folder.");
@@ -1421,6 +1423,7 @@ void safeStartPage(Frame& f)
 				options::resetFrontend();
 				// Where the files are is not an interface setting.
 				options::frontend().usb = before.usb;
+				options::frontend().discDrive = before.discDrive;
 				options::frontend().filesAt = before.filesAt;
 				options::frontend().cardsOnShare = before.cardsOnShare;
 				options::frontend().coversFromShare = before.coversFromShare;
@@ -3010,6 +3013,11 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs a resident "
 					"Lapy service or the ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
 					"starts."));
+			items.push_back(toggle("USB disc drive", &f.discDrive,
+					"Plays PlayStation discs from a USB CD or DVD drive plugged into the console (the console's own drive "
+					"cannot read CDs). A disc in the drive is under the library's Disc tab; before it starts PSSwanStation "
+					"asks whether to copy it to a folder, copy it into memory, or play it from the drive. Like USB drives, "
+					"this makes PSSwanStation leave its sandbox when it starts, and takes effect the next time it starts."));
 			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
 					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
 					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "
@@ -3300,6 +3308,82 @@ void pauseMoreItems(std::vector<Item>& items)
 	if (options::frontend().hotkeys)
 		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
 				"menu: what to hold.", [] { push(Page::Shortcuts); }));
+}
+
+// ------------------------------------------------- a disc in a USB drive
+
+// How the disc in `chosen` is to be played: copied to a folder and played
+// from there, copied into memory, or played from the drive.
+void discDrivePage(Frame& f)
+{
+	discdrive::Disc disc;
+	if (!discdrive::discOf(chosen.path, disc))
+	{
+		deferred = [] {
+			pop();
+			message("The disc is not there", "The disc came out of the drive, or the drive was unplugged.");
+		};
+		return;
+	}
+	const int slot = f.a;
+	const unsigned mb = (unsigned)(disc.bytes >> 20);
+	std::vector<Item> items;
+	{
+		Item item = action(icon::Download, "Copy it, then play the copy",
+				format("Reads the whole disc (%u MB) and writes it as a .bin and .cue, with an .sbi for a LibCrypt-protected "
+				"disc, to the place you choose; the copy is then in the library and plays without the disc. Reading it "
+				"takes a few minutes, as fast as the drive goes.", mb), {});
+		item.menu = true;
+		for (int d = 0; d < discdrive::DestinationCount; d++)
+		{
+			std::string why;
+			const bool can = !discdrive::destinationFolder(d, &why).empty();
+			std::string name = discdrive::destinationName(d);
+			name[0] = (char)std::toupper((unsigned char)name[0]);
+			item.choices.push_back(can ? name : name + "  (cannot be written)");
+		}
+		item.confirmHint = "Choose where";
+		item.choose = [disc, slot](int destination) {
+			std::string why;
+			if (discdrive::destinationFolder(destination, &why).empty())
+			{
+				message("The copy cannot go there", why);
+				return;
+			}
+			discdrive::startCopy(disc, destination);
+			pop();
+			loadingBegin();
+			push(Page::Loading, slot, 0, "disc:copy", chosen.name);
+		};
+		items.push_back(item);
+	}
+	{
+		const uint64_t memory = freeMemory();
+		std::string info = format("Reads the whole disc (%u MB) into memory first, which takes a minute or two; the game then "
+				"never waits for the drive, and the drive can rest. The memory is given back when the game closes.", mb);
+		if (memory != 0)
+			info += format(" %u MB are free now.", (unsigned)(memory >> 20));
+		items.push_back(action(icon::Memory, "Copy it into memory and play it", info, [disc, slot] {
+			discdrive::startRam(disc);
+			chosen.path = discdrive::ramPath(disc);
+			pop();
+			loadingBegin();
+			push(Page::Loading, slot, 0, "disc:ram", chosen.name);
+		}, memory == 0 || memory > disc.bytes + (64ull << 20)));
+	}
+	items.push_back(action(icon::Disc, "Play it from the drive", "Starts at once. The drive spins while you play, reading a "
+			"little ahead of the game; loading waits for the drive, as on a PlayStation.", [slot] {
+		const library::Game game = chosen;
+		pop();
+		begin(game, slot, 0);
+	}));
+	std::string note = disc.serial.empty() ? disc.name : disc.name + "   " + disc.serial;
+	if (!disc.reading.empty())
+		note += "\nThe drive gives " + disc.reading + ".";
+	if (!disc.fullSectors)
+		note += " Copies made from this drive lose the same.";
+	const Item *focused = panelList(f, "Play the disc", items, 860, 3 * 60 + 10, note);
+	standardHints(focused);
 }
 
 }

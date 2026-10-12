@@ -70,6 +70,7 @@ enum class Page
 	Web,			// the web panel: its switch, the address and the QR code
 	Shaders,		// shader presets brought in from a USB drive
 	WhatsNew,		// what changed: a: the build the console had before (0: every build)
+	DiscDrive,		// how to play the disc in a drive (the game in `chosen`); a: state slot
 };
 
 struct Frame
@@ -169,6 +170,10 @@ const std::string& detailsSerial_();
 // Starts a game. `slot`: a state to start from, -1 none; `disc`: the one in
 // the tray, -1 the one last played.
 void launch(const library::Game& game, int slot, int disc = -1);
+// Starts it now, with no animation and no page before it (ui.cpp).
+void begin(const library::Game& game, int slot, int disc);
+// The loading page's state, fresh for a game being read (ui.cpp).
+void loadingBegin();
 void openDetails(const library::Game& game);
 void openSearch();
 void scanEverything();
@@ -220,6 +225,7 @@ void speedrunPage(Frame& f);
 void webPage(Frame& f);
 void shadersPage(Frame& f);
 void whatsNewPage(Frame& f);
+void discDrivePage(Frame& f);
 
 // The keyboard: asks for a text and hands it to `done` when it is confirmed.
 void askText(const std::string& title, const std::string& initial, bool hidden, bool address,

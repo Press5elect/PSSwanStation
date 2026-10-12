@@ -31,7 +31,7 @@ namespace fe
 std::string rootDir;
 std::string appDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 20;
+const int BuildNumber = 21;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 
@@ -217,6 +217,8 @@ int main(int, char **)
 	audio::setVolume(options::frontend().volume);
 
 	diag::mark("main: emulator");
+	// The emulator's disc reader opens the discs in USB drives too.
+	discdrive::installOpener();
 	if (!host::init())
 	{
 		diag::notify("%s: the emulator could not be started", AppName);
@@ -226,6 +228,7 @@ int main(int, char **)
 	gamedb::init();
 	history::init();
 	library::init();
+	discdrive::start();
 	// network.cfg is read: the files kept on the share are brought up to date.
 	netfiles::startUp();
 #if defined(SWANSTATION_HOST)
@@ -352,6 +355,7 @@ int main(int, char **)
 	diag::mark("main: closing");
 	web::shutdown();
 	host::shutdown();
+	discdrive::stop();
 	netfiles::finish();
 	options::saveFrontend();
 	audio::shutdown();

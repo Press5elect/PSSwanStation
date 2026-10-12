@@ -72,6 +72,21 @@ PS5SX2's USB pad decoder     GPL-3.0-or-later GPL-3.0.txt              github.co
                                                                        (ps5/third_party/ps5sx2-usbpad); the reader
                                                                        (ps5/src/ps5/usbpad_ps5.cpp) follows its
                                                                        ProsperoUsbPad.cpp
+Crux2's clock and pacing     GPL-3.0-or-later GPL-3.0.txt              my own Crux2 v1.0.2 (github.com/Press5elect):
+wait                                                                   ps5_clock.h/.c as ps5/src/ps5/clock_ps5.h/.c,
+                                                                       PS5Timing.h's waiting as ps5/src/pacing_wait.h,
+                                                                       its clock test as ps5/tests/clock
+DuckStation's CD-ROM device  GPL-3.0          GPL-3.0.txt              github.com/stenzek/duckstation at 7f4e5d55^
+reader (the disc drive)                                                (Connor McLaughlin), the last GPL revision of
+                                                                       src/util/cd_image_device.cpp: the READ CD
+                                                                       modes, their order and checks, written again
+                                                                       for FreeBSD's CAM (ps5/src/discdrive.cpp,
+                                                                       ps5/src/ps5/drive_ps5.cpp); no code copied
+5S2CD's disc reader (the     GPL-3.0          GPL-3.0.txt              github.com/The7mirrors/5S2CD at bb3cffd:
+disc drive)                                                            /dev/cdN, cd(4)'s table of contents in network
+                                                                       byte order, a data sector made whole around
+                                                                       its 2048 bytes (ProsperoDisc.cpp); written
+                                                                       again
 QR Code generator (the web   MIT              MIT.txt                  github.com/nayuki/QR-Code-generator
 panel's code)                                                          (Project Nayuki), cpp/ unmodified
 stb_vorbis, dr_mp3 (music)   MIT / public     MIT.txt                  github.com/nothings/stb,
