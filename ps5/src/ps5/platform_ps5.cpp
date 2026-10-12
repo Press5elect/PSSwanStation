@@ -205,7 +205,8 @@ void earlyInit()
 	if (safeStart)
 		diag::mark("main: the last start did not finish: this one stays in the sandbox, at 59.94 Hz");
 	const int filesAt = options::frontend().filesAt;
-	const bool wantOut = (options::frontend().usb || options::frontend().usbPads != 0 || filesAt == 1 || filesAt == 2
+	const bool wantOut = (options::frontend().usb || options::frontend().discDrive || options::frontend().usbPads != 0
+			|| filesAt == 1 || filesAt == 2
 			|| filesAt == 3) && !safeStart;
 	if (wantOut)
 	{

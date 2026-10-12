@@ -1,10 +1,10 @@
 # PSSwanStation Manual
 
-For build 20 · October 2026
+For build 21 · October 2026
 
 ## About PSSwanStation
 
-PSSwanStation plays PlayStation (PS1) games on a jailbroken PS5, with an interface made for the controller. Inside it is SwanStation, the libretro fork of DuckStation; it draws with Vulkan through the RADV driver built into the title. This manual covers build 20.
+PSSwanStation plays PlayStation (PS1) games on a jailbroken PS5, with an interface made for the controller. Inside it is SwanStation, the libretro fork of DuckStation; it draws with Vulkan through the RADV driver built into the title. This manual covers build 21.
 
 **What you need**
 
@@ -144,9 +144,27 @@ The NAS is brought up to date when PSSwanStation starts, when a game closes, and
 
 **Other places for your files.** "Where my files are kept" can also choose `/data/psswanstation/` on the console, or `PSSwanStation/` on a USB drive, so that replacing or deleting the title's folder can't take your files along. Every place but the title's folder needs a resident Lapy service or the ELF loader on port 9021, as USB drives do.
 
+## Discs from a USB drive
+
+PSSwanStation plays your PlayStation discs from a USB CD or DVD drive plugged into the console. The console's own drive cannot read CDs, and every PlayStation disc is one.
+
+1. Switch on "USB disc drive" in Settings, Games and network. Like USB drives, it makes PSSwanStation leave its sandbox, which needs a resident Lapy service or the ELF loader on port 9021. It takes effect at the next start.
+2. Put the disc in the drive. A few seconds later it is under the library's **Disc** tab, named from its serial (the game database's name when it knows the disc).
+3. Press Cross. PSSwanStation asks how to play it:
+
+| Choice | What it does |
+| --- | --- |
+| Copy it, then play the copy | Reads the whole disc, as fast as the drive goes, and writes it as a `.bin` and `.cue` to the place you pick: the games folder, a USB drive (its `psx` folder), the SMB share or the NFS share (the first games folder of that kind in `network.cfg` that can be written). A LibCrypt-protected disc also gets an `.sbi`. The copy is then in the library and plays without the disc |
+| Copy it into memory and play it | Reads the whole disc into memory first (a minute or two). The game then never waits for the drive, and the memory is given back when the game closes |
+| Play it from the drive | Starts at once. The drive spins at 4x while you play, reading a little ahead of the game; loading waits for the drive, as on a PlayStation |
+
+Copying shows how far it has got; Circle stops it. A copy never replaces a file: a second copy of the same disc gets " (2)" after its name.
+
+**How the drive reads.** The best is whole sectors with their sub-channel, which is everything a PlayStation disc holds: videos, XA sound, CD music and LibCrypt's protection. That needs the console to let PSSwanStation send the drive SCSI commands. If it does not, the disc is read 2048 bytes a sector: games start, but their videos, XA sound and CD music are lost, and so are copies made that way. The choice page and the boot log (`disc drive:` lines) say which way the drive is read.
+
 ## The library
 
-The library shows your games from three places, each a tab once it has games: Internal (the `games` folder), USB and Network. L1 and R1 change tab.
+The library shows your games from four places, each a tab once it has games: Internal (the `games` folder), USB, Network and Disc (a disc in a USB CD or DVD drive). L1 and R1 change tab.
 
 | Button | In the library |
 | --- | --- |
@@ -294,7 +312,7 @@ Settings (in the menu) holds PSSwanStation's own sections and every setting of t
 | Sound | The game's volume; the menus' sound set, interface sounds volume and start-up sound; menu music (the kit's songs, or your own .ogg files in `music/`) and its volume |
 | Controllers | Players: who holds a pad, multitap, each player's controller type. USB controllers (an experiment: PS3 pads, a DualShock 3 on a cable, Xbox 360 pads and other USB gamepads, as the next player or with player 1). The pad: buttons (remapping, turbo), stick dead zone, vibration, player lights, tilt steering |
 | Shortcuts and rewind | The held-OPTIONS shortcuts, fast forward speed, rewind and its memory |
-| Games and network | Where the games are: folders, USB drives, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database |
+| Games and network | Where the games are: folders, USB drives, the USB disc drive, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database |
 | RetroAchievements | Sign in, hardcore mode |
 | Console, Enhancement, Display, Port, Advanced | The emulator's own settings: CPU and BIOS options, internal resolution, texture filtering, PGXP, Close Gaps Between Polygons, widescreen hack, texture replacement and the rest |
 | Debug | Verbose logging, recordings of what you press |
@@ -315,6 +333,8 @@ Two logs say what happened: `psswanstation-boot.log` in the title's folder (writ
 | A game is too slow | Lower the Internal Resolution Scale (Enhancement); FSR 1 or NIS keeps it sharp |
 | No USB tab | Switch on "USB drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; a Lapy service or the ELF loader must be running |
 | No Network tab | Check the `path` lines in `network.cfg` (server by IP address), then restart or press Square, "Scan for games" |
+| No Disc tab | Switch on "USB disc drive" and restart; a Lapy service or the ELF loader must be running. The boot log's `disc drive:` lines say what was found |
+| A disc's videos or music are missing | The drive is read 2048 bytes a sector (the choice page says so): the console did not let the SCSI commands through |
 | Sparkles along polygon edges | Check "Close Gaps Between Polygons" is on (Enhancement); it only works above 1x |
 | The picture stood still for a moment | The boot log has a line "the screen stood still for ..." after the lines saying what was being done |
 

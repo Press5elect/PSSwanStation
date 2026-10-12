@@ -183,7 +183,14 @@ void begin(const library::Game& game, int slot, int disc)
 	std::string serial = quickSerial(game, disc);
 	const std::string& first = game.discs.empty() ? game.path
 			: game.discs[(size_t)std::clamp(disc, 0, (int)game.discs.size() - 1)];
-	if (!game.path.empty() && !smb::isNetworkPath(first))
+	discdrive::Disc inDrive;
+	if (discdrive::isDrivePath(first) || discdrive::isRamPath(first))
+	{
+		// A disc in a drive: its serial was read when it went in.
+		if (discdrive::discOf(first, inDrive) && !inDrive.serial.empty())
+			serial = inDrive.serial;
+	}
+	else if (!game.path.empty() && !smb::isNetworkPath(first))
 	{
 		const std::string read = host::readSerial(first);
 		if (!read.empty())
@@ -191,7 +198,7 @@ void begin(const library::Game& game, int slot, int disc)
 	}
 	{
 		host::LaunchedGame launched;
-		launched.path = game.path;
+		launched.path = discdrive::keptPath(game.path);
 		launched.name = game.name;
 		launched.fileTitle = game.fileTitle;
 		launched.region = game.region;
@@ -264,6 +271,13 @@ void launch(const library::Game& game, int slot, int disc)
 		slot = host::ResumeSlot;
 	if (slot == FromBeginning)
 		slot = -1;
+	// A disc in a drive: how it is to be played is asked first.
+	if (discdrive::isDrivePath(game.path))
+	{
+		chosen = game;
+		push(Page::DiscDrive, slot);
+		return;
+	}
 	const int discs = (int)game.discs.size();
 	if (disc < 0)
 		disc = discs > 1 ? history::get(game.path).disc : 0;
@@ -1089,7 +1103,7 @@ void drawHeader()
 	const float nameEnd = 136 + toUnits(measure(AppName, Title, 44).x);
 
 	// A tab for each place that has games; L1 and R1 when there is a choice.
-	static const char *icons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network };
+	static const char *icons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network, icon::Disc };
 	const bool choice = shownSources() > 1;
 	float x = choice ? nameEnd + 90 : nameEnd + 44;
 	for (int i = 0; i < library::SourceCount; i++)
@@ -3452,8 +3466,27 @@ void loadingPage(Frame& f)
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
 	const bool flies = motion() == MotionFull;
-	const smb::Status status = smb::status();
-	const int state = smb::precacheState();
+	// A disc in a drive being copied (s: "disc:ram" or "disc:copy"), or a
+	// game on the network being read.
+	const bool fromDisc = f.s.rfind("disc:", 0) == 0;
+	smb::Status status;
+	int state;
+	if (fromDisc)
+	{
+		const discdrive::Status d = discdrive::status();
+		status.text = d.text;
+		status.progress = d.progress;
+		status.done = d.done;
+		status.total = d.total;
+		const int job = discdrive::jobState();
+		state = job == discdrive::JobRunning ? smb::PrecacheRunning : job == discdrive::JobDone ? smb::PrecacheDone
+				: smb::PrecacheFailed;
+	}
+	else
+	{
+		status = smb::status();
+		state = smb::precacheState();
+	}
 	LoadingState& l = loadingState;
 	if (state != smb::PrecacheRunning && l.readyAt < 0)
 	{
@@ -3503,6 +3536,9 @@ void loadingPage(Frame& f)
 		doing = "Starting the game";
 	else if (status.waiting)
 		doing = status.text;
+	else if (fromDisc)
+		doing = status.total != 0 ? format("%s   %u of %u MB", status.text.c_str(), (unsigned)(status.done >> 20),
+				(unsigned)(status.total >> 20)) : status.text;
 	else if (status.total != 0)
 		doing = format("Loading into memory   %u of %u MB", (unsigned)(status.done >> 20), (unsigned)(status.total >> 20));
 	else
@@ -3564,7 +3600,12 @@ void loadingPage(Frame& f)
 	if (state == smb::PrecacheRunning)
 	{
 		if (hit(cancelButton))
-			smb::cancelLoad();
+		{
+			if (fromDisc)
+				discdrive::cancel();
+			else
+				smb::cancelLoad();
+		}
 		consumeInput();
 		return;
 	}
@@ -3575,6 +3616,36 @@ void loadingPage(Frame& f)
 		return;
 	const int slot = f.a, disc = f.b;
 	const bool ok = l.ready;
+	if (fromDisc)
+	{
+		const bool copy = f.s == "disc:copy";
+		deferred = [slot, ok, copy] {
+			const std::string error = discdrive::lastError();
+			const std::string copied = discdrive::copiedPath();
+			const int copiedSource = discdrive::copiedSource();
+			discdrive::finishJob();
+			pop();
+			headerSwanAway = false;
+			if (ok)
+			{
+				// The copy is played: from its folder, or from memory.
+				library::Game game = chosen;
+				if (copy)
+				{
+					game.path = copied;
+					game.fileTitle = fileTitle(copied);
+					game.source = copiedSource;
+					// A copy on the share is read as any network game is.
+					launchNow(game, slot, 0);
+				}
+				else
+					begin(game, slot, 0);
+			}
+			else if (!error.empty())
+				message("The disc could not be copied", error);
+		};
+		return;
+	}
 	deferred = [slot, disc, ok] {
 		const std::string error = smb::lastError();
 		smb::finishPrecache();
@@ -3779,7 +3850,7 @@ void searchPage(Frame&)
 		s.scroll = (float)s.cursor;
 	if (s.cursor >= (int)s.scroll + visible)
 		s.scroll = (float)(s.cursor - visible + 1);
-	static const char *const sourceIcons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network };
+	static const char *const sourceIcons[library::SourceCount] = { icon::Drive, icon::Plug, icon::Network, icon::Disc };
 	for (int n = 0; n < visible && (int)s.scroll + n < count; n++)
 	{
 		const int index = (int)s.scroll + n;
@@ -4611,7 +4682,7 @@ void frame()
 		if (game)
 			drawGame(0.72f);
 		else if (page == Page::Details || page == Page::Launch || page == Page::Loading || page == Page::LibraryOptions
-				|| page == Page::Cover)
+				|| page == Page::Cover || page == Page::DiscDrive)
 		{
 			libraryBehind = true;
 			libraryPage(false);
@@ -4651,6 +4722,7 @@ void frame()
 		case Page::Web: webPage(f); break;
 		case Page::Shaders: shadersPage(f); break;
 		case Page::WhatsNew: whatsNewPage(f); break;
+		case Page::DiscDrive: discDrivePage(f); break;
 		}
 		if (game)
 			drawMessages();

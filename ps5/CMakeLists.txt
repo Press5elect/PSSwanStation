@@ -205,6 +205,7 @@ set(frontend_sources
 	src/display.cpp
 	src/chain.cpp
 	src/host.cpp
+	src/pacing_wait.cpp
 	src/options.cpp
 	src/ui.cpp
 	src/ui_widgets.cpp
@@ -234,13 +235,15 @@ if(SWANSTATION_PS5)
 		src/ps5/threads_ps5.cpp
 		src/ps5/stdio_ps5.cpp
 		src/ps5/platform_ps5.cpp
+		src/ps5/clock_ps5.c
+		src/ps5/drive_ps5.cpp
 		src/ps5/elevation/elevation.cpp)
 else()
 	list(APPEND frontend_sources src/host/platform_host.cpp)
 endif()
 
 # With the core's C++17: its disc header does not compile as C++20.
-set(frontend_cxx17_sources src/discid.cpp)
+set(frontend_cxx17_sources src/discid.cpp src/discdrive.cpp)
 
 set(core_glue_sources
 	${ROOT}/src/libretro/libretro_audio_stream.cpp
@@ -287,6 +290,8 @@ set_source_files_properties(third_party/ps5-framegen/src/ps5_framegen.cpp PROPER
 	"-std=c++17;-w;-DPS5_FRAMEGEN_VULKAN_HEADER=\"vulkan_loader.h\"")
 # The two decoders in it are other people's C, compiled as they are.
 set_source_files_properties(src/music.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20;-w")
+# The clock is C (C11 atomics), from Crux2.
+set_source_files_properties(src/ps5/clock_ps5.c PROPERTIES COMPILE_OPTIONS "-std=gnu11")
 # The build's date, in main.cpp alone so a new day recompiles one file.
 string(TIMESTAMP FE_BUILD_DATE "%Y-%m-%d" UTC)
 set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS "FE_BUILD_DATE=\"${FE_BUILD_DATE}\"")

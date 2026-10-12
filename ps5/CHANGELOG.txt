@@ -1,6 +1,34 @@
 PSSwanStation - what changed
 ============================
 
+Build 21
+  Added
+  - Discs from a USB CD or DVD drive (Settings, Games and network, USB
+    disc drive; off at first, and like USB drives it needs PSSwanStation to
+    leave its sandbox). A disc in the drive is under the library's new Disc
+    tab, named from its serial. Before it starts PSSwanStation asks how to
+    play it: copy it (a .bin and .cue, with an .sbi for a LibCrypt disc) to
+    the games folder, a USB drive, the SMB share or the NFS share and play
+    the copy; copy it into memory and play it from there; or play it from
+    the drive. The drive is read as whole sectors with their sub-channel
+    when it lets PSSwanStation send it the SCSI command for that, else 2048
+    bytes a sector, which loses a game's videos, XA sound and CD music; the
+    choice page and the boot log say which.
+  Changed
+  - Less work for the processor, as in Crux2 1.0.1: the clock comes from
+    the processor's own counter (about 12 ns a read) instead of a system
+    call (about 20 us), for the emulator and the graphics driver; two of
+    the graphics driver's waits sleep instead of going round and round; and
+    pacing by the clock sleeps by a margin measured at each start, giving
+    its core to the other threads until the last quarter of a millisecond.
+    The boot log says what the waits cost when a game closes.
+  - The payload SDK's platform layer at its newest (b5efad5): a fix for
+    wide characters' classes in the C locale.
+  On my console: nothing of this build yet. On the PC, a disc image
+  standing in for the drive was copied byte for byte, played from memory
+  and played from the "drive", for a drive that gives everything and for
+  two that give less.
+
 Build 20
   Added
   - A second way of making frames between the game's: AMD FSR3's

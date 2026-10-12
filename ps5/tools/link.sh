@@ -87,6 +87,10 @@ radv_link_flags=("${filtered[@]}" --wrap=pthread_create)
 # fgetpos and fsetpos: the console's fpos_t is larger than the SDK's
 # (ps5/src/ps5/stdio_ps5.cpp).
 radv_link_flags+=(--wrap=fgetpos --wrap=fsetpos)
+# clock_gettime is a system call of about 20 us on the console: CLOCK_MONOTONIC
+# comes from the processor's counter instead, for the whole title and the
+# graphics driver (ps5/src/ps5/clock_ps5.c, from Crux2).
+radv_link_flags+=(--wrap=clock_gettime)
 
 # Imports a title cannot use as they are (only libkernel_sys exports them, the
 # SDK lists them but the console lacks them, or a title is refused them):

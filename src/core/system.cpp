@@ -525,7 +525,7 @@ std::unique_ptr<CDImage> OpenCDImage(const char* path, Common::Error* error, boo
   if (!media)
     return {};
 
-  if (force_preload || g_settings.cdrom_load_image_to_ram)
+  if ((force_preload || g_settings.cdrom_load_image_to_ram) && media->AllowsPreload())
   {
     if (media->HasSubImages() && media->GetSubImageCount() > 1)
     {

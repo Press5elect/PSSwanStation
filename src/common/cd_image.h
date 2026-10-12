@@ -202,6 +202,11 @@ public:
 
   // Opening disc image.
   static std::unique_ptr<CDImage> Open(const char* filename, OpenFlags open_flags, Common::Error* error);
+  // A frontend's own discs (PSSwanStation: a disc in a USB drive). Asked first
+  // by Open(): true when the path is the hook's, with *out set, or null and
+  // the error set when it could not be opened.
+  using OpenHook = bool (*)(const char* filename, std::unique_ptr<CDImage>* out, Common::Error* error);
+  static void SetOpenHook(OpenHook hook);
   static std::unique_ptr<CDImage> OpenBinImage(const char* filename, OpenFlags open_flags, Common::Error* error);
   static std::unique_ptr<CDImage> OpenCueSheetImage(const char* filename, OpenFlags open_flags, Common::Error* error);
   static std::unique_ptr<CDImage> OpenCHDImage(const char* filename, OpenFlags open_flags, Common::Error* error);
@@ -253,6 +258,11 @@ public:
 
   // Returns true if the image has replacement subchannel data.
   virtual bool HasNonStandardSubchannel() const;
+
+  // False for an image that is a drive, or already in memory, of its own
+  // (PSSwanStation's discs in USB drives): "load the image into memory" leaves
+  // it as it is.
+  virtual bool AllowsPreload() const { return true; }
 
   // Reads a single sector from an index.
   virtual bool ReadSectorFromIndex(void* buffer, const Index& index, LBA lba_in_index) = 0;

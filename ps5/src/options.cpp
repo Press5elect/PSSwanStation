@@ -251,9 +251,10 @@ std::vector<Field> fields()
 	Frontend& c = current;
 	std::vector<Field> list = {
 		{ "library_view", &c.view, nullptr, 0, 62 },
-		{ "source", &c.source, nullptr, 0, 2 },
+		{ "source", &c.source, nullptr, 0, 3 },
 		{ "covers", nullptr, &c.covers, 0, 1 },
 		{ "usb", nullptr, &c.usb, 0, 1 },
+		{ "disc_drive", nullptr, &c.discDrive, 0, 1 },
 		{ "ram_cache", nullptr, &c.ramCache, 0, 1 },
 		{ "notifications", nullptr, &c.notifications, 0, 1 },
 		{ "scaling", &c.scaling, nullptr, 0, 3 },

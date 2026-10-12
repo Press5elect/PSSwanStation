@@ -332,6 +332,7 @@ struct Frontend
 	int source = 0;				// the library tab last open: 0 internal, 1 USB, 2 network
 	bool covers = true;			// download missing covers
 	bool usb = false;			// leave the sandbox at start to read USB drives
+	bool discDrive = false;		// a USB CD or DVD drive: leave the sandbox at start to read it
 	bool ramCache = true;		// read a network game whole into memory before it starts
 	bool notifications = false;	// the console's pop-up notices
 	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch (3, before build 15: fit with FSR 1)
@@ -802,7 +803,8 @@ bool wake();
 // --------------------------------------------------------------- library.cpp
 namespace library
 {
-enum Source { Internal, Usb, Network, SourceCount };
+// Optical: the discs in USB CD and DVD drives (discdrive.cpp).
+enum Source { Internal, Usb, Network, Optical, SourceCount };
 struct Game
 {
 	std::string path;			// the file to start: an image, or an .m3u
@@ -905,6 +907,74 @@ std::string summary();
 void refresh();
 bool refreshing();
 std::string refreshStatus();
+}
+
+// ------------------------------------------------------------- discdrive.cpp
+// A PlayStation disc in a USB CD or DVD drive. Before a disc's game starts the
+// library asks how: copy the disc to a folder (the games folder, a USB drive,
+// the SMB share or the NFS share) and play the copy; copy it into memory and
+// play it from there; or play it from the drive as it spins.
+namespace discdrive
+{
+struct Disc
+{
+	std::string device;		// /dev/cd1
+	std::string serial;		// SLUS-00594, or empty
+	std::string name;		// the game database's, or a name made from the serial
+	uint64_t bytes = 0;		// the whole disc, 2352 bytes a sector
+	int tracks = 0;
+	std::string reading;	// how the drive reads it (for the boot log and the choice page)
+	bool fullSectors = false;	// false: 2048 bytes a sector only (videos and CD music are lost)
+};
+// Starts watching the drives (a thread of its own), when the setting is on.
+void start();
+// Stops it (the title closes).
+void stop();
+// The discs in the drives now; the generation changes when one goes in or out.
+std::vector<Disc> discs();
+unsigned generation();
+// A game's path for a disc: drive://cd1/<name> plays from the drive,
+// driveram://cd1/<name> from the copy in memory startRam() made.
+bool isDrivePath(const std::string& path);
+bool isRamPath(const std::string& path);
+// The path a game is remembered by (history, resuming): a copy in memory is
+// gone at the next start, so it is remembered as its disc in the drive.
+std::string keptPath(const std::string& path);
+std::string streamPath(const Disc& disc);
+std::string ramPath(const Disc& disc);
+// The disc a path is of (false when it is not in a drive now).
+bool discOf(const std::string& path, Disc& out);
+// Makes the emulator's disc reader open those paths (once, at start).
+void installOpener();
+// A game plays from a drive: the watcher leaves the drives alone meanwhile.
+void setPlaying(bool on);
+
+// Copying a disc, into memory or to a folder, on a thread of its own.
+enum Destination { ToGames, ToUsb, ToShare, ToNfs, DestinationCount };
+std::string destinationName(int destination);
+// The folder a copy would go in, or "" when it cannot be written now
+// (`why` says why).
+std::string destinationFolder(int destination, std::string *why = nullptr);
+enum { JobIdle, JobRunning, JobDone, JobFailed };
+void startRam(const Disc& disc);
+void startCopy(const Disc& disc, int destination);
+int jobState();
+struct Status
+{
+	std::string text;
+	float progress = -1.f;
+	uint64_t done = 0, total = 0;	// bytes of the disc read
+};
+Status status();
+void cancel();
+std::string lastError();
+// What a finished copy made: its .cue, and the library's source it is in.
+std::string copiedPath();
+int copiedSource();
+// The job's result was taken: back to idle.
+void finishJob();
+// The game played from memory has ended: its memory is given back.
+void releaseRam();
 }
 
 // ---------------------------------------------------------------- gamedb.cpp

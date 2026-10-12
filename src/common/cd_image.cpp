@@ -16,9 +16,23 @@ uint32_t CDImage::GetBytesPerSector(TrackMode mode)
   return sizes[static_cast<uint32_t>(mode)];
 }
 
+static CDImage::OpenHook s_open_hook = nullptr;
+
+void CDImage::SetOpenHook(OpenHook hook)
+{
+  s_open_hook = hook;
+}
+
 std::unique_ptr<CDImage> CDImage::Open(const char* filename, OpenFlags open_flags, Common::Error* error)
 {
   const char* extension;
+
+  if (s_open_hook)
+  {
+    std::unique_ptr<CDImage> hooked;
+    if (s_open_hook(filename, &hooked, error))
+      return hooked;
+  }
 
 #ifdef __ANDROID__
   std::string filename_display_name(FileSystem::GetDisplayNameFromPath(filename));
