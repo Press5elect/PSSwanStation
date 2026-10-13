@@ -36,6 +36,8 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
+#include <cstdint>
 
 #include <cam/cam.h>
 #include <cam/cam_ccb.h>
@@ -136,19 +138,43 @@ public:
 	{
 		if (passFd < 0 || count == 0)
 			return false;
-		uint8_t cdb[12] = {};
-		cdb[0] = 0xBE;					// READ CD
-		cdb[1] = 0x00;					// any type of sector
-		cdb[2] = (uint8_t)(lba >> 24);
-		cdb[3] = (uint8_t)(lba >> 16);
-		cdb[4] = (uint8_t)(lba >> 8);
-		cdb[5] = (uint8_t)lba;
-		cdb[6] = (uint8_t)(count >> 16);
-		cdb[7] = (uint8_t)(count >> 8);
-		cdb[8] = (uint8_t)count;
-		cdb[9] = 0xF8;					// sync, all headers, user data, EDC and ECC
-		cdb[10] = sub == Sub::Raw ? 0x01 : sub == Sub::Q ? 0x02 : 0x00;
-		return command(cdb, out, count * (RawSector + subSize(sub)));
+		const uint32_t each = RawSector + subSize(sub);
+		uint32_t done = 0;
+		while (done < count)
+		{
+			// As many sectors as one transfer through pass(4) may carry.
+			const uint32_t piece = std::min(count - done, std::max<uint32_t>(1, maxTransfer / each));
+			uint8_t cdb[12] = {};
+			const uint32_t at = lba + done;
+			cdb[0] = 0xBE;				// READ CD
+			cdb[1] = 0x00;				// any type of sector
+			cdb[2] = (uint8_t)(at >> 24);
+			cdb[3] = (uint8_t)(at >> 16);
+			cdb[4] = (uint8_t)(at >> 8);
+			cdb[5] = (uint8_t)at;
+			cdb[6] = (uint8_t)(piece >> 16);
+			cdb[7] = (uint8_t)(piece >> 8);
+			cdb[8] = (uint8_t)piece;
+			cdb[9] = 0xF8;				// sync, all headers, user data, EDC and ECC
+			cdb[10] = sub == Sub::Raw ? 0x01 : sub == Sub::Q ? 0x02 : 0x00;
+			if (command(cdb, out + (size_t)done * each, piece * each))
+			{
+				done += piece;
+				continue;
+			}
+			// E2BIG: more than the kernel maps for one request (build 21's
+			// tests: every 26-sector read refused, each block then read a
+			// sector at a time). Half as much, remembered for the drive.
+			if (lastErrno == E2BIG && piece > 1)
+			{
+				maxTransfer = std::max<uint32_t>(each, (piece * each) / 2);
+				diag::mark("disc drive: %s: a transfer of %u bytes is too big for the kernel; reading %u bytes at a time",
+						device.c_str(), piece * each, (maxTransfer / each) * each);
+				continue;
+			}
+			return false;
+		}
+		return true;
 	}
 
 	bool readData(uint32_t lba, uint32_t count, uint8_t *out) override
@@ -237,6 +263,12 @@ private:
 	lun_id_t targetLun = 0;
 	bool told = false;
 	bool toldToc = false;
+	static constexpr size_t PageSize = 4096;
+	std::vector<uint8_t> bounce;
+	int lastErrno = 0;
+	// The most one READ CD carries: 64 KiB to start with (FreeBSD's DFLTPHYS,
+	// the least any controller takes), halved if the kernel refuses it.
+	uint32_t maxTransfer = 65536;
 
 	void findPass()
 	{
@@ -278,26 +310,44 @@ private:
 
 	bool command(const uint8_t cdb[12], uint8_t *data, uint32_t bytes, uint8_t cdbLength = 12)
 	{
+		// The transfer goes through a buffer that starts on a page: the kernel
+		// counts a buffer's offset into its first page against the most it
+		// maps for one request, so a heap buffer can be refused (E2BIG) at a
+		// size an aligned one is taken at.
+		uint8_t *buffer = nullptr;
+		if (bytes != 0)
+		{
+			const size_t need = ((size_t)bytes + PageSize - 1) / PageSize * PageSize;
+			if (bounce.size() < need + PageSize)
+				bounce.assign(need + PageSize, 0);
+			buffer = reinterpret_cast<uint8_t *>((reinterpret_cast<uintptr_t>(bounce.data()) + PageSize - 1) & ~(uintptr_t)(PageSize - 1));
+		}
 		union ccb ccb;
 		memset(&ccb, 0, sizeof(ccb));
 		ccb.ccb_h.path_id = pathId;
 		ccb.ccb_h.target_id = targetId;
 		ccb.ccb_h.target_lun = targetLun;
-		cam_fill_csio(&ccb.csio, 1, nullptr, bytes != 0 ? CAM_DIR_IN : CAM_DIR_NONE, MSG_SIMPLE_Q_TAG, data, bytes,
+		cam_fill_csio(&ccb.csio, 1, nullptr, bytes != 0 ? CAM_DIR_IN : CAM_DIR_NONE, MSG_SIMPLE_Q_TAG, buffer, bytes,
 				SSD_FULL_SIZE, cdbLength, 10000);
 		memcpy(ccb.csio.cdb_io.cdb_bytes, cdb, cdbLength);
 		ccb.ccb_h.flags |= CAM_DEV_QFRZDIS;
 		const int result = ioctl(passFd, CAMIOCOMMAND, &ccb);
+		lastErrno = result == 0 ? 0 : errno;
 		const uint32_t status = ccb.ccb_h.status & CAM_STATUS_MASK;
 		// All of it, or it did not happen: a short transfer leaves old bytes.
 		if (result == 0 && status == CAM_REQ_CMP && ccb.csio.resid == 0)
+		{
+			if (bytes != 0)
+				memcpy(data, buffer, bytes);
 			return true;
-		if (!told)
+		}
+		// Too big a transfer is the caller's to split, not a failure to tell.
+		if (!told && !(result != 0 && lastErrno == E2BIG))
 		{
 			// The first failure is told in full: the rest of a run repeats it.
 			told = true;
 			diag::mark("disc drive: %s: SCSI 0x%02X through %s failed: %s, CAM status 0x%x, SCSI status 0x%x, %d bytes short",
-					device.c_str(), cdb[0], passName.c_str(), result == 0 ? "answered" : strerror(errno), status,
+					device.c_str(), cdb[0], passName.c_str(), result == 0 ? "answered" : strerror(lastErrno), status,
 					ccb.csio.scsi_status, (int)ccb.csio.resid);
 		}
 		return false;

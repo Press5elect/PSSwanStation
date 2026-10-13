@@ -1,5 +1,6 @@
 #include "cdrom.h"
 #include "common/cd_image.h"
+#include "common/log.h"
 #include "common/platform.h"
 #include "common/state_wrapper.h"
 #include "dma.h"
@@ -9,6 +10,7 @@
 #include "system.h"
 #include <cmath>
 #include <cstring>
+Log_SetChannel(CDROM);
 #if defined(CPU_X64)
 #include <emmintrin.h>
 #endif
@@ -1528,16 +1530,19 @@ void CDROM::ExecuteDrive(TickCount ticks_late)
 
     case DriveState::SeekingPhysical:
     case DriveState::SeekingLogical:
-      DoSeekComplete(ticks_late);
+      if (!WaitForSlowMedia())
+        DoSeekComplete(ticks_late);
       break;
 
     case DriveState::SeekingImplicit:
-      CompleteSeek();
+      if (!WaitForSlowMedia())
+        CompleteSeek();
       break;
 
     case DriveState::Reading:
     case DriveState::Playing:
-      DoSectorRead();
+      if (!WaitForSlowMedia())
+        DoSectorRead();
       break;
 
     case DriveState::ChangingSession:
@@ -1590,10 +1595,40 @@ void CDROM::ExecuteDrive(TickCount ticks_late)
   }
 }
 
+bool CDROM::WaitForSlowMedia()
+{
+  // A disc in a real drive can take a few hundred milliseconds over a seek:
+  // the emulated drive takes that much longer over its seek or sector (as a
+  // real PlayStation's drive does over a hard-to-read disc), and the game and
+  // its frames go on meanwhile, instead of the whole emulator stopping.
+  // Images in files or memory never wait here.
+  if (!m_reader.HasMedia() || !m_reader.GetMedia()->ReadsSlowly() || m_reader.IsReadReady())
+  {
+    if (m_slow_media_wait_ticks >= static_cast<TickCount>(System::MASTER_CLOCK / 20))
+      Log_InfoPrintf("The drive's read took %u ms longer; the emulated drive waited for it",
+                     static_cast<unsigned>(m_slow_media_wait_ticks / (System::MASTER_CLOCK / 1000)));
+    m_slow_media_wait_ticks = 0;
+    return false;
+  }
+
+  // Five seconds of emulated time: past that, the emulator waits as before.
+  if (m_slow_media_wait_ticks >= static_cast<TickCount>(System::MASTER_CLOCK) * 5)
+  {
+    m_slow_media_wait_ticks = 0;
+    return false;
+  }
+
+  constexpr TickCount step = static_cast<TickCount>(System::MASTER_CLOCK / 1000);
+  m_slow_media_wait_ticks += step;
+  m_drive_event->Schedule(step);
+  return true;
+}
+
 void CDROM::ClearDriveState()
 {
   m_drive_state = DriveState::Idle;
   m_drive_event->Deactivate();
+  m_slow_media_wait_ticks = 0;
 }
 
 void CDROM::BeginReading(TickCount ticks_late /* = 0 */, bool after_seek /* = false */)

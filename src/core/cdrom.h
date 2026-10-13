@@ -261,6 +261,7 @@ private:
   TickCount GetTicksForTOCRead();
   CDImage::LBA GetNextSectorToBeRead();
   bool CompleteSeek();
+  bool WaitForSlowMedia();
 
   void BeginCommand(Command command); // also update status register
   void EndCommand();                  // also updates status register
@@ -373,6 +374,10 @@ private:
   std::array<SectorBuffer, NUM_SECTOR_BUFFERS> m_sector_buffers;
 
   CDROMAsyncReader m_reader;
+
+  // How long the emulated drive has been held for a slow image's read (not
+  // kept in save states: a state loaded re-queues its read).
+  TickCount m_slow_media_wait_ticks = 0;
 
   // two 16-bit samples packed in 32-bits
   HeapFIFOQueue<uint32_t, AUDIO_FIFO_SIZE> m_audio_fifo;

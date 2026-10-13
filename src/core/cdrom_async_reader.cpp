@@ -178,6 +178,11 @@ bool CDROMAsyncReader::ReadSectorUncached(CDImage::LBA lba, CDImage::SubChannelQ
   if (!IsUsingThread())
     return InternalReadSectorUncached(lba, subq, data);
 
+  // Only the position wanted, from a slow image: had without queueing behind
+  // the worker's read (which may be a real drive seeking).
+  if (!data && subq && m_media && m_media->PeekSubChannelQ(lba, subq))
+    return true;
+
   RunOnWorker(Op::ReadUncached, lba, subq, data, nullptr);
   return m_thread->op_result;
 }
@@ -230,6 +235,21 @@ bool CDROMAsyncReader::WaitForReadToComplete()
   }
 
   return state && m_buffers[m_buffer_front].result;
+}
+
+bool CDROMAsyncReader::IsReadReady() const
+{
+  if (!IsUsingThread())
+    return true;
+
+  ThreadState* t = m_thread.get();
+  const int request = retro_atomic_load_relaxed_int(&t->request_seq);
+  const size_t tail = retro_atomic_load_relaxed_size(&t->tail);
+  if (retro_atomic_load_acquire_int(&t->ack_seq) != request)
+    return false;
+  if (retro_atomic_load_acquire_int(&t->error_seq) == request)
+    return true;
+  return retro_atomic_load_acquire_size(&t->head) != tail;
 }
 
 void CDROMAsyncReader::ReadSectorNonThreaded(CDImage::LBA lba)

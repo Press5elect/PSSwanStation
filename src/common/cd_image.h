@@ -264,6 +264,15 @@ public:
   // it as it is.
   virtual bool AllowsPreload() const { return true; }
 
+  // True for an image whose reads can take a long time (a disc in a real
+  // drive seeking): the emulated drive takes longer over a seek or a sector
+  // instead of the whole emulator stopping for it.
+  virtual bool ReadsSlowly() const { return false; }
+
+  // The sub-channel Q at a position on the disc, from any thread, without
+  // waiting for a read; false when it cannot be had that way.
+  virtual bool PeekSubChannelQ(LBA lba, SubChannelQ* subq) const { return false; }
+
   // Reads a single sector from an index.
   virtual bool ReadSectorFromIndex(void* buffer, const Index& index, LBA lba_in_index) = 0;
 

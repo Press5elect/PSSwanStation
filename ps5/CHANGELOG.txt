@@ -44,10 +44,20 @@ Build 21
     second ahead of the game at 4x, and the drive slowed down in between.
     It now reads about sixteen seconds ahead at 8x, gives the drive
     something to read every three seconds so it keeps spinning, and the
-    boot log says each time the game had to wait for it. Once two seconds
+    boot log says each time a read had to wait for it. Once two seconds
     are ready the rest is read at a gentle pace (a block every 60 ms) by a
-    thread of the lowest priority: read back to back, the drive held the
-    graphics driver up.
+    thread of the lowest priority.
+  - Still freezing after that: two causes, both in the boot log. Every
+    26-sector read was refused by the console's kernel as too big a
+    transfer (E2BIG), so each block was read again one sector at a time and
+    the reading never got ahead. Reads now go through a page-aligned
+    buffer, and a refused size is halved and remembered (the boot log says
+    the size the drive settled on). And a seek on a real drive takes 150 to
+    500 ms, for which the whole emulator stopped: now the emulated drive
+    takes that long over its seek or sector instead, as a PlayStation's own
+    drive does over a hard-to-read disc, and the game and its pictures go
+    on meanwhile (the emulator's log says how long each wait was). Disc
+    images in files or memory are not affected.
   - A disc in the drive had no cover: it was looked for by the game
     database's short name, and the covers collection names its pictures by
     the disc's Redump name ("Crash Bandicoot (USA)"). The game database now

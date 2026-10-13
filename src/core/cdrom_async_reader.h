@@ -41,6 +41,9 @@ public:
 
   bool WaitForReadToComplete();
 
+  /// Whether WaitForReadToComplete() would return at once.
+  bool IsReadReady() const;
+
   /// Bypasses the sector cache and reads directly from the image.
   bool ReadSectorUncached(CDImage::LBA lba, CDImage::SubChannelQ* subq, SectorBuffer* data);
 
