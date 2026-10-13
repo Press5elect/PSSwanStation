@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - HTTP(S) through the console's own client.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	libSceHttp2 on the calling thread, with the calls, pool sizes and time-outs

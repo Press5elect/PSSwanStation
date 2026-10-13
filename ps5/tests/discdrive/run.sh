@@ -21,6 +21,7 @@
 # refuses Form 2 sectors to such reads altogether ("data-strict": the copy is
 # still made).
 #
+# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

@@ -2,6 +2,7 @@
 	PSSwanStation - netplay's tests: the few things of the frontend that
 	netplay.cpp uses, so that it builds without the rest of the title.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #include "../../src/fe.h"

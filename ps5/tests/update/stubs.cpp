@@ -2,6 +2,7 @@
 	PSSwanStation - the updater's test: the frontend's helpers the updater
 	uses, as main.cpp and diag.cpp have them, so that update.cpp builds alone.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #include "fe.h"

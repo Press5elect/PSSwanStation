@@ -5,6 +5,7 @@
 // place tries the movements of the eight around it and its own, and keeps the
 // one whose two patches differ least, counting against it how far it is from
 // what the others say.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D before;
 layout (set = 0, binding = 1) uniform sampler2D now;

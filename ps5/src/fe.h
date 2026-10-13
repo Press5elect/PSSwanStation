@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the frontend's shared declarations.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The frontend is a small libretro host: it owns the display, the pads, the

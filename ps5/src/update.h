@@ -2,6 +2,7 @@
 	PSSwanStation - the updater: a newer build from the releases page, put in
 	place of this one.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The releases are GitHub's, of the repository this title's source is in:

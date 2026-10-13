@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - audio through libSceAudioOut.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The port is opened as PSFlyCast and PS5 RetroArch open it: the system user

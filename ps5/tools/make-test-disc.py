@@ -11,6 +11,7 @@ all have something to work on.
 
 Needs pycdlib.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import argparse

@@ -2,6 +2,7 @@
 	PSSwanStation (from PSFlyCast) - fgetpos and fsetpos.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5)
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-2.0-or-later
 
 	The payload SDK's stdio.h declares fpos_t as an off_t, 8 bytes, as FreeBSD

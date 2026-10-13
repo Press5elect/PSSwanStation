@@ -15,6 +15,7 @@ a mesh has gaps. ps5/tools/seam-check.py counts both.
 The meshes are laid out from a seed (--frame), so several discs give several
 arrangements of corners. Needs pycdlib.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import argparse

@@ -2,6 +2,7 @@
 	PSSwanStation - RetroAchievements: rcheevos' rc_client and what it needs
 	around it.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	rc_client (rcheevos 12.5) keeps the user, the game's achievements and

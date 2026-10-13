@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - a disc image's serial number, read without starting it.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The emulator's own disc reader opens the image (any format it knows, on a

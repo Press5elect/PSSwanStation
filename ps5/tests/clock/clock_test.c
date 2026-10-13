@@ -1,4 +1,5 @@
 /* PSSwanStation - the title's clock from the processor's counter (src/ps5/clock_ps5.c), on the PC (from Crux2).
+ * SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
  * SPDX-License-Identifier: GPL-3.0+
  *
  *   clock_test <case>     one case a process: the clock starts once in a process

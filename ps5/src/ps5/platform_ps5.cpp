@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the console: folders, the sandbox, the log, the end.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Start-up, in the order PSFlyCast's shell/ps5/ps5_main.cpp found to work:

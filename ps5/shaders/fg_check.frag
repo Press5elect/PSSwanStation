@@ -8,6 +8,7 @@
 // view, or went out of it), and it is marked so (its patches as unlike as can
 // be): fg_choose.frag then believes it nowhere, and the nearer frame is shown
 // there as it is. Where one says otherwise it is believed a little less.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D tidied;
 layout (set = 0, binding = 1) uniform sampler2D fromBefore;

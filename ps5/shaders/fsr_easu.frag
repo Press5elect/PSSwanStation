@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 // PSSwanStation - FSR 1, the edge-adaptive upscale (EASU): the game's picture
 // into an image the size it has on the screen.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D tex;
 layout (push_constant) uniform pushBlock

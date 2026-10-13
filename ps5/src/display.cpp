@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the display: Vulkan on RADV, the swapchain, Dear ImGui.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The console has no Vulkan loader and no window system. RADV (PS5_Vulkan /

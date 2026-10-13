@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - what the interface's files share (ui.cpp, ui_more.cpp).
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	ui.cpp has the page stack, the lists every menu page is made of, the

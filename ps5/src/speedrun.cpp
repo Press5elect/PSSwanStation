@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - a speedrun timer with splits.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The timer counts the emulator's frames (game time: the same on every

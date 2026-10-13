@@ -2,6 +2,7 @@
 	PSSwanStation - where the files are: the user's folders, the move outside
 	the title's folder, the start marker, the display mode in param.json.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The title's folder holds the program and, unless told otherwise, everything

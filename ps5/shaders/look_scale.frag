@@ -2,6 +2,7 @@
 // PSSwanStation - the picture stretched to the size it has on the screen:
 // bilinear, or sharp bilinear (each texel grown by the whole number of times
 // it fits, then only the steps between texels blended).
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D source;
 layout (push_constant) uniform pushBlock

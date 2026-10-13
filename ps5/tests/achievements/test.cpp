@@ -2,6 +2,7 @@
 	PSSwanStation - the achievements module against a stand-in for
 	RetroAchievements' server.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	run.sh builds this with rcheevos' sources and starts mock_server.py; the

@@ -10,6 +10,7 @@ and Lanczos enlargements of the game's own picture, the shift that fits best
 (in quarter pixels), PSNR against Lanczos, and overshoot (brighter or darker
 than every game pixel around it). Needs numpy, scipy and Pillow.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import sys, numpy as np

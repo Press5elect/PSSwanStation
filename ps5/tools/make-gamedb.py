@@ -22,6 +22,7 @@ The second is how a game in the library is known by its file name before it
 has ever run: its details, its cheats and its own settings are all kept by
 serial number.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import os

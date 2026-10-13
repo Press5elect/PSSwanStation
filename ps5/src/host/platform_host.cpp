@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the host build's platform: a PC, for test runs.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	No pad, no sound card and no shell are needed. The pad is a script (the

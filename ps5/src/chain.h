@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - libretro slang shader presets, run on the game's picture.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #pragma once
