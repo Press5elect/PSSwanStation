@@ -25,10 +25,14 @@
 #include "../fe.h"
 
 #include <arpa/inet.h>
+#include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <dirent.h>
 #include <sys/cdio.h>
+#include <sys/disk.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -62,7 +66,30 @@ public:
 		ioc_toc_header header{};
 		if (ioctl(fd, CDIOREADTOCHEADER, &header) != 0)
 		{
-			error = std::string("the drive has no disc it can read (") + strerror(errno) + ")";
+			// No table of contents through cd(4): the disc as one data track,
+			// sized by the medium, as 5S2CD and Crux2 read the drive.
+			const int tocErrno = errno;
+			off_t bytes = 0;
+			if (ioctl(fd, DIOCGMEDIASIZE, &bytes) == 0 && bytes >= (off_t)(DataSector * 32))
+			{
+				TocEntry track;
+				track.track = 1;
+				track.control = 0x04;
+				track.lba = 0;
+				TocEntry end;
+				end.track = 0xAA;
+				end.lba = (uint32_t)(bytes / DataSector);
+				out.push_back(track);
+				out.push_back(end);
+				if (!toldToc)
+				{
+					toldToc = true;
+					diag::mark("disc drive: %s: no table of contents (%s); %u sectors by the medium's size, as one data track",
+							device.c_str(), strerror(tocErrno), end.lba);
+				}
+				return true;
+			}
+			error = std::string("no disc the drive can read (table of contents: ") + strerror(tocErrno) + ")";
 			return false;
 		}
 		if (header.ending_track < header.starting_track || header.starting_track == 0)
@@ -166,6 +193,7 @@ private:
 	target_id_t targetId = 0;
 	lun_id_t targetLun = 0;
 	bool told = false;
+	bool toldToc = false;
 
 	void findPass()
 	{
@@ -237,20 +265,52 @@ private:
 
 std::vector<std::string> deviceNames()
 {
+	// The names an optical drive's node has had, as Crux2 looks for them:
+	// FreeBSD's cd(4) first, then what the rest of the family calls them.
 	std::vector<std::string> names;
-	for (int i = 0; i < 8; i++)
+	std::string passes;
+	if (DIR *dir = opendir("/dev"))
+	{
+		while (const dirent *entry = readdir(dir))
+		{
+			const std::string name = entry->d_name;
+			const bool optical = name.rfind("cd", 0) == 0 || name.rfind("bd", 0) == 0 || name.rfind("dvd", 0) == 0
+					|| name.rfind("acd", 0) == 0;
+			// cd0, cd1...: not their partitions or control nodes.
+			if (optical && name.size() > 2 && std::isdigit((unsigned char)name.back())
+					&& name.find_first_of("sp.", 2) == std::string::npos)
+				names.push_back("/dev/" + name);
+			else if (name.rfind("pass", 0) == 0)
+				passes += " " + name;
+		}
+		closedir(dir);
+	}
+	for (int i = 0; i < 4; i++)
 	{
 		const std::string name = "/dev/cd" + std::to_string(i);
 		struct stat st;
-		if (stat(name.c_str(), &st) == 0)
+		if (stat(name.c_str(), &st) == 0 && std::find(names.begin(), names.end(), name) == names.end())
 			names.push_back(name);
+	}
+	std::sort(names.begin(), names.end());
+	static std::string told;
+	std::string list;
+	for (const std::string& n : names)
+		list += " " + n;
+	if (list + "|" + passes != told)
+	{
+		told = list + "|" + passes;
+		diag::mark("disc drive: /dev has drives:%s; pass devices:%s", list.empty() ? " none" : list.c_str(),
+				passes.empty() ? " none" : passes.c_str());
 	}
 	return names;
 }
 
 std::unique_ptr<Drive> openDevice(const std::string& device, std::string& error)
 {
-	const int fd = ::open(device.c_str(), O_RDONLY);
+	// Not waiting for a disc to be ready, as Crux2 opens it: an empty drive
+	// still opens.
+	const int fd = ::open(device.c_str(), O_RDONLY | O_NONBLOCK);
 	if (fd < 0)
 	{
 		error = device + ": " + strerror(errno);

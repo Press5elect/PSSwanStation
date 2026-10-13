@@ -117,6 +117,17 @@ sys.exit(any(a[i * 2352 + 24:i * 2352 + 2072] != b[i * 2352 + 24:i * 2352 + 2072
 ' '$work/disc/Fake Disc.bin' '$r/PlayStation disc SLUS-99903.bin'"
 check "the copy started" "grep -q 'game: running, serial SLUS-99903' '$work/copy-strict/psswanstation-boot.log'"
 
+echo "== an empty drive, seen with USB drives on and the disc drive setting off"
+root="$work/empty"
+mkdir -p "$root/games" "$root/assets" "$root/data"
+printf 'usb = 1\n' > "$root/frontend.cfg"
+{ echo "455 cross"; echo "470 cross"; echo "490 shot 01-empty"; } > "$root/script.txt"
+SWANSTATION_FAKE_DRIVE="$disc" SWANSTATION_FAKE_DRIVE_MODE=empty SWANSTATION_USB="$root/usb" SWANSTATION_FRAME_CLOCK=1 \
+    SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" SWANSTATION_FRAMES=520 SWANSTATION_SIZE=1280x720 \
+    "$build/swanstation" > "$root/run.log" 2>&1 || true
+grep -E "disc drive:|library: Disc" "$root/psswanstation-boot.log" | sed 's/^/    /'
+check "the empty drive is listed" "grep -q 'no disc in it' '$root/psswanstation-boot.log' && grep -q 'library: Disc: 1 disc' '$root/psswanstation-boot.log'"
+
 echo "== the drive unplugged"
 root="$work/unplug"
 mkdir -p "$root/games" "$root/assets" "$root/data" "$work/unplug-disc"

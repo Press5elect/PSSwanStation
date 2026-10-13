@@ -3326,6 +3326,15 @@ void discDrivePage(Frame& f)
 		};
 		return;
 	}
+	if (!disc.playable)
+	{
+		const std::string why = disc.problem;
+		deferred = [why] {
+			pop();
+			message("Nothing to play in the drive", why);
+		};
+		return;
+	}
 	const int slot = f.a;
 	const unsigned mb = (unsigned)(disc.bytes >> 20);
 	std::vector<Item> items;

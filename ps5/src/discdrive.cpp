@@ -614,10 +614,9 @@ std::string safeName(const std::string& name)
 }
 
 // What is in a drive now: its table of contents, read again; "" when no disc.
-std::string signatureOf(Drive& drive)
+std::string signatureOf(Drive& drive, std::string& error)
 {
 	std::vector<TocEntry> toc;
-	std::string error;
 	if (!drive.readToc(toc, error))
 		return "";
 	std::string text;
@@ -627,12 +626,15 @@ std::string signatureOf(Drive& drive)
 }
 
 // The disc's serial and name, read through the emulator's own reader.
-bool identify(const std::string& device, Disc& out)
+bool identify(const std::string& device, Disc& out, std::string& why)
 {
 	StreamImage image;
 	Common::Error error;
 	if (!image.open(device, "disc", &error))
+	{
+		why = error.GetCodeAndMessage().GetCharArray();
 		return false;
+	}
 	out.device = device;
 	out.serial = System::GetGameCodeForImage(&image, false);
 	gamedb::Info info;
@@ -645,7 +647,20 @@ bool identify(const std::string& device, Disc& out)
 	out.tracks = (int)image.GetTrackCount();
 	out.reading = modeText(image.readMode());
 	out.fullSectors = fullSectors(image.readMode());
+	out.playable = true;
 	return true;
+}
+
+// What the library shows for a drive whose disc cannot be played (or that has
+// none), so that a drive that was found is seen: chosen, it says why.
+Disc driveEntry(const std::string& device, const std::string& problem, bool empty)
+{
+	Disc d;
+	d.device = device;
+	d.playable = false;
+	d.problem = problem;
+	d.name = empty ? "USB disc drive - no disc" : "USB disc drive - disc not readable";
+	return d;
 }
 
 void watch()
@@ -665,33 +680,54 @@ void watch()
 				std::unique_lock<std::mutex> busy(driveMutex);
 				std::string error;
 				std::unique_ptr<Drive> drive = openDevice(device, error);
-				const std::string signature = drive ? signatureOf(*drive) : std::string();
+				const std::string signature = drive ? signatureOf(*drive, error) : std::string();
 				drive.reset();
+				// "-": looked at, no disc; "": not looked at yet.
+				const std::string now_ = signature.empty() ? std::string("-") : signature;
 				std::string before;
 				{
 					std::lock_guard<std::mutex> lock(stateMutex);
 					before = signatures[device];
 				}
-				if (signature == before)
+				if (now_ == before)
 					continue;
 				Disc disc;
-				const bool known = !signature.empty() && identify(device, disc);
+				std::string why;
+				const bool known = !signature.empty() && identify(device, disc, why);
 				busy.unlock();
 				if (!signature.empty() && !known && ++tries[device] < 5)
 					continue;	// a drive still spinning up: asked again at the next pass
 				tries.erase(device);
+				// The console's own drive (cd0) reads no CD: it is listed only
+				// with a disc that plays. A USB drive is listed whatever is in it.
+				const bool own = device == "/dev/cd0";
+				bool listed = known;
 				if (known)
 					diag::mark("disc drive: %s: %s (%s) went in", device.c_str(), disc.name.c_str(),
 							disc.serial.empty() ? "no serial" : disc.serial.c_str());
 				else if (!signature.empty())
-					diag::mark("disc drive: %s: a disc is in, but it could not be read as a PlayStation disc", device.c_str());
-				else if (!before.empty())
-					diag::mark("disc drive: %s: the disc came out", device.c_str());
+				{
+					diag::mark("disc drive: %s: a disc is in, but it could not be read as a PlayStation disc: %s",
+							device.c_str(), why.c_str());
+					disc = driveEntry(device, "A disc is in the drive, but it could not be read as a PlayStation disc: " + why
+							+ " PlayStation discs are CDs; the console's own drive cannot read them.", false);
+					listed = !own;
+				}
+				else
+				{
+					if (!before.empty() && before != "-")
+						diag::mark("disc drive: %s: the disc came out", device.c_str());
+					else
+						diag::mark("disc drive: %s: no disc in it (%s)", device.c_str(), error.empty() ? "nothing to read" : error.c_str());
+					disc = driveEntry(device, "The drive is there, with no disc it can read in it. Put a PlayStation disc in: "
+							"it is read within a few seconds.", true);
+					listed = !own;
+				}
 				std::lock_guard<std::mutex> lock(stateMutex);
-				signatures[device] = signature;
+				signatures[device] = now_;
 				present.erase(std::remove_if(present.begin(), present.end(),
 						[&](const Disc& d) { return d.device == device; }), present.end());
-				if (known)
+				if (listed)
 					present.push_back(disc);
 				changed = true;
 			}
@@ -1081,16 +1117,25 @@ bool openHook(const char *filename, std::unique_ptr<CDImage> *out, Common::Error
 
 void start()
 {
-	if (!options::frontend().discDrive || watching.exchange(true))
+	// The drives are watched whenever PSSwanStation is out of its sandbox for
+	// USB: with "USB disc drive" on, or "USB drives".
+	const options::Frontend& o = options::frontend();
+	if (!o.discDrive && !o.usb)
+	{
+		diag::mark("disc drive: not watched (USB disc drive and USB drives are off)");
+		return;
+	}
+	if (watching.exchange(true))
 		return;
 #if defined(SWANSTATION_PS5)
 	if (!platform::usbAvailable())
 	{
-		diag::mark("disc drive: PSSwanStation is in its sandbox, so the drives cannot be read");
+		diag::mark("disc drive: PSSwanStation is in its sandbox, so the drives cannot be read (leaving it was not granted)");
 		watching = false;
 		return;
 	}
 #endif
+	diag::mark("disc drive: watching the drives");
 	watcher = std::thread(watch);
 }
 
@@ -1298,9 +1343,14 @@ public:
 		mode = m != nullptr ? m : "";
 	}
 
-	bool readToc(std::vector<TocEntry>& out, std::string&) override
+	bool readToc(std::vector<TocEntry>& out, std::string& error) override
 	{
 		out.clear();
+		if (mode == "empty")
+		{
+			error = "the stand-in drive is empty";
+			return false;
+		}
 		for (const CDImage::Track& t : image->GetTracks())
 		{
 			TocEntry e;

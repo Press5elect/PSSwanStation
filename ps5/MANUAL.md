@@ -148,8 +148,8 @@ The NAS is brought up to date when PSSwanStation starts, when a game closes, and
 
 PSSwanStation plays your PlayStation discs from a USB CD or DVD drive plugged into the console. The console's own drive cannot read CDs, and every PlayStation disc is one.
 
-1. Switch on "USB disc drive" in Settings, Games and network. Like USB drives, it makes PSSwanStation leave its sandbox, which needs a resident Lapy service or the ELF loader on port 9021. It takes effect at the next start.
-2. Put the disc in the drive. A few seconds later it is under the library's **Disc** tab, named from its serial (the game database's name when it knows the disc).
+1. The drive is watched whenever PSSwanStation leaves its sandbox for USB: with "USB drives" or "USB disc drive" on in Settings, Games and network (it takes effect at the next start). Leaving the sandbox needs a resident Lapy service or the ELF loader on port 9021.
+2. Put the disc in the drive. A few seconds later it is under the library's **Disc** tab, named from its serial (the game database's name when it knows the disc). A drive with no disc, or with one it cannot read, is listed too ("USB disc drive - no disc"); choosing it says why.
 3. Press Cross. PSSwanStation asks how to play it:
 
 | Choice | What it does |
@@ -333,7 +333,7 @@ Two logs say what happened: `psswanstation-boot.log` in the title's folder (writ
 | A game is too slow | Lower the Internal Resolution Scale (Enhancement); FSR 1 or NIS keeps it sharp |
 | No USB tab | Switch on "USB drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; a Lapy service or the ELF loader must be running |
 | No Network tab | Check the `path` lines in `network.cfg` (server by IP address), then restart or press Square, "Scan for games" |
-| No Disc tab | Switch on "USB disc drive" and restart; a Lapy service or the ELF loader must be running. The boot log's `disc drive:` lines say what was found |
+| No Disc tab | Switch on "USB drives" or "USB disc drive" and restart; a Lapy service or the ELF loader must be running. The boot log's `disc drive:` lines say which drives `/dev` has, whether each opens, and why a disc was not read |
 | A disc's videos or music are missing | The drive is read 2048 bytes a sector (the choice page says so): the console did not let the SCSI commands through |
 | Sparkles along polygon edges | Check "Close Gaps Between Polygons" is on (Enhancement); it only works above 1x |
 | The picture stood still for a moment | The boot log has a line "the screen stood still for ..." after the lines saying what was being done |
