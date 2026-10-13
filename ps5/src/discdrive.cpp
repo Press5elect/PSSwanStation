@@ -59,6 +59,11 @@
 #include <thread>
 #include <unistd.h>
 
+#if defined(SWANSTATION_PS5)
+#include <pthread.h>
+extern "C" int scePthreadSetprio(pthread_t thread, int priority);
+#endif
+
 namespace fe::discdrive
 {
 namespace
@@ -386,6 +391,12 @@ public:
 		// quickly after a seek, without the drive spinning as fast as it goes.
 		reader.drive->setSpeed(8 * 176);
 		worker = std::thread([this] { run(); });
+#if defined(SWANSTATION_PS5)
+		// The reading is the console's least pressing work: the emulator's,
+		// the sound's and the graphics driver's threads come first.
+		const int r = scePthreadSetprio(worker.native_handle(), 767);
+		diag::mark("disc drive: the reading thread's priority set to the lowest (%d)", r);
+#endif
 		return true;
 	}
 
@@ -468,6 +479,14 @@ private:
 	// The drive is given something to read at least this often, so that it
 	// does not slow down or spin down between the game's reads.
 	static constexpr double KeepAwake = 3.0;
+	// With this many blocks ready ahead (about two seconds of the game's
+	// reading), the rest is read at a gentle pace, a block every 60 ms (about
+	// three times the PlayStation's speed), not back to back: a drive kept
+	// busy without a break held the graphics driver up (its submissions waited
+	// up to 166 ms in ten seconds). Below it, and for a block the game waits
+	// for, as fast as the drive goes.
+	static constexpr uint32_t LowWater = 12;
+	static constexpr double Pace = 0.060;
 	uint64_t asks = 0, waits = 0, blocksRead = 0;
 	double waited = 0, longestWait = 0, lastTold = -100;
 
@@ -483,6 +502,7 @@ private:
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		const uint32_t last = (reader.sectors + BlockSectors - 1) / BlockSectors;
+		bool paced = false;
 		while (!stopping)
 		{
 			// The block the game waits for, else the next one ahead not read yet.
@@ -507,6 +527,15 @@ private:
 				if (next == UINT32_MAX)
 					continue;
 			}
+			else if (next != want && !paced && aheadOf(want) >= LowWater)
+			{
+				// Enough ready: a pause before the next block (cut short if the
+				// game moves elsewhere).
+				if (wake.wait_for(lock, std::chrono::duration<double>(Pace)) == std::cv_status::timeout)
+					paced = true;
+				continue;
+			}
+			paced = false;
 			lock.unlock();
 			const uint32_t lba = next * BlockSectors;
 			const uint32_t count = std::min(BlockSectors, reader.sectors - lba);
