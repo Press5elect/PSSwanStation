@@ -322,7 +322,7 @@ Display output is the one Picture setting that cannot be a game's own: the conso
 
 ## Troubleshooting
 
-Two logs say what happened: `psswanstation-boot.log` in the title's folder (written from the first moment of every start, with the two starts before kept as `.1.log` and `.2.log`) and `logs/psswanstation.log`, the emulator's own.
+Two logs say what happened: `psswanstation-boot.log` in the title's folder (written from the first moment of every start, with the two starts before kept as `.1.log` and `.2.log`) and `logs/psswanstation.log`, the emulator's own, in the folder your files are kept in (the title's folder, or `/data/psswanstation/` or a USB drive's `PSSwanStation` when "Where my files are kept" says so).
 
 | Problem | What to do |
 | --- | --- |
