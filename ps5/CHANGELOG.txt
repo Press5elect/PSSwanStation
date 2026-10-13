@@ -40,6 +40,11 @@ Build 21
     PSSwanStation first sees the drive it unlocks it, so the button opens
     it again, and the drive's page has "Eject the disc". The tab is named
     Disc Drive.
+  - Playing from the drive froze every couple of seconds: it read under a
+    second ahead of the game at 4x, and the drive slowed down in between.
+    It now reads about sixteen seconds ahead at 8x, gives the drive
+    something to read every three seconds so it keeps spinning, and the
+    boot log says each time the game had to wait for it.
   On my console: nothing of this build yet. On the PC, a disc image
   standing in for the drive was copied byte for byte, played from memory
   and played from the "drive", for a drive that gives everything and for
