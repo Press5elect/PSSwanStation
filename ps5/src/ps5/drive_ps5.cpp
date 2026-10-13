@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - a USB CD or DVD drive on the console (discdrive_io.h).
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The console's kernel is FreeBSD's: a drive is the cd(4) device /dev/cdN

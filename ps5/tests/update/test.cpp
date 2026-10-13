@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the updater's test.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	    test <work folder> <port of mock_github.py> [<name of one test>]

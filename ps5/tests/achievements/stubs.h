@@ -2,6 +2,7 @@
 	PSSwanStation - the achievements test: what stubs.cpp gives the test
 	beside fe.h's helpers.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #pragma once

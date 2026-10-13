@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the file system the frontend gives the core.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The core reads files through libretro's VFS. Its hybrid VFS

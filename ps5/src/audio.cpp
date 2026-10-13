@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the sound: the emulator's 44.1 kHz to the output's 48.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The emulator runs at the display's pace and the output port at its own

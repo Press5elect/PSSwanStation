@@ -13,7 +13,11 @@ Part                         Licence          Text                     Origin
 SwanStation (the emulator)   GPL-3.0          GPL-3.0.txt              github.com/libretro/swanstation, a fork of
                                                                        DuckStation by Connor McLaughlin (stenzek)
                                                                        and contributors
-The PS5 frontend (ps5/)      GPL-3.0-or-later GPL-3.0.txt              this port
+The PS5 frontend (ps5/)      GPL-3.0-or-later GPL-3.0.txt,             Copyright (C) 2026 Jacob (Press5elect),
+                             with an          ADDITIONAL-TERMS.txt     github.com/Press5elect: this port. Copies
+                             attribution term                          and works based on it, however made (AI
+                                                                       tools included), keep the author's
+                                                                       attributions (ADDITIONAL-TERMS.txt)
   runtime, libc, threads,    GPL-2.0-or-later GPL-3.0.txt (as later    PSFlyCast (shell/ps5), used under the
   network share reader                        version)                 later version
   sandbox elevation client   GPL-3.0-or-later GPL-3.0.txt              ps5-native-app-boilerplate (BlackBearReloaded)

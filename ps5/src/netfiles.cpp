@@ -2,6 +2,7 @@
 	PSSwanStation - the title's own files on a network share: copies of the
 	memory cards, covers, and everything when the files are kept there.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	network.cfg's "files" line names a folder on an SMB or NFS share (smb.cpp,

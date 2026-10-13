@@ -2,6 +2,7 @@
 	PSSwanStation - what is known about a game: its description, who made
 	it and when, by the disc's serial number.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The database is <root>assets/gamedb.zip, made by ps5/tools/make-gamedb.py

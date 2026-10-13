@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - netplay: two consoles play one game over the network.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Lockstep with an input delay. Both sides run the same emulator on the same

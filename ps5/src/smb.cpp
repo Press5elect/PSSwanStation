@@ -4,6 +4,7 @@
 	nfs.cpp's).
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5/ps5_smb.cpp)
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-2.0-or-later
 
 	PSFlyCast's network code, with the emulator's side changed: SwanStation

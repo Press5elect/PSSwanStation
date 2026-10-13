@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the DualSense, read through libScePad.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The calls and the sample layout are PSFlyCast's (shell/ps5/ps5_pad.cpp),

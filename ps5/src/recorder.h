@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - recordings of what the players pressed (recorder.cpp).
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #pragma once

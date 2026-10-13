@@ -1,0 +1,34 @@
+PSSwanStation - additional terms under section 7 of the GNU General Public License, version 3
+=============================================================================================
+
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+SPDX-License-Identifier: GPL-3.0-or-later
+
+PSSwanStation's own code (the PS5 title in ps5/: its frontend, its tools, its
+tests and its changes to SwanStation) is Copyright (C) 2026 Jacob (Press5elect),
+github.com/Press5elect, and is licensed under the GNU General Public License,
+version 3 or later, with the following additional term, as section 7(b) of
+that licence permits:
+
+  Attribution. Anyone who conveys this work, or a work based on it, in source
+  or object form, must preserve these author attributions:
+
+    1. every "SPDX-FileCopyrightText: ... Jacob (Press5elect)" line and every
+       copyright notice naming Jacob (Press5elect), in the files that carry
+       them and in any file made from them;
+    2. this file, in the licence notices of the work;
+    3. in a work with an interface that shows its credits or legal notices
+       (an About page, a credits screen, the documentation), the line
+       "Based on PSSwanStation by Jacob (Press5elect)" or an equivalent one
+       naming Jacob (Press5elect) as the author of the parts taken.
+
+  This holds however a copy or an adaptation is made: by hand, by a tool, or
+  with the help of an AI system (code written, rewritten, translated or
+  summarised by one from this work is a work based on it). It covers parts
+  of the work as well as the whole.
+
+This term adds a requirement to keep attributions; it does not take away any
+of the permissions the GNU General Public License gives. The other parts of
+PSSwanStation (SwanStation, and each library listed in licenses/README.txt)
+remain under their own licences and their own authors' notices, which must be
+kept too.

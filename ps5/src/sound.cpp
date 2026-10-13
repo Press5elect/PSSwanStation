@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the interface's sounds.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The start-up animation is heard as well as seen: water as the swan's head

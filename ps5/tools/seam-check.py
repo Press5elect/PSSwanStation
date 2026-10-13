@@ -8,6 +8,7 @@ seed. Inside each mesh (its outline, a little inside the edge), a magenta
 pixel is a texel taken from outside the polygon's part of the texture, a cyan
 one a gap between polygons. Prints both counts for each mesh.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import importlib.util

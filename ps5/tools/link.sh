@@ -14,6 +14,7 @@
 # (tools/build-radv.sh release) and libc.prx and the host tool rebuilt
 # (tools/rebuild-libc.sh). RADV_ARCHIVE may name another RADV archive.
 #
+# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 target=$1

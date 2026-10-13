@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - a PlayStation disc in a USB CD or DVD drive.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The drive (discdrive_io.h) is read in the best way it allows, tried in

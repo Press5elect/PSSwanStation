@@ -1,5 +1,6 @@
 #version 450
 // PSSwanStation - FSR 1: one triangle over the whole target.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 void main()
 {

@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - finding values in the emulated memory, and watching them.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The way cheats are found: a search starts with every place in the main

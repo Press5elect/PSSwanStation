@@ -3,6 +3,7 @@
  * in another shape. libnfs's sources are compiled with these names in place
  * of libc's (ps5/CMakeLists.txt).
  *
+ * SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
  * The console's sockets as libsmb2 has them (ps5/smb/compat.c, where the

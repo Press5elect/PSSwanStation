@@ -1,6 +1,7 @@
 #version 450
 // PSSwanStation - a 3D scene of the interface (the library's views in space):
 // its mesh, laid out in the screen's pixels.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (location = 0) in vec2 position;
 layout (location = 1) in vec2 coordinate;

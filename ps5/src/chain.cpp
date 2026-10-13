@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - libretro slang shader presets, run on the game's picture.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	A preset of github.com/libretro/slang-shaders (crt-guest-advanced, by

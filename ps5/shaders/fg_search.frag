@@ -10,6 +10,7 @@
 // here), and no movement at all; the one whose two patches differ least is
 // kept, with a small preference for the coarser picture's answer, which keeps
 // flat areas from choosing at random.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D before;
 layout (set = 0, binding = 1) uniform sampler2D now;

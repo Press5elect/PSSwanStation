@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - start-up record and crash report.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	PSFlyCast's (shell/ps5/ps5_diag.cpp), which follows PS5 RetroArch's

@@ -13,6 +13,7 @@ between them (even steps: smooth movement), and the share of pixels that
 differ, edges within two game pixels of their true place not counted.
 Needs numpy, scipy and Pillow.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import sys, statistics

@@ -1,6 +1,7 @@
 #version 450
 // PSSwanStation - a picture drawn into a rectangle of the screen (the game's,
 // under the interface): two triangles, the corners from the push constants.
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (push_constant) uniform pushBlock
 {

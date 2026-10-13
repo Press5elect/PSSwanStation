@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the interface's later pages, and what is drawn over a game.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The pages here are made of the same parts as ui.cpp's (ui_internal.h): a

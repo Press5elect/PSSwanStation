@@ -2,6 +2,7 @@
 	PSSwanStation - libretro shader presets brought in from a USB drive and
 	compiled on the console (slangimport.cpp).
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #pragma once

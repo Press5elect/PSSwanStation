@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - settings: the frontend's own, and every option of the core.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The core describes its settings through libretro's core options (version 2:

@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - the libretro host: the emulator core, run by the title.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	SwanStation is a libretro core, and it is linked into the title as it is:

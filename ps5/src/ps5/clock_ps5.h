@@ -1,4 +1,5 @@
 /* PSSwanStation - the monotonic clock from the processor's own counter (from Crux2 v1.0.1).
+ * SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
  * SPDX-License-Identifier: GPL-3.0+
  *
  * On the console clock_gettime is a system call of about 20 us, while reading the processor's

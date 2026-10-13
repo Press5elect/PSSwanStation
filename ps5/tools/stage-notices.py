@@ -10,6 +10,7 @@ for a reader; ps5/tools/release.py archives each part's source from this file.
 A part whose repository has uncommitted changes is recorded as "dirty": a
 release refuses it. No path of the machine that built it is written.
 
+SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import json
@@ -47,7 +48,8 @@ def main():
              "and 5S2CD's disc readers, "
              "Project Nayuki's QR Code generator, the sandbox elevation "
              "client and Font Awesome Free's icons)",
-        licence="GPL-3.0 as a whole; each library's own in licenses/README.txt",
+        licence="GPL-3.0 as a whole; the PS5 title Copyright (C) 2026 Jacob (Press5elect), with an attribution term "
+                "under section 7(b) (licenses/ADDITIONAL-TERMS.txt); each library's own in licenses/README.txt",
         artifacts=["eboot.bin", "sce_sys/", "README.txt", "CHANGELOG.txt", "LEGAL.txt", "licenses/"],
         source=title))
     parts.append(dict(

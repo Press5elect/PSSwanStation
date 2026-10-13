@@ -1,6 +1,7 @@
 /*
 	PSSwanStation - USB controllers the console does not take as its own.
 
+	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The console's controller library (ScePad) reports only Sony's and the

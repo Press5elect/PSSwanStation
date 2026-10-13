@@ -9,6 +9,7 @@
 // the old scene smeared into the new one. (A fade counts too: nothing is lost,
 // since a fade gives frame generation nothing to move.)
 // One pixel: r is 1 for a cut, g how many parts changed (of 9).
+// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D before;
 layout (set = 0, binding = 1) uniform sampler2D now;

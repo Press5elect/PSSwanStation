@@ -1,6 +1,7 @@
 #!/bin/sh
 # PSSwanStation - builds and runs the pacing wait's test on a PC (src/pacing_wait.h).
 #
+# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
