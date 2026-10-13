@@ -3,7 +3,7 @@
 // screen: each grain a small square of a few screen pixels, a new pattern
 // every frame, strongest in the middle tones (where film's is), fainter in
 // the blacks and whites.
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D source;
 layout (push_constant) uniform pushBlock

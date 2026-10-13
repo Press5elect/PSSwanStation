@@ -1,7 +1,7 @@
 #!/bin/sh
 # PSSwanStation - the title's clock from the processor's counter (src/ps5/clock_ps5.c), on the PC.
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Each case in a process of its own (the clock starts once in a process): with the address and

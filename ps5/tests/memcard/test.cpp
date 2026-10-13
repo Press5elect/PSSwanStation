@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - the memory card module's test (memcard.cpp), for a PC.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Cards are made with blank() and filled with saves built here (as .mcs

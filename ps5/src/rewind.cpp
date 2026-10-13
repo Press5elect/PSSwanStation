@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - rewind: the last while of play, kept in memory.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Every few frames the emulator's state is taken (host.cpp) and handed here.

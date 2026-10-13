@@ -44,7 +44,7 @@ fork's default branch), the files of attach/ and NOTES.md as its text. Build
 updater finds it; then it is read back (the ZIP's digest, the updater against
 the page).
 
-SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+SPDX-FileCopyrightText: 2026 Press5elect
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import argparse

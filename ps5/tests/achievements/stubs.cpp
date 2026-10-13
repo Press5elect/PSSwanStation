@@ -2,7 +2,7 @@
 	PSSwanStation - the achievements test: the frontend's helpers the module
 	uses, without the frontend.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The helpers are main.cpp's, word for word where it matters (a file is

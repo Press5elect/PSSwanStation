@@ -2,7 +2,7 @@
 // and the frame pacing's wait for a frame due by the clock (from Crux2 v1.0.1,
 // its PS5Timing.h).
 //
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Pacing by the clock sleeps for most of what is left of a frame and waits out

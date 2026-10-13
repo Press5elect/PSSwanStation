@@ -2,7 +2,7 @@
 	PSSwanStation (from PSFlyCast) - libc entry points the console's libc does not export.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5)
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-2.0-or-later
 
 	newlocale and freelocale come from the payload SDK's platform layer (RADV's

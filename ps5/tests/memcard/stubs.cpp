@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - the memory card test's stand-ins for the frontend.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	memcard.cpp uses four of fe.h's helpers. They are in main.cpp, which needs

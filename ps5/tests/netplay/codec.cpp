@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - netplay's tests: the packing of the state.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	netplay.cpp is part of this file, so that what it keeps to itself can be

@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - PlayStation memory cards, read and changed as files.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The card's layout, as the psx-spx documentation ("Memory Card Data Format")

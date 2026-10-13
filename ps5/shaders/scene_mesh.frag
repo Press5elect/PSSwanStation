@@ -1,7 +1,7 @@
 #version 450
 // PSSwanStation - a 3D scene's mesh: the picture times the vertex colour,
 // written premultiplied (scene_resolve.frag makes it straight again).
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D picture;
 layout (location = 0) in vec2 uv;

@@ -2,7 +2,7 @@
 	PSSwanStation - cover downloads.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5/ps5_covers.cpp)
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	A game with no cover gets one from the libretro thumbnails collection

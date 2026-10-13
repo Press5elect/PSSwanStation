@@ -2,7 +2,7 @@
 	PSSwanStation - netplay's test: one side of a session, with a made-up
 	emulator in place of the real one.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The module is one per process, so a session is two of this program: one

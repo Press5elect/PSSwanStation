@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - the title's main: start-up order, the frame loop.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	One thread does everything a frame needs, in this order: the pads, the

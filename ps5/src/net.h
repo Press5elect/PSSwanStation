@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - what the network sources share (smb.cpp, ftp.cpp, nfs.cpp).
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-2.0-or-later
 
 	Not for the rest of the frontend: fe.h's smb namespace is what that uses,

@@ -1,5 +1,5 @@
 /* PSSwanStation - the title's monotonic clock from the processor's counter: the runtime of clock_ps5.h.
- * SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+ * SPDX-FileCopyrightText: 2026 Press5elect
  * SPDX-License-Identifier: GPL-3.0+
  *
  * ps5/tools/link.sh wraps clock_gettime for the whole title (--wrap): CLOCK_MONOTONIC is

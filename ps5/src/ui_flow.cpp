@@ -2,7 +2,7 @@
 	PSSwanStation - the library's views in space: covers as cases in a row, a
 	flow, a wall, a cascade, a wheel.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	These are the kind of view Aurora, the Xbox 360's homebrew dashboard, shows

@@ -16,7 +16,7 @@ collection has no codes for.
 Left out: Xploder files (another code format), and codes with a value to be
 filled in ("????"), whose choices a RetroArch file does not name.
 
-SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+SPDX-FileCopyrightText: 2026 Press5elect
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import os

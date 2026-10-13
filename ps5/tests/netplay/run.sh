@@ -36,7 +36,7 @@
 #   13  the packing of the state (codec.cpp)
 #   14  what a step() call costs while playing, at a steady refresh
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

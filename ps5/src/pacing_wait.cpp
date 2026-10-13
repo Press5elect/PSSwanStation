@@ -2,7 +2,7 @@
 // sleeps wake, the frame pacing's wait, and their lines for the boot log (from
 // Crux2 v1.0.1, its PS5Misc.cpp).
 //
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "pacing_wait.h"
