@@ -44,7 +44,10 @@ Build 21
     second ahead of the game at 4x, and the drive slowed down in between.
     It now reads about sixteen seconds ahead at 8x, gives the drive
     something to read every three seconds so it keeps spinning, and the
-    boot log says each time the game had to wait for it.
+    boot log says each time the game had to wait for it. Once two seconds
+    are ready the rest is read at a gentle pace (a block every 60 ms) by a
+    thread of the lowest priority: read back to back, the drive held the
+    graphics driver up.
   - A disc in the drive had no cover: it was looked for by the game
     database's short name, and the covers collection names its pictures by
     the disc's Redump name ("Crash Bandicoot (USA)"). The game database now
