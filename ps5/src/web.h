@@ -2,7 +2,7 @@
 	PSSwanStation - the web panel: the title from a phone or a computer on the
 	same network (web.cpp).
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 */
 #pragma once

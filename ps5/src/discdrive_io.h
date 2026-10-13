@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - a CD or DVD drive, as the disc code reads it.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	What a drive is asked: its table of contents, whole sectors with the SCSI

@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - the game library: what is in the folders.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Three sources, as PSFlyCast has them: the title's own games/ folder, USB

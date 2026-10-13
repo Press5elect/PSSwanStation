@@ -2,7 +2,7 @@
 """
 PSSwanStation - the updater's test: a stand-in for GitHub's releases.
 
-SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+SPDX-FileCopyrightText: 2026 Press5elect
 SPDX-License-Identifier: GPL-3.0-or-later
 
     mock_github.py <work folder> [<a real release ZIP>]

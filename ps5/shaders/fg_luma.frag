@@ -2,7 +2,7 @@
 // PSSwanStation - frame generation: a smaller picture of how bright each part
 // is, which is what movement is looked for in. Nine taps over the part of the
 // source a pixel here stands for.
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D source;
 layout (push_constant) uniform pushBlock

@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - games (and files of the title's own) on an NFS share.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The third kind of network source, beside the SMB share (smb.cpp, through

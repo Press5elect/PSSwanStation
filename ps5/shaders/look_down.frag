@@ -5,7 +5,7 @@
 // keeps everything that was drawn (its edges smooth, nothing shimmers), where
 // a bilinear sample takes four texels of the nine or more under a pixel.
 // Along an axis that is enlarged rather than reduced it is bilinear.
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D source;
 layout (push_constant) uniform pushBlock

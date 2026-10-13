@@ -13,7 +13,7 @@
 #     driver with a headless surface, which ps5/tools/host-test.sh runs to
 #     check the interface and the emulator without a console.
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 cmake_minimum_required(VERSION 3.20)

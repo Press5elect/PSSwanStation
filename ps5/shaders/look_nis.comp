@@ -3,7 +3,7 @@
 // PSSwanStation - NVIDIA Image Scaling, the scaler: NVIDIA's NIS_Main.glsl
 // (ps5/third_party/nis) as this title runs it, in 32-bit floats and with the
 // picture it makes declared as RGBA8 (no device feature needed to write it).
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 #define NIS_GLSL 1
 #define NIS_SCALER 1

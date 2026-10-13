@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - the interface: the library, the menus, the settings.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Screens are pages on a stack. With the stack empty the screen is the
@@ -2450,8 +2450,8 @@ void aboutItems(std::vector<Item>& items)
 			BuildDate)));
 	items.push_back(action(icon::Star, "What's new", "What was added, changed and fixed in every build, newest first.",
 			[] { push(Page::WhatsNew); }));
-	items.push_back(fact("Developer", "Jacob (Press5elect)", "The PS5 port and its interface: Copyright (C) 2026 Jacob "
-			"(Press5elect), github.com/Press5elect."));
+	items.push_back(fact("Developer", "Press5elect", "The PS5 port and its interface: Copyright (C) 2026 Press5elect, "
+			"github.com/Press5elect."));
 	items.push_back(fact("Emulator", format("%s %s", info.library_name != nullptr ? info.library_name : "SwanStation",
 			info.library_version != nullptr ? info.library_version : ""),
 			"SwanStation, linked into this title with a frontend of its own."));
@@ -2477,7 +2477,7 @@ void aboutItems(std::vector<Item>& items)
 		items.push_back(fact("Free memory", format("%u MB", (unsigned)(memory >> 20))));
 	items.push_back(header("Licences"));
 	items.push_back(fact("PSSwanStation", "GPL-3.0+",
-			"The PS5 title is Copyright (C) 2026 Jacob (Press5elect), under the GNU General Public License, version 3 or "
+			"The PS5 title is Copyright (C) 2026 Press5elect, under the GNU General Public License, version 3 or "
 			"later, with an attribution term (section 7(b)): copies and works based on it, however they are made (AI "
 			"tools included), keep its author's credit. licenses/ADDITIONAL-TERMS.txt in the title's folder."));
 	items.push_back(fact("SwanStation", "GPL-3.0",

@@ -2,7 +2,7 @@
 	PSSwanStation - netplay: the connection, the greeting, the state transfer
 	and the lockstep (netplay.h says what it is for).
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Threads. The frame loop's thread calls host(), join(), stop(), step() and

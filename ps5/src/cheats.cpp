@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - cheats and patches, from DuckStation's database.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The codes are those of github.com/duckstation/chtdb, the cheat and patch

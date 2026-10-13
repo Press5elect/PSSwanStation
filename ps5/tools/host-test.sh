@@ -15,7 +15,7 @@
 #
 # Needs python3 with pycdlib (the discs).
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

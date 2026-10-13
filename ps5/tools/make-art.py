@@ -9,7 +9,7 @@
 Everything is drawn here, from shapes: the swan is this port's own mark.
 Needs Pillow and numpy.
 
-SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+SPDX-FileCopyrightText: 2026 Press5elect
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import math

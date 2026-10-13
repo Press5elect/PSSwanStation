@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - recordings of what the players pressed, and playing them back.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	A recording is the state of the game when it began, then, for each frame

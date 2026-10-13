@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - pictures for the interface: covers, the logo.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	A cover is a PNG or JPEG file; decoding one takes a few milliseconds, too

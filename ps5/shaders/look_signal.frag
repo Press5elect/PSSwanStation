@@ -2,7 +2,7 @@
 // PSSwanStation - the picture's look, at the game's own size: the part of the
 // texture that is picture, as a television's input would carry it (the
 // PlayStation's dither undone, S-Video or composite), then its colours.
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D source;
 layout (push_constant) uniform pushBlock

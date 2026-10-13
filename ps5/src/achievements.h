@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - RetroAchievements, through the rcheevos library.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	rcheevos' rc_client does the work: it logs in, identifies the disc by the

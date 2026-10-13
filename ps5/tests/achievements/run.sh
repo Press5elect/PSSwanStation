@@ -17,7 +17,7 @@
 # Everything it writes goes to WORK_DIR (default: a temporary folder, removed
 # at the end; KEEP=1 keeps it).
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

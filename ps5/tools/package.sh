@@ -10,7 +10,7 @@
 # files are, and some tools keep a ZIP's permissions when they unpack it (the
 # same as ps5-native-app-boilerplate's release ZIPs).
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

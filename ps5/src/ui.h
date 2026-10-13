@@ -2,7 +2,7 @@
 	PSSwanStation - the interface's own declarations (ui.cpp,
 	ui_widgets.cpp, texture.cpp).
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The interface is drawn by the interface kit (PS5_VKHomebrewUI, see

@@ -3,7 +3,7 @@
  * has in another shape.
  *
  * Copyright 2026 the PSFlyCast contributors
- * SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+ * SPDX-FileCopyrightText: 2026 Press5elect
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
  * libsmb2's sources are compiled with these names in place of libc's

@@ -28,7 +28,7 @@ the test pokes. What the user earned is remembered until the server ends.
 
 Standard library only.
 
-SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+SPDX-FileCopyrightText: 2026 Press5elect
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import argparse

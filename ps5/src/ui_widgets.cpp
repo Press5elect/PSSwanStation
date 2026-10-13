@@ -2,7 +2,7 @@
 	PSSwanStation - the interface's drawing: fonts, themes, the frame's
 	layers, the pieces every screen is made of.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	Everything is drawn by the interface kit, BlackBearReloaded's

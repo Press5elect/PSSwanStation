@@ -2,7 +2,7 @@
 	PSSwanStation - what the interface draws with: points, colours, and a
 	draw list that turns each call into the interface kit's shapes.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The pages were written against Dear ImGui's draw lists, and keep their

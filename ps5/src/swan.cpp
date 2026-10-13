@@ -1,7 +1,7 @@
 /*
 	PSSwanStation - the swan, drawn so that it can move.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	The title's mark is a swan on water in a rounded box (ps5/tools/make-art.py

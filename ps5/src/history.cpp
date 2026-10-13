@@ -2,7 +2,7 @@
 	PSSwanStation - what was played: when, for how long, and which disc
 	of a game on several was in the tray.
 
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
 	<root>data/history.txt, a line a game: its path in the library, when it was

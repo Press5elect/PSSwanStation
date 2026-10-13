@@ -2,7 +2,7 @@
 	PSSwanStation (from PSFlyCast) - every thread on a 2 MiB stack libkernel allocates.
 
 	Copyright 2026 the PSFlyCast contributors (PSFlyCast, shell/ps5)
-	SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-2.0-or-later
 
 	A thread that asks for no stack size gets 64 KiB on this console (the

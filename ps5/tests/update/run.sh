@@ -3,7 +3,7 @@
 # stand-ins for the frontend's helpers and the project's miniz) and runs it
 # against a local stand-in for GitHub's releases.
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   run.sh [plain] [asan] [tsan]      which builds to run; all three by default

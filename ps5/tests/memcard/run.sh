@@ -1,7 +1,7 @@
 #!/bin/sh
 # PSSwanStation - builds and runs the memory card test on a PC.
 #
-# SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+# SPDX-FileCopyrightText: 2026 Press5elect
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # memcard.cpp with the test and its stand-ins for the frontend, under the

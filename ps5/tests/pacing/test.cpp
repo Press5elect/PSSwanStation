@@ -1,6 +1,6 @@
 // PSSwanStation - pacing_wait.h on the PC, with a simulated console.
 //
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The clock is a number this test moves on: a sleep wakes late by what the

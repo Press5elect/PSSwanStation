@@ -15,7 +15,7 @@
 // another part of itself. The movement kept is then tried a pixel to each
 // side as well, which sets thin lines right. Last, how far the two frames
 // agree under it is kept beside it: fg_blend.frag believes it that far.
-// SPDX-FileCopyrightText: 2026 Jacob (Press5elect)
+// SPDX-FileCopyrightText: 2026 Press5elect
 // SPDX-License-Identifier: GPL-3.0-or-later
 layout (set = 0, binding = 0) uniform sampler2D before;
 layout (set = 0, binding = 1) uniform sampler2D now;
