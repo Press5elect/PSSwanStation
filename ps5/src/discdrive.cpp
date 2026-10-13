@@ -124,15 +124,40 @@ void deinterleaveQ(const uint8_t *raw, uint8_t *q)
 	}
 }
 
+// The Q says where it is (not a catalogue number or an ISRC, ADR 2 and 3).
+// Its CRC is not asked for: some drives give the Q with the CRC left zero,
+// and the emulator wants a CRC that matches (makeCrc gives it one, as the
+// .sbi files of LibCrypt discs do).
 bool qIsRight(const uint8_t *q12, uint32_t lba)
 {
 	CDImage::SubChannelQ subq;
 	std::memcpy(subq.data.data(), q12, 12);
-	if (!subq.IsCRCValid())
+	const uint8_t adr = subq.control_bits & 0x0F;
+	if (adr == 2 || adr == 3)
 		return false;
 	uint8_t m, s, f;
 	msfOf(lba + Pregap, m, s, f);
 	return subq.absolute_minute_bcd == bcd(m) && subq.absolute_second_bcd == bcd(s) && subq.absolute_frame_bcd == bcd(f);
+}
+
+// The CRC of a Q's ten bytes written over its last two, when it is not right
+// already (a drive that gives it zero, or altered as LibCrypt alters it: the
+// emulator's .sbi handling makes those sectors' CRCs good too, since the
+// games check the position, not the CRC). Done as a Q goes to the emulator;
+// what the drive gave is kept as it is, for the .sbi of a copy.
+// A Q that is not even made of BCD digits (a drive's misread) is left with
+// its wrong CRC, which the emulator ignores as a PlayStation would.
+void makeCrc(uint8_t *q12)
+{
+	CDImage::SubChannelQ subq;
+	std::memcpy(subq.data.data(), q12, 12);
+	if (subq.IsCRCValid())
+		return;
+	for (int i = 1; i < 10; i++)
+		if (i != 6 && ((q12[i] & 0x0F) > 9 || (q12[i] >> 4) > 9))
+			return;
+	const uint16_t crc = CDImage::SubChannelQ::ComputeCRC(subq.data);
+	std::memcpy(q12 + 10, &crc, 2);
 }
 
 bool syncIsRight(const uint8_t *sector)
@@ -294,8 +319,21 @@ struct Reader
 		const Sub sub = mode == Mode::SubQ ? Sub::Q : mode == Mode::SubRaw ? Sub::Raw : Sub::None;
 		const uint32_t each = RawSector + subSize(sub);
 		std::vector<uint8_t> buffer((size_t)count * each);
-		if (!drive->readCd(lba, count, sub, buffer.data()))
-			return false;
+		// Data and audio in runs of their own, as the table of contents has
+		// them: audio asked for as CD audio (and as "any type" if the drive
+		// refuses that: a table that puts the border elsewhere than the disc).
+		uint32_t i = 0;
+		while (i < count)
+		{
+			uint32_t run = 1;
+			const bool d = isData(lba + i);
+			while (i + run < count && isData(lba + i + run) == d)
+				run++;
+			uint8_t *at = buffer.data() + (size_t)i * each;
+			if (!(!d && drive->readCd(lba + i, run, sub, at, true)) && !drive->readCd(lba + i, run, sub, at, false))
+				return false;
+			i += run;
+		}
 		for (uint32_t i = 0; i < count; i++)
 		{
 			const uint8_t *sector = buffer.data() + (size_t)i * each;
@@ -397,9 +435,10 @@ public:
 		reader.abort = &stopping;
 		if (!reader.open(device, error))
 			return false;
-		// Eight times the PlayStation's own speed: the read-ahead fills again
-		// quickly after a seek, without the drive spinning as fast as it goes.
-		reader.drive->setSpeed(8 * 176);
+		// As fast as the drive goes: the whole disc is read into memory behind
+		// the game, and the sooner that is done the sooner the drive rests.
+		reader.drive->setSpeed(0xFFFF);
+		started = now();
 		worker = std::thread([this] { run(); });
 #if defined(SWANSTATION_PS5)
 		// The reading is the console's least pressing work: the emulator's,
@@ -420,15 +459,17 @@ public:
 		if (worker.joinable())
 			worker.join();
 		if (asks > 0)
-			diag::mark("disc drive: streamed %llu blocks; reads waited for the drive %llu time(s), %.0f ms at most, "
-					"%.1f s in all (the emulated drive waits with them; the game goes on)", (unsigned long long)blocksRead, (unsigned long long)waits, longestWait * 1000.0, waited);
+			diag::mark("disc drive: %llu of %u blocks were read into memory (%s); reads waited for the drive %llu time(s), "
+					"%.0f ms at most, %.1f s in all (the emulated drive waits with them; the game goes on)",
+					(unsigned long long)blocks.size(), lastBlock, allRead ? "the whole disc" : "the game closed before the rest",
+					(unsigned long long)waits, longestWait * 1000.0, waited);
 	}
 
 	bool get(uint32_t lba, uint8_t *raw, uint8_t *q)
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		const uint32_t block = lba / BlockSectors;
-		// A block the reading ahead could not read is read again for this ask.
+		// A block the reading could not read is read again for this ask.
 		failed.erase(block);
 		if (want != block)
 		{
@@ -451,7 +492,7 @@ public:
 				if (from - lastTold > 10.0)
 				{
 					lastTold = from;
-					diag::mark("disc drive: a read waited %.0f ms for sector %u (%u blocks were read ahead)", took * 1000.0,
+					diag::mark("disc drive: a read waited %.0f ms for sector %u (%u blocks were ready ahead of it)", took * 1000.0,
 							lba, aheadOf(block));
 				}
 			}
@@ -464,12 +505,11 @@ public:
 			std::memcpy(raw, it->second.raw.data() + (size_t)at * RawSector, RawSector);
 		if (q != nullptr)
 			std::memcpy(q, it->second.q.data() + (size_t)at * 12, 12);
-		it->second.used = ++useCount;
 		return true;
 	}
 
 	// A sector's Q if its block is in already: never waits, never moves the
-	// reading ahead (the emulated drive asking where its head is).
+	// reading (the emulated drive asking where its head is).
 	bool peekQ(uint32_t lba, uint8_t *q)
 	{
 		std::lock_guard<std::mutex> lock(mutex);
@@ -485,34 +525,26 @@ private:
 	struct Block
 	{
 		std::vector<uint8_t> raw, q;
-		uint64_t used = 0;
 	};
 	std::mutex mutex;
 	std::condition_variable wake, arrived;
-	std::map<uint32_t, Block> blocks;
+	std::map<uint32_t, Block> blocks;	// every block read, for as long as the game runs
 	std::map<uint32_t, int> failed;
 	uint32_t want = 0;
-	uint64_t useCount = 0;
+	uint32_t lastBlock = 0;
+	bool allRead = false;
 	std::atomic<bool> stopping{ false };
 	std::thread worker;
-	// About sixteen seconds of the game's reading kept ahead of it (96 blocks
-	// of 26 sectors; a PlayStation reads 150 sectors a second), and what was
-	// read kept for a while after (a game reads the same files again).
+	// What the game is about to read comes first: the first block missing
+	// from the sixteen seconds ahead of it (96 blocks of 26 sectors; a
+	// PlayStation reads 150 sectors a second). Then the rest of the disc, in
+	// order from its start, as fast as the drive goes, until all of it is in
+	// memory and the drive has nothing more to do.
 	static constexpr uint32_t Ahead = 96;
-	static constexpr size_t Kept = 400;
-	// The drive is given something to read at least this often, so that it
-	// does not slow down or spin down between the game's reads.
-	static constexpr double KeepAwake = 3.0;
-	// With this many blocks ready ahead (about two seconds of the game's
-	// reading), the rest is read at a gentle pace, a block every 60 ms (about
-	// three times the PlayStation's speed), not back to back: a drive kept
-	// busy without a break held the graphics driver up (its submissions waited
-	// up to 166 ms in ten seconds). Below it, and for a block the game waits
-	// for, as fast as the drive goes.
-	static constexpr uint32_t LowWater = 12;
-	static constexpr double Pace = 0.060;
-	uint64_t asks = 0, waits = 0, blocksRead = 0;
-	double waited = 0, longestWait = 0, lastTold = -100;
+	uint64_t asks = 0, waits = 0;
+	double waited = 0, longestWait = 0, lastTold = -100, started = 0;
+	int audioBlocksSeen = 0;
+	bool audioTold = false;
 
 	uint32_t aheadOf(uint32_t block) const
 	{
@@ -522,16 +554,40 @@ private:
 		return n;
 	}
 
+	// Whether the drive gives sound for the disc's audio sectors, told once
+	// (the first twenty audio blocks may be a pregap's silence).
+	void noteAudio(uint32_t lba, const Block& block)
+	{
+		if (audioTold || reader.isData(lba))
+			return;
+		bool sound = false;
+		for (size_t i = 0; i < block.raw.size() && !sound; i += 2)
+			sound = block.raw[i] != 0 || block.raw[i + 1] != 0;
+		audioBlocksSeen++;
+		if (sound)
+		{
+			audioTold = true;
+			diag::mark("disc drive: the drive gives the disc's CD audio (sound in the audio sectors from %u)", lba);
+		}
+		else if (audioBlocksSeen >= 20)
+		{
+			audioTold = true;
+			diag::mark("disc drive: the drive gives silence for the disc's CD audio (%d audio blocks of zeros, up to sector %u)",
+					audioBlocksSeen, lba);
+		}
+	}
+
 	void run()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
-		const uint32_t last = (reader.sectors + BlockSectors - 1) / BlockSectors;
-		bool paced = false;
+		lastBlock = (reader.sectors + BlockSectors - 1) / BlockSectors;
+		uint32_t sweep = 0;	// the rest of the disc is read from here on
 		while (!stopping)
 		{
-			// The block the game waits for, else the next one ahead not read yet.
+			// The block the game waits for, or the first missing ahead of it;
+			// else the next of the sweep.
 			uint32_t next = UINT32_MAX;
-			for (uint32_t b = want; b < std::min(want + Ahead + 1, last); b++)
+			for (uint32_t b = want; b < std::min(want + Ahead + 1, lastBlock); b++)
 				if (blocks.count(b) == 0 && failed.count(b) == 0)
 				{
 					next = b;
@@ -539,27 +595,23 @@ private:
 				}
 			if (next == UINT32_MAX)
 			{
-				// All read ahead: wait for the game, but not so long that the
-				// drive spins down; then read one more, past what is kept ahead.
-				if (wake.wait_for(lock, std::chrono::duration<double>(KeepAwake)) == std::cv_status::timeout && !stopping)
-					for (uint32_t b = want + Ahead + 1; b < last && b < want + Ahead * 3; b++)
-						if (blocks.count(b) == 0 && failed.count(b) == 0)
-						{
-							next = b;
-							break;
-						}
-				if (next == UINT32_MAX)
-					continue;
+				while (sweep < lastBlock && (blocks.count(sweep) != 0 || failed.count(sweep) != 0))
+					sweep++;
+				if (sweep < lastBlock)
+					next = sweep;
 			}
-			else if (next != want && !paced && aheadOf(want) >= LowWater)
+			if (next == UINT32_MAX)
 			{
-				// Enough ready: a pause before the next block (cut short if the
-				// game moves elsewhere).
-				if (wake.wait_for(lock, std::chrono::duration<double>(Pace)) == std::cv_status::timeout)
-					paced = true;
+				if (!allRead)
+				{
+					allRead = true;
+					diag::mark("disc drive: the whole disc is in memory (%u blocks, %llu MB) after %.0f s; the drive has "
+							"nothing more to read", lastBlock, (unsigned long long)(blocks.size() * BlockSectors * RawSector / 1000000),
+							now() - started);
+				}
+				wake.wait(lock);
 				continue;
 			}
-			paced = false;
 			lock.unlock();
 			const uint32_t lba = next * BlockSectors;
 			const uint32_t count = std::min(BlockSectors, reader.sectors - lba);
@@ -570,20 +622,8 @@ private:
 			lock.lock();
 			if (ok)
 			{
-				blocksRead++;
-				block.used = ++useCount;
+				noteAudio(lba, block);
 				blocks[next] = std::move(block);
-				while (blocks.size() > Kept)
-				{
-					// The least lately used, never one the game is about to read.
-					auto oldest = blocks.end();
-					for (auto it = blocks.begin(); it != blocks.end(); ++it)
-						if ((it->first < want || it->first > want + Ahead) && (oldest == blocks.end() || it->second.used < oldest->second.used))
-							oldest = it;
-					if (oldest == blocks.end())
-						break;
-					blocks.erase(oldest);
-				}
 			}
 			else
 			{
@@ -617,7 +657,10 @@ public:
 	{
 		if (index.file_sector_size == 0 || !hasQ(stream->reader.mode))
 			return CDImage::ReadSubChannelQ(subq, index, lbaInIndex);
-		return stream->get(static_cast<uint32_t>(index.file_offset) + lbaInIndex, nullptr, subq->data.data());
+		if (!stream->get(static_cast<uint32_t>(index.file_offset) + lbaInIndex, nullptr, subq->data.data()))
+			return false;
+		makeCrc(subq->data.data());
+		return true;
 	}
 
 	bool HasNonStandardSubchannel() const override { return hasQ(stream->reader.mode); }
@@ -639,7 +682,10 @@ public:
 			const_cast<StreamImage *>(this)->GenerateSubChannelQ(subq, *index, offset);
 			return true;
 		}
-		return stream->peekQ(static_cast<uint32_t>(index->file_offset) + offset, subq->data.data());
+		if (!stream->peekQ(static_cast<uint32_t>(index->file_offset) + offset, subq->data.data()))
+			return false;
+		makeCrc(subq->data.data());
+		return true;
 	}
 
 protected:
@@ -681,6 +727,7 @@ public:
 		if (lba >= disc->sectors)
 			return false;
 		std::memcpy(subq->data.data(), disc->q.data() + lba * 12, 12);
+		makeCrc(subq->data.data());
 		return true;
 	}
 
@@ -1016,14 +1063,29 @@ std::vector<uint8_t> sbiOf(const RamDisc& disc, int& count)
 		return out;
 	const char header[4] = { 'S', 'B', 'I', '\0' };
 	out.insert(out.end(), header, header + 4);
+	// An altered sector: its CRC is not its ten bytes' (as LibCrypt leaves
+	// them), or it says it is elsewhere than it is. A drive that gives every
+	// CRC wrong (zero) is judged by the position alone.
+	uint32_t badCrcs = 0;
+	for (uint32_t lba = 0; lba < disc.sectors && badCrcs <= 512; lba++)
+	{
+		CDImage::SubChannelQ subq;
+		std::memcpy(subq.data.data(), disc.q.data() + (size_t)lba * 12, 12);
+		if (!subq.IsCRCValid())
+			badCrcs++;
+	}
+	const bool byCrc = badCrcs <= 512;
 	for (uint32_t lba = 0; lba < disc.sectors; lba++)
 	{
 		CDImage::SubChannelQ subq;
 		std::memcpy(subq.data.data(), disc.q.data() + (size_t)lba * 12, 12);
-		if (subq.IsCRCValid())
-			continue;
+		const uint8_t adr = subq.control_bits & 0x0F;
 		uint8_t m, s, f;
 		msfOf(lba + Pregap, m, s, f);
+		const bool misplaced = adr != 2 && adr != 3
+				&& !(subq.absolute_minute_bcd == bcd(m) && subq.absolute_second_bcd == bcd(s) && subq.absolute_frame_bcd == bcd(f));
+		if ((!byCrc || subq.IsCRCValid()) && !misplaced)
+			continue;
 		const uint8_t entry[4] = { bcd(m), bcd(s), bcd(f), 1 };
 		out.insert(out.end(), entry, entry + 4);
 		out.insert(out.end(), subq.data.data(), subq.data.data() + 10);
@@ -1530,8 +1592,9 @@ public:
 		return true;
 	}
 
-	bool readCd(uint32_t lba, uint32_t count, Sub sub, uint8_t *out) override
+	bool readCd(uint32_t lba, uint32_t count, Sub sub, uint8_t *out, bool audio = false) override
 	{
+		(void)audio;
 		if (dataOnly() || (mode == "raw" && sub != Sub::None))
 			return false;
 		// SWANSTATION_FAKE_DRIVE_DELAY_MS: a slow drive, that many ms a command,

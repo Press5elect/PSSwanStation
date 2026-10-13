@@ -56,7 +56,12 @@ public:
 	virtual bool readToc(std::vector<TocEntry>& out, std::string& error) = 0;
 	// `count` sectors from `lba`, each RawSector bytes and then the sub-channel
 	// asked for, into `out`. False when the command fails or is not let through.
-	virtual bool readCd(uint32_t lba, uint32_t count, Sub sub, uint8_t *out) = 0;
+	// `audio`: the sectors are CD audio by the table of contents, and are asked
+	// for as such (READ CD's expected sector type CD-DA, user data only): the
+	// surest way to a drive's audio, where "any type" with every field asked
+	// for has given some drives' silence or an error. A failure of that is
+	// not told in the boot log (the caller asks again as "any type").
+	virtual bool readCd(uint32_t lba, uint32_t count, Sub sub, uint8_t *out, bool audio = false) = 0;
 	// The user data of `count` data sectors (DataSector each).
 	virtual bool readData(uint32_t lba, uint32_t count, uint8_t *out) = 0;
 	// Kilobytes a second; 0xFFFF for as fast as the drive goes.
