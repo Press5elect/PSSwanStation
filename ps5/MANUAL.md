@@ -156,7 +156,7 @@ PSSwanStation plays your PlayStation discs from a USB CD or DVD drive plugged in
 | --- | --- |
 | Copy it, then play the copy | Reads the whole disc, as fast as the drive goes, and writes it as a `.bin` and `.cue` to the place you pick: the games folder, a USB drive (its `psx` folder), the SMB share or the NFS share (the first games folder of that kind in `network.cfg` that can be written). A LibCrypt-protected disc also gets an `.sbi`. The copy is then in the library and plays without the disc |
 | Copy it into memory and play it | Reads the whole disc into memory first (a minute or two). The game then never waits for the drive, and the memory is given back when the game closes |
-| Play it from the drive | Starts at once. The drive spins at 4x while you play, reading a little ahead of the game; loading waits for the drive, as on a PlayStation |
+| Play it from the drive | Starts at once. The drive spins at 8x while you play, reading about sixteen seconds ahead of the game. A jump to another part of the disc takes the drive a fraction of a second; the game waits for it as it would for a PlayStation's own drive, but the picture and sound go on. Loading can take a little longer than from a copy |
 
 **Eject.** The drive's page has "Eject the disc", which opens the tray. A console started with a disc in a USB drive locks the tray before any homebrew runs, so the drive's own button does nothing until PSSwanStation starts: it unlocks the tray as soon as it sees the drive, and the button works again from then on.
 

@@ -322,6 +322,16 @@ public:
 	bool AllowsPreload() const override { return false; }
 
 protected:
+	// The index a position on the disc is in; only reads the table, so any
+	// thread may ask.
+	const Index *indexAt(LBA lba) const
+	{
+		for (const Index& index : m_indices)
+			if (lba >= index.start_lba_on_disc && lba - index.start_lba_on_disc < index.length)
+				return &index;
+		return nullptr;
+	}
+
 	void buildToc(const std::vector<TocEntry>& toc, const std::string& name)
 	{
 		m_filename = name;
@@ -410,8 +420,8 @@ public:
 		if (worker.joinable())
 			worker.join();
 		if (asks > 0)
-			diag::mark("disc drive: streamed %llu blocks; the game waited for the drive %llu time(s), %.0f ms at most, "
-					"%.1f s in all", (unsigned long long)blocksRead, (unsigned long long)waits, longestWait * 1000.0, waited);
+			diag::mark("disc drive: streamed %llu blocks; reads waited for the drive %llu time(s), %.0f ms at most, "
+					"%.1f s in all (the emulated drive waits with them; the game goes on)", (unsigned long long)blocksRead, (unsigned long long)waits, longestWait * 1000.0, waited);
 	}
 
 	bool get(uint32_t lba, uint8_t *raw, uint8_t *q)
@@ -428,7 +438,8 @@ public:
 		asks++;
 		if (blocks.count(block) == 0)
 		{
-			// Not read yet: the game waits for the drive. Counted, and told.
+			// Not read yet: this read waits for the drive (the emulated drive
+			// waits with it, the game goes on). Counted, and told.
 			const double from = now();
 			arrived.wait(lock, [&] { return blocks.count(block) != 0 || failed.count(block) != 0 || stopping; });
 			const double took = now() - from;
@@ -440,7 +451,7 @@ public:
 				if (from - lastTold > 10.0)
 				{
 					lastTold = from;
-					diag::mark("disc drive: the game waited %.0f ms for sector %u (%u blocks were read ahead)", took * 1000.0,
+					diag::mark("disc drive: a read waited %.0f ms for sector %u (%u blocks were read ahead)", took * 1000.0,
 							lba, aheadOf(block));
 				}
 			}
@@ -454,6 +465,19 @@ public:
 		if (q != nullptr)
 			std::memcpy(q, it->second.q.data() + (size_t)at * 12, 12);
 		it->second.used = ++useCount;
+		return true;
+	}
+
+	// A sector's Q if its block is in already: never waits, never moves the
+	// reading ahead (the emulated drive asking where its head is).
+	bool peekQ(uint32_t lba, uint8_t *q)
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		const uint32_t block = lba / BlockSectors;
+		auto it = blocks.find(block);
+		if (it == blocks.end())
+			return false;
+		std::memcpy(q, it->second.q.data() + (size_t)(lba - block * BlockSectors) * 12, 12);
 		return true;
 	}
 
@@ -598,6 +622,25 @@ public:
 
 	bool HasNonStandardSubchannel() const override { return hasQ(stream->reader.mode); }
 	Mode readMode() const { return stream->reader.mode; }
+
+	// A real drive: its seeks take a few hundred milliseconds, which the
+	// emulated drive takes too, rather than the emulator stopping for them.
+	bool ReadsSlowly() const override { return true; }
+
+	bool PeekSubChannelQ(LBA lba, SubChannelQ *subq) const override
+	{
+		const Index *index = indexAt(lba);
+		if (index == nullptr)
+			return false;
+		const LBA offset = lba - index->start_lba_on_disc;
+		if (index->file_sector_size == 0 || !hasQ(stream->reader.mode))
+		{
+			// Made from the table of contents, as every read of it is.
+			const_cast<StreamImage *>(this)->GenerateSubChannelQ(subq, *index, offset);
+			return true;
+		}
+		return stream->peekQ(static_cast<uint32_t>(index->file_offset) + offset, subq->data.data());
+	}
 
 protected:
 	bool ReadSectorFromIndex(void *buffer, const Index& index, LBA lbaInIndex) override
