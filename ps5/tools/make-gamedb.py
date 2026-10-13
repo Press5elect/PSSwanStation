@@ -17,6 +17,9 @@ title reads at start (ps5/src/gamedb.cpp):
 
   games.tsv   serial, name, developer, publisher, year, month, players, genre, description
   names.tsv   a disc's name, reduced to its letters and digits, and its serial
+  discs.tsv   a serial and its disc's Redump name as it is ("Crash Bandicoot (USA)"):
+              the name a disc in a USB drive is given, which is how the covers
+              collection names its pictures
 
 The second is how a game in the library is known by its file name before it
 has ever run: its details, its cheats and its own settings are all kept by
@@ -75,6 +78,7 @@ def main():
 
     rows = {}
     names = {}
+    discs = {}
     # Redump's names are the ones disc images usually carry. A name it lists
     # under several serials (the disc's own, then variants of it) keeps the
     # first, which is the one on the disc.
@@ -82,6 +86,7 @@ def main():
         serial = serial_form(game.get("serial", ""))
         if serial and game.get("name"):
             names.setdefault(reduce(game["name"]), serial)
+            discs.setdefault(serial, clean(game["name"]))
     for game in games(details):
         for serial in dict.fromkeys(serial_form(s) for s in game["serials"]):
             if not serial or serial in rows:
@@ -99,6 +104,7 @@ def main():
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         archive.writestr("games.tsv", "\n".join(rows[s] for s in sorted(rows)) + "\n")
         archive.writestr("names.tsv", "\n".join("%s\t%s" % (n, names[n]) for n in sorted(names) if n) + "\n")
+        archive.writestr("discs.tsv", "\n".join("%s\t%s" % (s, discs[s]) for s in sorted(discs)) + "\n")
     print("%s: %d games, %d names, %d KiB" % (os.path.basename(out), len(rows), len(names),
                                              os.path.getsize(out) >> 10))
     return 0

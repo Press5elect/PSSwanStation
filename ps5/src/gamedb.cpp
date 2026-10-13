@@ -27,6 +27,7 @@ namespace
 std::string gamesText;
 std::unordered_map<std::string, uint32_t> bySerialIndex;	// serial -> the line's start
 std::unordered_map<std::string, std::string> byName;		// reduced name -> serial
+std::unordered_map<std::string, std::string> discName;	// serial -> Redump name (discs.tsv)
 std::string summaryText = "not installed (assets/gamedb.zip)";
 
 bool extract(mz_zip_archive& zip, const char *name, std::string& out)
@@ -70,6 +71,8 @@ void init()
 	}
 	std::string names;
 	const bool ok = extract(zip, "games.tsv", gamesText) && extract(zip, "names.tsv", names);
+	std::string discs;
+	(void)extract(zip, "discs.tsv", discs);	// an older gamedb.zip has none
 	mz_zip_reader_end(&zip);
 	if (!ok)
 	{
@@ -97,6 +100,18 @@ void init()
 			byName.emplace(names.substr(at, tab - at), names.substr(tab + 1, end - tab - 1));
 		at = end + 1;
 	}
+	// A serial's Redump name (an older gamedb.zip has none).
+	if (!discs.empty())
+		for (size_t at = 0; at < discs.size();)
+		{
+			size_t end = discs.find('\n', at);
+			if (end == std::string::npos)
+				end = discs.size();
+			const size_t tab = discs.find('\t', at);
+			if (tab != std::string::npos && tab < end)
+				discName.emplace(discs.substr(at, tab - at), discs.substr(tab + 1, end - tab - 1));
+			at = end + 1;
+		}
 	summaryText = format("%d games described, %d disc names", (int)bySerialIndex.size(), (int)byName.size());
 	diag::mark("gamedb: %s", summaryText.c_str());
 }
@@ -135,6 +150,12 @@ std::string serialByName(const std::string& fileTitle)
 {
 	const auto it = byName.find(reduce(fileTitle));
 	return it == byName.end() ? "" : it->second;
+}
+
+std::string redumpName(const std::string& serial)
+{
+	const auto it = discName.find(serial);
+	return it == discName.end() ? "" : it->second;
 }
 
 std::string summary()
