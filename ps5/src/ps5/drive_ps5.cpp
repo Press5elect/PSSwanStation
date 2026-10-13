@@ -434,6 +434,9 @@ std::vector<std::string> deviceNames()
 			names.push_back(name);
 	}
 	std::sort(names.begin(), names.end());
+	// Drives the console did not attach, read over USB by the title itself.
+	for (const std::string& n : usb::deviceNames())
+		names.push_back(n);
 	static std::string told;
 	std::string list;
 	for (const std::string& n : names)
@@ -449,6 +452,8 @@ std::vector<std::string> deviceNames()
 
 std::unique_ptr<Drive> openDevice(const std::string& device, std::string& error)
 {
+	if (device.rfind("/dev/ugen", 0) == 0)
+		return usb::openDevice(device, error);
 	// Not waiting for a disc to be ready, as Crux2 opens it: an empty drive
 	// still opens.
 	const int fd = ::open(device.c_str(), O_RDONLY | O_NONBLOCK);
