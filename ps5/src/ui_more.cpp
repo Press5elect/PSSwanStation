@@ -3013,12 +3013,14 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"Lets PSSwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
 					"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs a resident "
 					"Lapy service or the ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
-					"starts."));
+					"starts.", [] { library::scan(library::Optical, true); }));
 			items.push_back(toggle("USB disc drive", &f.discDrive,
-					"Plays PlayStation discs from a USB CD or DVD drive plugged into the console (the console's own drive "
-					"cannot read CDs). A disc in the drive is under the library's Disc tab; before it starts PSSwanStation "
-					"asks whether to copy it to a folder, copy it into memory, or play it from the drive. Like USB drives, "
-					"this makes PSSwanStation leave its sandbox when it starts, and takes effect the next time it starts."));
+					"Plays PlayStation discs from a USB CD or DVD drive plugged into the console (the console's "
+					"own drive cannot read CDs). A disc in the drive is under the library's Disc Drive tab, which also says "
+					"why when no drive is found; before a disc starts PSSwanStation asks whether to copy it to a folder, "
+					"copy it into memory, or play it from the drive. Like USB drives, this makes PSSwanStation leave its "
+					"sandbox when it starts, and takes effect the next time it starts.",
+					[] { library::scan(library::Optical, true); }));
 			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
 					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
 					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "
@@ -3341,6 +3343,19 @@ void discDrivePage(Frame& f)
 						message("The tray did not open", why);
 				});
 	};
+	if (disc.device == discdrive::NoDrive)
+	{
+		// No USB drive found: why, and a way to look again at once.
+		std::vector<Item> items;
+		items.push_back(action(icon::Disc, "Look again", "Looks for drives now; PSSwanStation also looks every two "
+				"seconds by itself.", [] {
+					pop();
+					library::scan(library::Optical, true);
+				}));
+		const Item *focused = panelList(f, "No USB disc drive found", items, 860, 60 + 10, disc.problem);
+		standardHints(focused);
+		return;
+	}
 	if (!disc.playable)
 	{
 		std::vector<Item> items;

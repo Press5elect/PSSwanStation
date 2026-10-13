@@ -406,6 +406,13 @@ bool usbAvailable()
 	return getenv("SWANSTATION_USB") != nullptr;
 }
 
+std::string drivesProblem()
+{
+	// The PC test: what the console's start would have said.
+	const char *why = getenv("SWANSTATION_FAKE_DRIVES_PROBLEM");
+	return why != nullptr ? why : "";
+}
+
 std::vector<std::string> usbGameDirs()
 {
 	std::vector<std::string> dirs;

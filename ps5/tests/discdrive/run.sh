@@ -149,7 +149,50 @@ for _ in $(seq 60); do grep -q "went in" "$root/psswanstation-boot.log" 2>/dev/n
 rm -f "$work/unplug-disc/Fake Disc.cue"
 wait $pid || true
 grep -E "disc drive:|library: Disc" "$root/psswanstation-boot.log" | sed 's/^/    /'
-check "the disc left with its drive" "grep -q 'was unplugged' '$root/psswanstation-boot.log' && grep -q 'library: Disc: 0 disc' '$root/psswanstation-boot.log'"
+check "the disc left with its drive" "grep -q 'was unplugged' '$root/psswanstation-boot.log' && grep -q 'library: Disc: no USB disc drive found: The console lists no USB disc drive\\.' '$root/psswanstation-boot.log'"
+
+# No drive reaches the title: the Disc Drive tab still says why. Each run
+# opens the entry that stands in for the drive (02-why).
+nodrive() {
+    local name=$1; shift
+    local root="$work/$name"
+    mkdir -p "$root/games" "$root/assets" "$root/data"
+    printf 'disc_drive = 1\n' > "$root/frontend.cfg"
+    { echo "455 cross"; echo "462 shot 01-library"; echo "470 cross"; echo "490 shot 02-why"; } > "$root/script.txt"
+    env "$@" SWANSTATION_FRAME_CLOCK=1 SWANSTATION_ROOT="$root" SWANSTATION_SCRIPT="$root/script.txt" \
+        SWANSTATION_FRAMES=520 SWANSTATION_SIZE=1280x720 "$build/swanstation" > "$root/run.log" 2>&1 || true
+    grep -E "disc drive:|library: Disc" "$root/psswanstation-boot.log" | sed 's/^/    /'
+}
+
+echo "== no drive at all"
+nodrive none-plugged
+check "the tab says the console lists no drive" "grep -q 'library: Disc: no USB disc drive found: The console lists no USB disc drive\\. If a drive is plugged in' '$work/none-plugged/psswanstation-boot.log'"
+
+echo "== the title kept in its sandbox"
+nodrive sandbox SWANSTATION_FAKE_DRIVE="$disc" SWANSTATION_FAKE_SANDBOX=1 \
+    SWANSTATION_FAKE_DRIVES_PROBLEM="PSSwanStation could not leave its sandbox (status 3), which it needs to see USB drives."
+check "the drive is not looked for" "! grep -q 'watching the drives' '$work/sandbox/psswanstation-boot.log'"
+check "the tab gives the sandbox's reason" "grep -q 'library: Disc: no USB disc drive found: PSSwanStation could not leave its sandbox (status 3)' '$work/sandbox/psswanstation-boot.log'"
+
+echo "== the elevator did not answer, and /dev shows nothing"
+nodrive elevator SWANSTATION_FAKE_DRIVES_PROBLEM="The sandbox elevator did not answer yes (status 2)."
+check "the tab gives both" "grep -q 'library: Disc: no USB disc drive found: The console lists no USB disc drive\\. The sandbox elevator did not answer yes (status 2)\\.' '$work/elevator/psswanstation-boot.log'"
+
+echo "== a USB drive named cd0 (a console without a drive of its own), empty"
+nodrive cd0-usb SWANSTATION_FAKE_DRIVE="$disc" SWANSTATION_FAKE_DRIVE_MODE=empty SWANSTATION_FAKE_DRIVE_NODE=cd0 \
+    SWANSTATION_FAKE_DRIVE_USB=1
+check "its bus says USB" "grep -q 'disc drive: /dev/cd0: PC STAND-IN DRIVE; a USB drive' '$work/cd0-usb/psswanstation-boot.log'"
+check "it is listed, with no disc" "grep -q 'library: Disc: 1 disc' '$work/cd0-usb/psswanstation-boot.log' && grep -q '/dev/cd0: no disc in it' '$work/cd0-usb/psswanstation-boot.log'"
+
+echo "== the console's own drive (cd0, its bus not USB), empty"
+nodrive cd0-own SWANSTATION_FAKE_DRIVE="$disc" SWANSTATION_FAKE_DRIVE_MODE=empty SWANSTATION_FAKE_DRIVE_NODE=cd0 \
+    SWANSTATION_FAKE_DRIVE_USB=0
+check "it is not listed; the tab names it" "grep -q 'library: Disc: no USB disc drive found: The console lists no USB disc drive (it lists cd0 (the console.s own drive))' '$work/cd0-own/psswanstation-boot.log'"
+
+echo "== cd0 whose bus does not say, empty (taken for the console's own, as before)"
+nodrive cd0-unknown SWANSTATION_FAKE_DRIVE="$disc" SWANSTATION_FAKE_DRIVE_MODE=empty SWANSTATION_FAKE_DRIVE_NODE=cd0
+check "the boot log says why" "grep -q 'taken for the console.s own drive (by its name' '$work/cd0-unknown/psswanstation-boot.log'"
+check "it is not listed" "grep -q 'library: Disc: no USB disc drive found' '$work/cd0-unknown/psswanstation-boot.log'"
 
 if (( failed )); then echo "discdrive: $failed check(s) failed"; exit 1; fi
 echo "discdrive: all passed (screenshots in $work)"

@@ -50,6 +50,9 @@ struct SourceState
 	std::vector<Game> list;
 	unsigned generation = 1;
 	std::atomic<bool> busy{false};
+	// The Disc Drive tab: asked again while it was being made, so it is made
+	// again after (a drive's change is not lost to a scan already under way).
+	std::atomic<bool> again{false};
 	std::string status;
 	bool scanned = false;
 	std::thread thread;
@@ -344,11 +347,12 @@ void run(int source, bool force)
 	SourceState& state = sources[source];
 	std::vector<Found> found;
 	std::string status;
-	if (source == Optical)
+	while (source == Optical)
 	{
 		// The discs in the drives, one game each (discdrive.cpp found them).
 		std::vector<Game> games;
-		for (const discdrive::Disc& disc : discdrive::discs())
+		const std::vector<discdrive::Disc> inDrives = discdrive::discs();
+		for (const discdrive::Disc& disc : inDrives)
 		{
 			Game game;
 			game.path = discdrive::streamPath(disc);
@@ -358,14 +362,19 @@ void run(int source, bool force)
 			game.source = Optical;
 			games.push_back(game);
 		}
-		diag::mark("library: Disc: %d disc(s)", (int)games.size());
+		if (inDrives.size() == 1 && inDrives.front().device == discdrive::NoDrive)
+			diag::mark("library: Disc: no USB disc drive found: %s", inDrives.front().problem.c_str());
+		else
+			diag::mark("library: Disc: %d disc(s)", (int)games.size());
 		std::lock_guard<std::mutex> lock(state.mutex);
 		state.list = std::move(games);
 		state.generation++;
 		state.status.clear();
 		state.scanned = true;
 		state.busy = false;
-		return;
+		// Asked again meanwhile: once more, unless another scan took it.
+		if (!state.again.exchange(false) || state.busy.exchange(true))
+			return;
 	}
 	if (source == Internal)
 	{
@@ -514,8 +523,11 @@ void scan(int source, bool force)
 	if (source < 0 || source >= SourceCount)
 		return;
 	SourceState& state = sources[source];
+	if (source == Optical)
+		state.again = true;
 	if (state.busy.exchange(true))
 		return;
+	state.again = false;
 	if (state.thread.joinable())
 		state.thread.join();
 	{

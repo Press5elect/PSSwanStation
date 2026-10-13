@@ -72,6 +72,11 @@ public:
 	// starts with a disc in a USB drive), and opens the tray.
 	virtual bool allowRemoval(std::string& how) = 0;
 	virtual bool eject(std::string& how) = 0;
+	// Whether the drive is on USB, as its bus says: 1 it is, 0 it is not (the
+	// console's own drive), -1 unknown (no pass device to ask).
+	virtual int onUsb() const { return -1; }
+	// The drive's maker and model and its bus, for the boot log; empty when unknown.
+	virtual std::string identity() const { return std::string(); }
 };
 
 // The drives there are now (/dev/cd0, /dev/cd1...).
