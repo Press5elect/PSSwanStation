@@ -46,6 +46,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -381,9 +382,9 @@ public:
 		reader.abort = &stopping;
 		if (!reader.open(device, error))
 			return false;
-		// Four times the PlayStation's own speed: room to read ahead, without
-		// the drive spinning as fast as it goes.
-		reader.drive->setSpeed(4 * 176);
+		// Eight times the PlayStation's own speed: the read-ahead fills again
+		// quickly after a seek, without the drive spinning as fast as it goes.
+		reader.drive->setSpeed(8 * 176);
 		worker = std::thread([this] { run(); });
 		return true;
 	}
@@ -397,6 +398,9 @@ public:
 		wake.notify_all();
 		if (worker.joinable())
 			worker.join();
+		if (asks > 0)
+			diag::mark("disc drive: streamed %llu blocks; the game waited for the drive %llu time(s), %.0f ms at most, "
+					"%.1f s in all", (unsigned long long)blocksRead, (unsigned long long)waits, longestWait * 1000.0, waited);
 	}
 
 	bool get(uint32_t lba, uint8_t *raw, uint8_t *q)
@@ -405,9 +409,31 @@ public:
 		const uint32_t block = lba / BlockSectors;
 		// A block the reading ahead could not read is read again for this ask.
 		failed.erase(block);
-		want = block;
-		wake.notify_all();
-		arrived.wait(lock, [&] { return blocks.count(block) != 0 || failed.count(block) != 0 || stopping; });
+		if (want != block)
+		{
+			want = block;
+			wake.notify_all();
+		}
+		asks++;
+		if (blocks.count(block) == 0)
+		{
+			// Not read yet: the game waits for the drive. Counted, and told.
+			const double from = now();
+			arrived.wait(lock, [&] { return blocks.count(block) != 0 || failed.count(block) != 0 || stopping; });
+			const double took = now() - from;
+			if (took > 0.040)
+			{
+				waits++;
+				waited += took;
+				longestWait = std::max(longestWait, took);
+				if (from - lastTold > 10.0)
+				{
+					lastTold = from;
+					diag::mark("disc drive: the game waited %.0f ms for sector %u (%u blocks were read ahead)", took * 1000.0,
+							lba, aheadOf(block));
+				}
+			}
+		}
 		auto it = blocks.find(block);
 		if (it == blocks.end())
 			return false;
@@ -434,8 +460,24 @@ private:
 	uint64_t useCount = 0;
 	std::atomic<bool> stopping{ false };
 	std::thread worker;
-	static constexpr uint32_t Ahead = 4;	// blocks read ahead of the game
-	static constexpr size_t Kept = 24;
+	// About sixteen seconds of the game's reading kept ahead of it (96 blocks
+	// of 26 sectors; a PlayStation reads 150 sectors a second), and what was
+	// read kept for a while after (a game reads the same files again).
+	static constexpr uint32_t Ahead = 96;
+	static constexpr size_t Kept = 400;
+	// The drive is given something to read at least this often, so that it
+	// does not slow down or spin down between the game's reads.
+	static constexpr double KeepAwake = 3.0;
+	uint64_t asks = 0, waits = 0, blocksRead = 0;
+	double waited = 0, longestWait = 0, lastTold = -100;
+
+	uint32_t aheadOf(uint32_t block) const
+	{
+		uint32_t n = 0;
+		while (blocks.count(block + 1 + n) != 0)
+			n++;
+		return n;
+	}
 
 	void run()
 	{
@@ -453,8 +495,17 @@ private:
 				}
 			if (next == UINT32_MAX)
 			{
-				wake.wait(lock);
-				continue;
+				// All read ahead: wait for the game, but not so long that the
+				// drive spins down; then read one more, past what is kept ahead.
+				if (wake.wait_for(lock, std::chrono::duration<double>(KeepAwake)) == std::cv_status::timeout && !stopping)
+					for (uint32_t b = want + Ahead + 1; b < last && b < want + Ahead * 3; b++)
+						if (blocks.count(b) == 0 && failed.count(b) == 0)
+						{
+							next = b;
+							break;
+						}
+				if (next == UINT32_MAX)
+					continue;
 			}
 			lock.unlock();
 			const uint32_t lba = next * BlockSectors;
@@ -466,14 +517,18 @@ private:
 			lock.lock();
 			if (ok)
 			{
+				blocksRead++;
 				block.used = ++useCount;
 				blocks[next] = std::move(block);
 				while (blocks.size() > Kept)
 				{
-					auto oldest = blocks.begin();
+					// The least lately used, never one the game is about to read.
+					auto oldest = blocks.end();
 					for (auto it = blocks.begin(); it != blocks.end(); ++it)
-						if (it->second.used < oldest->second.used)
+						if ((it->first < want || it->first > want + Ahead) && (oldest == blocks.end() || it->second.used < oldest->second.used))
 							oldest = it;
+					if (oldest == blocks.end())
+						break;
 					blocks.erase(oldest);
 				}
 			}
@@ -1404,6 +1459,16 @@ public:
 	{
 		if (dataOnly() || (mode == "raw" && sub != Sub::None))
 			return false;
+		// SWANSTATION_FAKE_DRIVE_DELAY_MS: a slow drive, that many ms a command,
+		// and 1.5 s to spin up again after two seconds idle.
+		if (const char *delay = getenv("SWANSTATION_FAKE_DRIVE_DELAY_MS"))
+		{
+			const double t = now();
+			if (lastRead > 0 && t - lastRead > 2.0)
+				usleep(1500000);
+			usleep((useconds_t)(atoi(delay) * 1000));
+			lastRead = now();
+		}
 		const uint32_t each = RawSector + subSize(sub);
 		for (uint32_t i = 0; i < count; i++)
 		{
@@ -1450,6 +1515,7 @@ public:
 	std::string route() const override { return dataOnly() ? "no pass device (the PC's stand-in)" : "the PC's stand-in"; }
 
 private:
+	double lastRead = 0;
 	bool dataOnly() const { return mode.rfind("data", 0) == 0; }
 
 	std::unique_ptr<CDImage> image;

@@ -80,6 +80,12 @@ echo "== from the drive"
 run stream "" "$stream_presses"
 check "started from the drive" "grep -q 'game: starting drive://cd1/' '$work/stream/psswanstation-boot.log' && grep -q 'game: running, serial SLUS-99903' '$work/stream/psswanstation-boot.log'"
 
+echo "== from a slow drive (40 ms a read, spinning down when idle)"
+SWANSTATION_FAKE_DRIVE_DELAY_MS=40 run stream-slow "" "$stream_presses"
+check "started from the slow drive" "grep -q 'game: running, serial SLUS-99903' '$work/stream-slow/psswanstation-boot.log'"
+check "the stream says what the game waited" "grep -q 'disc drive: streamed' '$work/stream-slow/psswanstation-boot.log'"
+grep -E "streamed|waited" "$work/stream-slow/psswanstation-boot.log" | sed 's/^/    /'
+
 echo "== copy, a drive with no sub-channel"
 run copy-raw raw "$copy_presses"
 r="$work/copy-raw/games"
