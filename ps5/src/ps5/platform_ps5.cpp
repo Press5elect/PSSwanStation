@@ -73,6 +73,7 @@ bool elevated;
 bool safeStart;
 bool outsideUsed;
 std::string outsideWhy;
+std::string drivesWhy;		// drivesProblem()
 std::vector<std::string> usbDirs;
 
 bool hasFile(const std::string& path)
@@ -82,13 +83,16 @@ bool hasFile(const std::string& path)
 }
 
 // Whether /dev shows an optical drive (cd0, cd1...).
+// cd0 alone does not count: on a console with a drive of its own that is
+// its drive, which reads no CD, and a /dev that shows it may still not show
+// a USB drive plugged in later. The elevator is sent then too.
 bool devHasDrives()
 {
 	bool found = false;
 	if (DIR *dir = opendir("/dev"))
 	{
 		while (const dirent *entry = readdir(dir))
-			if (std::strncmp(entry->d_name, "cd", 2) == 0)
+			if (std::strncmp(entry->d_name, "cd", 2) == 0 && std::strcmp(entry->d_name, "cd0") != 0)
 				found = true;
 		closedir(dir);
 	}
@@ -218,7 +222,11 @@ void earlyInit()
 	diag::setNotifications(options::frontend().notifications);
 	safeStart = storage::startBegan(appDir);
 	if (safeStart)
+	{
 		diag::mark("main: the last start did not finish: this one stays in the sandbox, at 59.94 Hz");
+		drivesWhy = "This start stayed in the sandbox, because the one before did not finish (safe start), so USB "
+				"drives cannot be seen. Start PSSwanStation again.";
+	}
 	const int filesAt = options::frontend().filesAt;
 	const bool wantOut = (options::frontend().usb || options::frontend().discDrive || options::frontend().usbPads != 0
 			|| filesAt == 1 || filesAt == 2
@@ -230,6 +238,10 @@ void earlyInit()
 		elevated = status == elevation::Status::ok;
 		diag::mark("sandbox: leaving it %s (status %u, by way of %s)", elevated ? "granted" : "not granted",
 				(unsigned)status, elevation::path());
+		if (!elevated)
+			drivesWhy = "PSSwanStation could not leave its sandbox (status " + std::to_string((unsigned)status)
+					+ "), which it needs to see USB drives. Run the ELF loader on port 9021, or a resident Lapy "
+					"service, then start PSSwanStation again.";
 		// Disc drives are in the console's own /dev, which that way of
 		// leaving the sandbox may not show (Lapy gives /data and the USB
 		// folders). The sandbox elevator, as Crux2 sends it, gives the title
@@ -239,12 +251,24 @@ void earlyInit()
 		{
 			const char *helper = "/app0/sandbox-elevator.elf";
 			if (!hasFile(helper))
+			{
 				diag::mark("sandbox: /dev shows no disc drive, and %s is not there", helper);
+				if (elevated)
+					drivesWhy = "The sandbox elevator (sandbox-elevator.elf) is missing from PSSwanStation's folder, so "
+							"the console's list of drives may be hidden. Copy the whole release folder again.";
+			}
 			else
 			{
 				const elevation::Status rooted = elevation::requestHelper(elevation::Capability::filesystem, helper);
 				if (rooted == elevation::Status::ok)
+				{
 					elevated = true;
+					drivesWhy.clear();
+				}
+				else if (elevated)
+					drivesWhy = "The sandbox elevator did not answer yes (status " + std::to_string((unsigned)rooted)
+							+ "), so the console's list of drives may be hidden. It needs the ELF loader listening on "
+							"port 9021; start that, then start PSSwanStation again.";
 				diag::mark("sandbox: the elevator %s (status %u); /dev %s a disc drive now",
 						rooted == elevation::Status::ok ? "gave the console's root" : "did not answer yes", (unsigned)rooted,
 						devHasDrives() ? "shows" : "still shows no");
@@ -400,6 +424,11 @@ void lateInit()
 bool usbAvailable()
 {
 	return elevated;
+}
+
+std::string drivesProblem()
+{
+	return drivesWhy;
 }
 
 bool outsideAvailable()

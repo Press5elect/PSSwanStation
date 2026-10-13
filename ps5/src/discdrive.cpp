@@ -784,6 +784,12 @@ std::map<std::string, std::string> signatures;	// per device: what its table of 
 std::atomic<unsigned> discGeneration{ 1 };
 std::atomic<bool> watching{ false }, playing{ false };
 std::thread watcher;
+// For the entry that stands in for a drive that is not found: whether
+// "USB disc drive" was on when PSSwanStation started, the watcher's passes so
+// far, and what /dev listed at the last one.
+bool wantedAtStart = false;
+std::atomic<unsigned> passes{ 0 };
+std::string seen;					// under stateMutex
 std::shared_ptr<const RamDisc> ramDisc;		// the copy in memory being played
 // One thing at a time talks to the drives: the watcher identifying a disc,
 // a copy reading one, a game's stream opening one.
@@ -870,15 +876,54 @@ Disc driveEntry(const std::string& device, const std::string& problem, bool empt
 	return d;
 }
 
+// The entry for "USB disc drive" when no USB drive is found: why, as far as
+// PSSwanStation can tell (called with stateMutex held).
+Disc notFound()
+{
+	Disc d;
+	d.device = NoDrive;
+	d.name = "USB disc drive - not found";
+	d.playable = false;
+	if (!wantedAtStart)
+	{
+		d.problem = "\"USB disc drive\" was turned on after PSSwanStation started. It takes effect the next time "
+				"PSSwanStation starts: close it and start it again.";
+		return d;
+	}
+	const std::string platformWhy = platform::drivesProblem();
+	if (!watching)
+	{
+		d.problem = platformWhy.empty() ? std::string("PSSwanStation could not leave its sandbox, which it needs to see "
+				"USB drives. Run the ELF loader on port 9021, then start PSSwanStation again.") : platformWhy;
+		return d;
+	}
+	if (passes == 0)
+	{
+		d.problem = "Looking for drives...";
+		return d;
+	}
+	d.problem = "The console lists no USB disc drive"
+			+ (seen.empty() ? std::string(".") : " (it lists" + seen + ").");
+	if (!platformWhy.empty())
+		d.problem += " " + platformWhy;
+	d.problem += " If a drive is plugged in, the console has not recognised it. A full-size drive needs its own power "
+			"adapter, plugged in and switched on. Try another USB port on the console and the drive's own cable, and "
+			"plug it in while PSSwanStation is running: it is looked for every two seconds. The boot log's "
+			"\"disc drive:\" lines say what the console lists.";
+	return d;
+}
+
 void watch()
 {
 	std::map<std::string, int> tries;	// per device: identifications that failed for this disc
 	std::set<std::string> unlocked;		// drives whose tray was let go
+	std::set<std::string> seenOnce, failedOnce;	// drives told in the boot log
 	while (watching)
 	{
 		if (!playing && job != JobRunning)
 		{
 			bool changed = false;
+			std::string listedAs;
 			const std::vector<std::string> devices = deviceNames();
 			for (const std::string& device : devices)
 			{
@@ -888,6 +933,21 @@ void watch()
 				std::unique_lock<std::mutex> busy(driveMutex);
 				std::string error;
 				std::unique_ptr<Drive> drive = openDevice(device, error);
+				// The console's own drive (it reads no CD) by its bus when the
+				// drive says, else by its name: cd0. A USB drive on a console
+				// without a drive of its own may be cd0 too.
+				const int usb = drive ? drive->onUsb() : -1;
+				const bool own = usb == 0 || (usb < 0 && device == "/dev/cd0");
+				if (drive && seenOnce.insert(device).second)
+				{
+					const std::string what = drive->identity();
+					diag::mark("disc drive: %s: %s; %s", device.c_str(), what.empty() ? "maker and model not known" : what.c_str(),
+							usb == 1 ? "a USB drive" : usb == 0 ? "the console's own drive" : own
+							? "taken for the console's own drive (by its name; the bus did not say)" : "taken for a USB drive (the bus did not say)");
+				}
+				if (!drive && failedOnce.insert(device).second)
+					diag::mark("disc drive: %s could not be opened: %s", device.c_str(), error.c_str());
+				listedAs += " " + shortDevice(device) + (own ? " (the console's own drive)" : drive ? "" : " (could not be opened)");
 				// A console started with a disc in a USB drive locks the tray:
 				// it is let go the first time a drive is seen.
 				if (drive && unlocked.insert(device).second)
@@ -914,9 +974,8 @@ void watch()
 				if (!signature.empty() && !known && ++tries[device] < 5)
 					continue;	// a drive still spinning up: asked again at the next pass
 				tries.erase(device);
-				// The console's own drive (cd0) reads no CD: it is listed only
-				// with a disc that plays. A USB drive is listed whatever is in it.
-				const bool own = device == "/dev/cd0";
+				// The console's own drive reads no CD: it is listed only with a
+				// disc that plays. A USB drive is listed whatever is in it.
 				bool listed = known;
 				if (known)
 					diag::mark("disc drive: %s: %s (%s) went in", device.c_str(), disc.name.c_str(),
@@ -966,6 +1025,13 @@ void watch()
 					changed = true;
 				}
 			}
+			{
+				std::lock_guard<std::mutex> lock(stateMutex);
+				seen = listedAs;
+			}
+			// The first pass: the entry for a drive not found says so now.
+			if (passes++ == 0)
+				changed = true;
 			if (changed)
 			{
 				discGeneration++;
@@ -1351,6 +1417,11 @@ void start()
 	// The drives are watched whenever PSSwanStation is out of its sandbox for
 	// USB: with "USB disc drive" on, or "USB drives".
 	const options::Frontend& o = options::frontend();
+	wantedAtStart = o.discDrive;
+	// The Disc Drive tab: with "USB disc drive" on it is there from the start,
+	// with the drive's disc or with why no drive is found.
+	if (o.discDrive)
+		library::scan(library::Optical, true);
 	if (!o.discDrive && !o.usb)
 	{
 		diag::mark("disc drive: not watched (USB disc drive and USB drives are off)");
@@ -1359,13 +1430,19 @@ void start()
 	if (watching.exchange(true))
 		return;
 #if defined(SWANSTATION_PS5)
-	if (!platform::usbAvailable())
+	const bool inSandbox = !platform::usbAvailable();
+#else
+	// The PC test: the sandbox as the console's would keep the title in it.
+	const bool inSandbox = getenv("SWANSTATION_FAKE_SANDBOX") != nullptr;
+#endif
+	if (inSandbox)
 	{
-		diag::mark("disc drive: PSSwanStation is in its sandbox, so the drives cannot be read (leaving it was not granted)");
+		const std::string why = platform::drivesProblem();
+		diag::mark("disc drive: PSSwanStation is in its sandbox, so the drives cannot be read (%s)",
+				why.empty() ? "leaving it was not granted" : why.c_str());
 		watching = false;
 		return;
 	}
-#endif
 	diag::mark("disc drive: watching the drives");
 	watcher = std::thread(watch);
 }
@@ -1383,6 +1460,8 @@ void stop()
 std::vector<Disc> discs()
 {
 	std::lock_guard<std::mutex> lock(stateMutex);
+	if (present.empty() && options::frontend().discDrive)
+		return { notFound() };
 	return present;
 }
 
@@ -1424,6 +1503,13 @@ bool discOf(const std::string& path, Disc& out)
 	const std::string rest = path.substr(ram ? 11 : 8);
 	const std::string device = "/dev/" + rest.substr(0, rest.find('/'));
 	std::lock_guard<std::mutex> lock(stateMutex);
+	if (device == NoDrive)
+	{
+		if (!present.empty() || !options::frontend().discDrive)
+			return false;
+		out = notFound();
+		return true;
+	}
 	for (const Disc& disc : present)
 		if (disc.device == device)
 		{
@@ -1677,6 +1763,13 @@ public:
 	}
 
 	bool setSpeed(unsigned) override { return !dataOnly(); }
+	// SWANSTATION_FAKE_DRIVE_USB: 1 or 0, what the bus says; unset, it does not say.
+	int onUsb() const override
+	{
+		const char *u = getenv("SWANSTATION_FAKE_DRIVE_USB");
+		return u == nullptr ? -1 : atoi(u) != 0 ? 1 : 0;
+	}
+	std::string identity() const override { return "PC STAND-IN DRIVE"; }
 	bool allowRemoval(std::string& how) override { how = "the PC's stand-in"; return true; }
 	bool eject(std::string& how) override { how = "the PC's stand-in"; return true; }
 	std::string route() const override { return dataOnly() ? "no pass device (the PC's stand-in)" : "the PC's stand-in"; }
@@ -1691,20 +1784,27 @@ private:
 
 }
 
+// SWANSTATION_FAKE_DRIVE_NODE: the stand-in's name in /dev (cd1 unless set).
+std::string fakeNode()
+{
+	const char *node = getenv("SWANSTATION_FAKE_DRIVE_NODE");
+	return std::string("/dev/") + (node != nullptr ? node : "cd1");
+}
+
 std::vector<std::string> deviceNames()
 {
 	std::vector<std::string> names;
 	// The drive is there while its image is: taking the file away unplugs it.
 	const char *path = getenv("SWANSTATION_FAKE_DRIVE");
 	if (path != nullptr && fileExists(path))
-		names.push_back("/dev/cd1");
+		names.push_back(fakeNode());
 	return names;
 }
 
 std::unique_ptr<Drive> openDevice(const std::string& device, std::string& error)
 {
 	const char *path = getenv("SWANSTATION_FAKE_DRIVE");
-	if (path == nullptr || device != "/dev/cd1" || !fileExists(path))
+	if (path == nullptr || device != fakeNode() || !fileExists(path))
 	{
 		error = device + ": no such drive";
 		return nullptr;

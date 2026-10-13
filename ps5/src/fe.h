@@ -162,6 +162,9 @@ bool startedSafely();
 
 // USB drives: whether they can be read at all, and the folders found on them.
 bool usbAvailable();
+// Why this start may not see the console's disc drives (the sandbox, the
+// elevator), in sentences for the screen; empty when nothing stood in the way.
+std::string drivesProblem();
 std::vector<std::string> usbGameDirs();
 // The top of each USB drive that is plugged in and can be read (/mnt/usb0),
 // without a trailing '/'.
@@ -937,7 +940,10 @@ void start();
 // Stops it (the title closes).
 void stop();
 // The discs in the drives now; the generation changes when one goes in or out.
+// With "USB disc drive" on and no USB drive found, one entry stands in for it
+// (its device NoDrive): chosen, it says why no drive is listed.
 std::vector<Disc> discs();
+constexpr const char *NoDrive = "/dev/none";
 unsigned generation();
 // A game's path for a disc: drive://cd1/<name> plays from the drive,
 // driveram://cd1/<name> from the copy in memory startRam() made.

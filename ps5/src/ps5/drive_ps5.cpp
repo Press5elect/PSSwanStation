@@ -209,6 +209,8 @@ public:
 	}
 
 	std::string route() const override { return passName.empty() ? "no pass device: " + passWhy : passName; }
+	int onUsb() const override { return usb; }
+	std::string identity() const override { return ident; }
 
 	bool allowRemoval(std::string& how) override
 	{
@@ -263,6 +265,8 @@ private:
 	lun_id_t targetLun = 0;
 	bool told = false;
 	bool toldToc = false;
+	int usb = -1;
+	std::string ident;
 	static constexpr size_t PageSize = 4096;
 	std::vector<uint8_t> bounce;
 	int lastErrno = 0;
@@ -306,6 +310,50 @@ private:
 		targetLun = ccb.ccb_h.target_lun;
 		passFd = pass;
 		passName = name;
+		describe();
+	}
+
+	// What the drive is and which bus it is on, asked of CAM through the pass
+	// device as libcam does when it opens one: the inquiry data (XPT_GDEV_TYPE)
+	// and the bus's own (XPT_PATH_INQ). USB drives are on umass's bus.
+	void describe()
+	{
+		union ccb ccb;
+		memset(&ccb, 0, sizeof(ccb));
+		ccb.ccb_h.func_code = XPT_GDEV_TYPE;
+		ccb.ccb_h.path_id = pathId;
+		ccb.ccb_h.target_id = targetId;
+		ccb.ccb_h.target_lun = targetLun;
+		if (ioctl(passFd, CAMIOCOMMAND, &ccb) == 0 && (ccb.ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)
+			ident = text(ccb.cgd.inq_data.vendor, SID_VENDOR_SIZE) + " " + text(ccb.cgd.inq_data.product, SID_PRODUCT_SIZE);
+		memset(&ccb, 0, sizeof(ccb));
+		ccb.ccb_h.func_code = XPT_PATH_INQ;
+		ccb.ccb_h.path_id = pathId;
+		ccb.ccb_h.target_id = targetId;
+		ccb.ccb_h.target_lun = targetLun;
+		if (ioctl(passFd, CAMIOCOMMAND, &ccb) == 0 && (ccb.ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)
+		{
+			const std::string sim = text(ccb.cpi.dev_name, DEV_IDLEN);
+			usb = ccb.cpi.transport == XPORT_USB || sim.rfind("umass", 0) == 0 ? 1 : 0;
+			ident += (ident.empty() ? "" : ", ") + std::string("on ") + (sim.empty() ? "an unnamed bus" : sim)
+					+ std::to_string(ccb.cpi.unit_number) + (usb == 1 ? " (USB)" : "");
+		}
+		// Trimmed of the spaces SCSI pads its fields with.
+		while (!ident.empty() && (ident.front() == ' ' || ident.front() == ','))
+			ident.erase(ident.begin());
+	}
+
+	static std::string text(const void *field, size_t size)
+	{
+		const char *c = static_cast<const char *>(field);
+		std::string out;
+		for (size_t i = 0; i < size && c[i] != '\0'; i++)
+			out += (c[i] >= 0x20 && c[i] < 0x7F) ? c[i] : '?';
+		while (!out.empty() && out.back() == ' ')
+			out.pop_back();
+		while (!out.empty() && out.front() == ' ')
+			out.erase(out.begin());
+		return out;
 	}
 
 	bool command(const uint8_t cdb[12], uint8_t *data, uint32_t bytes, uint8_t cdbLength = 12, bool tell = true)
