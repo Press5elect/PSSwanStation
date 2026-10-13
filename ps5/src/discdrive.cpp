@@ -185,6 +185,38 @@ void buildDataSector(uint32_t lba, const uint8_t *data, uint8_t *out)
 }
 
 // A drive and the way it is read.
+// How fast each drive is read, in kilobytes a second: 16x a CD to start
+// with, not as fast as the drive goes. Build 21's tests: an ASUS BW-16D1HT on
+// a JMicron USB 2.0 bridge gave a hardware failure fifteen seconds into a
+// game read at full speed, behind which the whole disc was being read, and
+// then fell off the bus until it was plugged in again. A failing read slows
+// the drive a step (8x, then 4x), for as long as PSSwanStation runs.
+std::mutex speedMutex;
+std::map<std::string, unsigned> driveSpeeds;
+constexpr unsigned SpeedSteps[] = { 2822, 1411, 706 };	// 16x, 8x, 4x (176.4 KB/s a 1x)
+
+unsigned speedOf(const std::string& device)
+{
+	std::lock_guard<std::mutex> lock(speedMutex);
+	const auto it = driveSpeeds.find(device);
+	return it != driveSpeeds.end() ? it->second : SpeedSteps[0];
+}
+
+// The next step down; false when the drive is already at the slowest.
+bool slowDown(const std::string& device)
+{
+	std::lock_guard<std::mutex> lock(speedMutex);
+	const auto it = driveSpeeds.find(device);
+	const unsigned now = it != driveSpeeds.end() ? it->second : SpeedSteps[0];
+	for (size_t i = 0; i + 1 < sizeof(SpeedSteps) / sizeof(SpeedSteps[0]); i++)
+		if (SpeedSteps[i] == now)
+		{
+			driveSpeeds[device] = SpeedSteps[i + 1];
+			return true;
+		}
+	return false;
+}
+
 struct Reader
 {
 	std::string device;
@@ -197,6 +229,25 @@ struct Reader
 	const std::atomic<bool> *abort = nullptr;
 
 	bool aborted() const { return abort != nullptr && abort->load(); }
+
+	// The drive told how fast to read (speedOf), as this reader opened it.
+	void applySpeed()
+	{
+		const unsigned speed = speedOf(device);
+		const bool ok = drive->setSpeed(speed);
+		diag::mark("disc drive: %s: read at %ux (%u KB/s)%s", device.c_str(), (speed + 88) / 176, speed,
+				ok ? "" : "; the drive did not take the speed");
+	}
+
+	// A pause after a failed read: the drive is given time to recover rather
+	// than asked again at once, which a struggling drive or bridge can give up
+	// under.
+	bool rest(int ms)
+	{
+		for (int waited = 0; waited < ms && !aborted(); waited += 50)
+			usleep(50000);
+		return !aborted();
+	}
 
 	bool open(const std::string& name, std::string& error)
 	{
@@ -270,8 +321,18 @@ struct Reader
 		if (lba + count > sectors)
 			return false;
 		for (int attempt = 0; attempt < 3 && !aborted(); attempt++)
+		{
 			if (readOnce(lba, count, raw, q))
 				return true;
+			// After the second failure in a row the drive is slowed a step.
+			if (attempt == 1 && slowDown(device))
+			{
+				diag::mark("disc drive: %s: reads at sector %u failed twice; slowing the drive", device.c_str(), lba);
+				applySpeed();
+			}
+			if (!rest(300 * (attempt + 1)))
+				return false;
+		}
 		// One at a time, so a scratch costs only the sectors under it; given
 		// up at the first sector that will not read, so a scratched stretch
 		// does not hold the game for minutes.
@@ -435,9 +496,10 @@ public:
 		reader.abort = &stopping;
 		if (!reader.open(device, error))
 			return false;
-		// As fast as the drive goes: the whole disc is read into memory behind
-		// the game, and the sooner that is done the sooner the drive rests.
-		reader.drive->setSpeed(0xFFFF);
+		// The whole disc is read into memory behind the game, at the drive's
+		// speed for PSSwanStation (16x, slower after failures): not as fast as
+		// it goes, which a drive on a weak USB bridge did not survive.
+		reader.applySpeed();
 		started = now();
 		worker = std::thread([this] { run(); });
 #if defined(SWANSTATION_PS5)
@@ -1057,7 +1119,7 @@ bool readWhole(const Disc& disc, std::shared_ptr<RamDisc>& out)
 		setError("The disc could not be read: " + why + ".");
 		return false;
 	}
-	reader.drive->setSpeed(0xFFFF);
+	reader.applySpeed();
 	auto ram = std::make_shared<RamDisc>();
 	ram->device = disc.device;
 	ram->toc = reader.toc;

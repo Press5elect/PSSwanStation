@@ -184,6 +184,11 @@ void redirectLogs(const std::string& root)
 // scanned, not whole drives.
 void findUsbDirs()
 {
+	// Told only when what is found changes: the library and the disc copy's
+	// choice page ask for it often (the page every frame), and the boot log
+	// once filled with thousands of the same lines.
+	static std::string toldBefore;
+	std::string told;
 	usbDirs.clear();
 	for (int i = 0; i < 8; i++)
 	{
@@ -203,9 +208,22 @@ void findUsbDirs()
 					usbDirs.push_back(drive + "/" + entry->d_name);
 		}
 		closedir(dir);
-		diag::mark("usb: %s has %d entries", drive.c_str(), entries);
+		told += format("usb: %s has %d entries\n", drive.c_str(), entries);
 	}
-	diag::mark("usb: %d game folder(s)", (int)usbDirs.size());
+	told += format("usb: %d game folder(s)", (int)usbDirs.size());
+	if (told != toldBefore)
+	{
+		toldBefore = told;
+		size_t start = 0;
+		while (start < told.size())
+		{
+			const size_t end = told.find('\n', start);
+			diag::mark("%s", told.substr(start, end == std::string::npos ? std::string::npos : end - start).c_str());
+			if (end == std::string::npos)
+				break;
+			start = end + 1;
+		}
+	}
 }
 
 } // namespace
