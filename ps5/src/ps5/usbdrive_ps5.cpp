@@ -1122,6 +1122,176 @@ std::unique_ptr<BotDrive> openFound(const Found& f, std::string& error)
 
 }
 
+// ------------------------------------------------------- the ports' state
+
+// A hub's ports, asked of the hub itself (hub class requests through its
+// control endpoint): what is electrically on each port, enabled or not. A
+// drive the console never lists may still show as a connection on a port
+// that was not enabled (enumeration failed, or the console refused it), or
+// as an over-current. A port that holds a connection with no device on it is
+// reset once, which makes the console try to enumerate it again. Told once
+// per set of ports; the open of each hub's node is tried every way, as the
+// console's ugen refused the root hubs read-write.
+std::set<std::string> portsTold;
+std::set<std::string> portsReset;
+
+int openHub(const std::string& node, std::string& how)
+{
+	const std::string ugen = "/dev/" + node;
+	int bus = -1, addr = -1;
+	sscanf(node.c_str(), "ugen%d.%d", &bus, &addr);
+	const std::string ep0 = format("/dev/usb/%d.%d.0", bus, addr);
+	const std::string paths[2] = { ugen, ep0 };
+	const int flags[3] = { O_RDWR, O_RDONLY, O_WRONLY };
+	const char *names[3] = { "read-write", "read-only", "write-only" };
+	std::string tried;
+	for (const std::string& path : paths)
+		for (int i = 0; i < 3; i++)
+		{
+			const int fd = ::open(path.c_str(), flags[i]);
+			if (fd >= 0)
+			{
+				how = path + " " + names[i];
+				return fd;
+			}
+			tried += format("%s%s %s: %s", tried.empty() ? "" : "; ", path.c_str(), names[i], strerror(errno));
+		}
+	how = tried;
+	return -1;
+}
+
+void reportPorts(const std::vector<std::string>& nodes)
+{
+	// Where each device sits: its port path, so that a port with a device is
+	// told apart from one with a bare connection.
+	std::map<std::string, std::string> atPort;		// "bus:port" -> node
+	for (const std::string& node : nodes)
+	{
+		const int fd = ::open(("/dev/" + node).c_str(), O_RDWR);
+		if (fd < 0)
+			continue;
+		usb_device_port_path path = {};
+		if (ioctl(fd, USB_GET_DEV_PORT_PATH, &path) == 0 && path.udp_port_level >= 1)
+		{
+			// The root hub's port is the first level; deeper levels are a hub's.
+			std::string key = format("%u", path.udp_bus);
+			for (uint8_t i = 0; i < path.udp_port_level && i < USB_DEVICE_PORT_PATH_MAX; i++)
+				key += format(":%u", path.udp_port_no[i]);
+			atPort[key] = node;
+		}
+		::close(fd);
+	}
+	for (const std::string& node : nodes)
+	{
+		int bus = -1, addr = -1;
+		sscanf(node.c_str(), "ugen%d.%d", &bus, &addr);
+		// Hubs: the root hub (address 1) and any device of class 9.
+		bool hub = addr == 1;
+		int fd = -1;
+		std::string how;
+		if (!hub)
+		{
+			fd = ::open(("/dev/" + node).c_str(), O_RDWR);
+			usb_device_descriptor dd = {};
+			if (fd >= 0 && ioctl(fd, USB_GET_DEVICE_DESC, &dd) == 0 && dd.bDeviceClass == 0x09)
+				hub = true;
+			if (!hub)
+			{
+				if (fd >= 0)
+					::close(fd);
+				continue;
+			}
+			how = "/dev/" + node + " read-write";
+		}
+		else
+			fd = openHub(node, how);
+		if (fd < 0)
+		{
+			if (portsTold.insert(node + "|closed").second)
+				diag::mark("usb bus: %s (a hub): its node could not be opened (%s); its ports cannot be asked", node.c_str(), how.c_str());
+			continue;
+		}
+		// The hub descriptor: USB 2 hubs give it as type 0x29, USB 3 hubs as 0x2A.
+		uint8_t hd[64] = {};
+		usb_ctl_request req = {};
+		req.ucr_data = hd;
+		req.ucr_flags = USB_SHORT_XFER_OK;
+		req.ucr_request.bmRequestType = 0xA0;
+		req.ucr_request.bRequest = 0x06;
+		USETW(req.ucr_request.wIndex, 0);
+		USETW(req.ucr_request.wLength, sizeof(hd));
+		bool superSpeed = false;
+		USETW(req.ucr_request.wValue, 0x2900);
+		bool got = ioctl(fd, USB_DO_REQUEST, &req) == 0 && req.ucr_actlen >= 3;
+		if (!got)
+		{
+			USETW(req.ucr_request.wValue, 0x2A00);
+			got = ioctl(fd, USB_DO_REQUEST, &req) == 0 && req.ucr_actlen >= 3;
+			superSpeed = got;
+		}
+		if (!got)
+		{
+			if (portsTold.insert(node + "|nodesc").second)
+				diag::mark("usb bus: %s (a hub, opened as %s): the hub descriptor could not be read: %s", node.c_str(), how.c_str(),
+						strerror(errno));
+			::close(fd);
+			continue;
+		}
+		const int ports = hd[2];
+		std::string report;
+		for (int port = 1; port <= ports && port <= 16; port++)
+		{
+			uint8_t status[4] = {};
+			usb_ctl_request r = {};
+			r.ucr_data = status;
+			r.ucr_request.bmRequestType = 0xA3;
+			r.ucr_request.bRequest = 0x00;			// GET STATUS, port
+			USETW(r.ucr_request.wValue, 0);
+			USETW(r.ucr_request.wIndex, (uint16_t)port);
+			USETW(r.ucr_request.wLength, 4);
+			if (ioctl(fd, USB_DO_REQUEST, &r) != 0)
+			{
+				report += format(" %d: not answered (%s)", port, strerror(errno));
+				continue;
+			}
+			const uint16_t st = (uint16_t)(status[0] | (status[1] << 8));
+			const uint16_t change = (uint16_t)(status[2] | (status[3] << 8));
+			const bool connected = (st & 0x0001) != 0, enabled = (st & 0x0002) != 0, overCurrent = (st & 0x0008) != 0;
+			const bool powered = superSpeed ? (st & 0x0200) != 0 : (st & 0x0100) != 0;
+			std::string speed;
+			if (superSpeed)
+				speed = format("SuperSpeed link state %u", (st >> 5) & 0x0F);
+			else
+				speed = (st & 0x0400) != 0 ? "high speed" : (st & 0x0200) != 0 ? "low speed" : "full speed";
+			const std::string key = format("%d:%d", bus, port);
+			const auto it = atPort.find(key);
+			report += format(" %d: %s%s%s%s%s (status %04x change %04x)", port,
+					connected ? "connected" : "empty", enabled ? ", enabled" : connected ? ", NOT enabled" : "",
+					overCurrent ? ", OVER-CURRENT" : "", powered ? "" : ", unpowered",
+					it != atPort.end() ? (", " + it->second).c_str() : connected ? (", no device listed; " + speed).c_str() : "",
+					st, change);
+			// A connection the console did not enumerate: the port reset once,
+			// so the console looks at the device again.
+			if (connected && it == atPort.end() && addr == 1 && portsReset.insert(key).second)
+			{
+				usb_ctl_request rs = {};
+				rs.ucr_request.bmRequestType = 0x23;
+				rs.ucr_request.bRequest = 0x03;		// SET FEATURE
+				USETW(rs.ucr_request.wValue, powered ? 4 : 8);	// PORT_RESET, or PORT_POWER first
+				USETW(rs.ucr_request.wIndex, (uint16_t)port);
+				USETW(rs.ucr_request.wLength, 0);
+				const int rc = ioctl(fd, USB_DO_REQUEST, &rs);
+				diag::mark("usb bus: %s port %d holds a connection the console did not list: %s asked for (%s)", node.c_str(), port,
+						powered ? "a port reset" : "port power", rc == 0 ? "accepted" : strerror(errno));
+			}
+		}
+		::close(fd);
+		if (portsTold.insert(node + "|" + report).second)
+			diag::mark("usb bus: %s (%s hub, opened as %s), %d port(s):%s", node.c_str(), superSpeed ? "a USB 3" : "a USB 2",
+					how.c_str(), ports, report.c_str());
+	}
+}
+
 std::vector<std::string> deviceNames()
 {
 	std::vector<std::string> out;
@@ -1150,6 +1320,8 @@ std::vector<std::string> deviceNames()
 	for (const std::string& node : nodes)
 		if (known.find(node) == known.end())
 			fresh.push_back(node);
+	if (!fresh.empty())
+		reportPorts(nodes);
 	if (!fresh.empty())
 	{
 		// Everything the console attached, and how many mass storage devices
@@ -1213,6 +1385,9 @@ std::vector<std::string> deviceNames()
 			}
 		}
 	}
+	static unsigned idle = 0;
+	if (fresh.empty() && taken.empty() && ++idle % 15 == 0)
+		reportPorts(nodes);
 	for (const std::string& node : nodes)
 		if (taken.count(node) != 0)
 			out.push_back("/dev/" + node);
