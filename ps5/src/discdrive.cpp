@@ -909,8 +909,8 @@ Disc notFound()
 	d.problem += " If a drive is plugged in, the console has not recognised it, and PSSwanStation could not read it "
 			"over USB itself either. A full-size drive needs its own power adapter, plugged in and switched on. Try "
 			"another USB port on the console and the drive's own cable, and plug it in while PSSwanStation is running: "
-			"it is looked for every two seconds. The boot log's \"disc drive:\" and \"usb drive:\" lines say what the "
-			"console lists and what each USB device answered.";
+			"it is looked for every two seconds. The boot log's \"disc drive:\", \"usb drive:\" and \"usb bus:\" lines say what the "
+			"console lists, what each USB device answered, and what is on each USB port.";
 	return d;
 }
 
