@@ -48,6 +48,7 @@
 #include <set>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 #include <vector>
 
@@ -1292,6 +1293,79 @@ void reportPorts(const std::vector<std::string>& nodes)
 	}
 }
 
+// ------------------------------------------------- the kernel's own words
+
+// The kernel's message buffer (kern.msgbuf), which FreeBSD's USB stack writes
+// to when a device comes, goes or fails to enumerate ("uhub2: port 3: device
+// problem (SET_ADDR_FAILED), disabling port"): the one account of a device
+// that never got as far as a node. Its USB lines go to the boot log, each
+// once; read at the first look and again while no drive is found.
+std::set<std::string> kernelTold;
+bool kernelRefused = false;
+
+bool usbLine(const std::string& line)
+{
+	std::string l = line;
+	for (char& c : l)
+		c = (char)std::tolower((unsigned char)c);
+	static const char *keys[] = { "usb", "uhub", "umass", "ugen", "xhci", "ehci", "ohci", "set_addr", "enumerat",
+			"over-current", "overcurrent", "port reset", "disabling port", "cd1", "cd2", "cd3", "scsi" };
+	for (const char *k : keys)
+		if (l.find(k) != std::string::npos)
+			return true;
+	return false;
+}
+
+void readKernelLog()
+{
+	if (kernelRefused)
+		return;
+	size_t length = 0;
+	if (sysctlbyname("kern.msgbuf", nullptr, &length, nullptr, 0) != 0 || length == 0)
+	{
+		kernelRefused = true;
+		diag::mark("usb bus: the kernel's message buffer cannot be read (kern.msgbuf: %s)", length == 0 && errno == 0
+				? "empty" : strerror(errno));
+		return;
+	}
+	std::vector<char> buffer(length + 4096, 0);
+	length = buffer.size();
+	if (sysctlbyname("kern.msgbuf", buffer.data(), &length, nullptr, 0) != 0)
+	{
+		kernelRefused = true;
+		diag::mark("usb bus: the kernel's message buffer cannot be read (kern.msgbuf: %s)", strerror(errno));
+		return;
+	}
+	std::vector<std::string> lines;
+	std::string line;
+	for (size_t i = 0; i < length; i++)
+	{
+		const char c = buffer[i];
+		if (c == '\n' || c == '\0')
+		{
+			if (!line.empty() && usbLine(line))
+				lines.push_back(line);
+			line.clear();
+		}
+		else if (c >= 0x20 && c < 0x7F)
+			line += c;
+	}
+	// The newest eighty: the buffer is a ring of the console's whole uptime.
+	const size_t from = lines.size() > 80 ? lines.size() - 80 : 0;
+	int told = 0;
+	for (size_t i = from; i < lines.size(); i++)
+		if (kernelTold.insert(lines[i]).second && kernelTold.size() < 2000)
+		{
+			diag::mark("usb bus: kernel: %s", lines[i].c_str());
+			told++;
+		}
+	if (kernelTold.empty() && told == 0)
+	{
+		kernelTold.insert("");
+		diag::mark("usb bus: the kernel's message buffer (%zu bytes) holds no USB lines", length);
+	}
+}
+
 std::vector<std::string> deviceNames()
 {
 	std::vector<std::string> out;
@@ -1321,7 +1395,10 @@ std::vector<std::string> deviceNames()
 		if (known.find(node) == known.end())
 			fresh.push_back(node);
 	if (!fresh.empty())
+	{
 		reportPorts(nodes);
+		readKernelLog();
+	}
 	if (!fresh.empty())
 	{
 		// Everything the console attached, and how many mass storage devices
@@ -1386,8 +1463,8 @@ std::vector<std::string> deviceNames()
 		}
 	}
 	static unsigned idle = 0;
-	if (fresh.empty() && taken.empty() && ++idle % 15 == 0)
-		reportPorts(nodes);
+	if (fresh.empty() && taken.empty() && ++idle % 5 == 0)
+		readKernelLog();
 	for (const std::string& node : nodes)
 		if (taken.count(node) != 0)
 			out.push_back("/dev/" + node);
