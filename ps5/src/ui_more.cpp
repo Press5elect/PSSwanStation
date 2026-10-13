@@ -3328,8 +3328,9 @@ void discDrivePage(Frame& f)
 	}
 	const std::string device = disc.device;
 	auto ejectRow = [device] {
-		return action(icon::Upload, "Eject the disc", "Opens the drive's tray. A console started with a disc in a USB "
-				"drive locks the tray until PSSwanStation lets it go, which it does when it first sees the drive.", [device] {
+		return action(icon::Upload, "Eject the disc", "Opens the drive's tray. Turn the console on with the drive "
+				"empty: started with a disc in it, the console locks the tray (PSSwanStation lets it go when it first sees "
+				"the drive) and then cannot turn itself off, only by holding its power button.", [device] {
 					std::string why;
 					if (discdrive::eject(device, why))
 					{

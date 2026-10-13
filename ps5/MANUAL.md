@@ -158,7 +158,9 @@ PSSwanStation plays your PlayStation discs from a USB CD or DVD drive plugged in
 | Copy it into memory and play it | Reads the whole disc into memory first (a minute or two). The game then never waits for the drive, and the memory is given back when the game closes |
 | Play it from the drive | Starts at once. Behind the game the whole disc is read into memory, as fast as the drive goes (a few minutes for a full CD; the boot log says when it is done), and the drive then rests. Until then a jump to another part of the disc takes the drive a fraction of a second, which the game waits for as it would for a PlayStation's own drive while the picture and sound go on; and the reading can make the picture hitch (the console's graphics driver is held up while a USB drive is read). The memory is given back when the game closes |
 
-**Eject.** The drive's page has "Eject the disc", which opens the tray. A console started with a disc in a USB drive locks the tray before any homebrew runs, so the drive's own button does nothing until PSSwanStation starts: it unlocks the tray as soon as it sees the drive, and the button works again from then on.
+**Turn the console on with the drive empty.** Put the disc in after the console has started. A console started with a disc in a USB drive locks the tray before any homebrew runs, and later it cannot turn itself off: Turn Off PS5 never finishes, and only holding the power button turns it off. PSSwanStation unlocks the tray as soon as it sees the drive, so the drive's own button works again, but it cannot undo the console's trouble turning off.
+
+**Eject.** The drive's page has "Eject the disc", which opens the tray.
 
 Copying shows how far it has got; Circle stops it. A copy never replaces a file: a second copy of the same disc gets " (2)" after its name.
 
@@ -335,6 +337,7 @@ Two logs say what happened: `psswanstation-boot.log` in the title's folder (writ
 | A game is too slow | Lower the Internal Resolution Scale (Enhancement); FSR 1 or NIS keeps it sharp |
 | No USB tab | Switch on "USB drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; a Lapy service or the ELF loader must be running |
 | No Network tab | Check the `path` lines in `network.cfg` (server by IP address), then restart or press Square, "Scan for games" |
+| The console will not turn off | It was started with a disc in a USB drive. Hold the power button to turn it off, and next time start the console with the drive empty and put the disc in afterwards |
 | No Disc Drive tab | Switch on "USB drives" or "USB disc drive" and restart; a Lapy service or the ELF loader must be running. The boot log's `disc drive:` lines say which drives `/dev` has, whether each opens, and why a disc was not read |
 | A disc's videos or music are missing | The drive is read 2048 bytes a sector (the choice page says so): the console did not let the SCSI commands through |
 | Sparkles along polygon edges | Check "Close Gaps Between Polygons" is on (Enhancement); it only works above 1x |
