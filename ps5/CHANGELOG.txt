@@ -85,10 +85,17 @@ Build 21
     the disc's Redump name ("Crash Bandicoot (USA)"). The game database now
     carries each serial's Redump name, and the disc's cover is downloaded
     into covers/ under it, as for a disc image.
-  On my console: nothing of this build yet. On the PC, a disc image
-  standing in for the drive was copied byte for byte, played from memory
-  and played from the "drive", for a drive that gives everything and for
-  two that give less.
+  Known problem
+  - A console turned on with a disc in a USB drive cannot turn itself off
+    afterwards (only by holding its power button). Start the console with
+    the drive empty and put the disc in afterwards; the manual, the
+    drive's page and Troubleshooting say so.
+  On my console: a PlayStation disc played from a USB drive for eight
+  minutes without hitching once it was read into memory (228 s for the
+  whole CD), its CD music playing, read with its sub-channel Q. On the
+  PC, a disc image standing in for the drive was copied byte for byte,
+  played from memory and played from the "drive", for a drive that gives
+  everything and for two that give less.
 
 Build 20
   Added
