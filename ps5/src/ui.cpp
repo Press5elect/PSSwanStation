@@ -1116,7 +1116,9 @@ void drawHeader()
 			continue;
 		}
 		tabGlow[i] = approach(tabGlow[i], selected ? 1.f : 0.f, 14.f);
-		const std::string label = library::sourceName(i) + format("  %d", (int)views[i].games.size());
+		// The disc drive's tab is its name alone: a count would read as a drive number.
+		const std::string label = library::sourceName(i)
+				+ (i == library::Optical ? std::string() : format("  %d", (int)views[i].games.size()));
 		const float labelW = toUnits(measure(label, Bold, 26).x);
 		const float tabW = labelW + 92;
 		if (tabGlow[i] > 0.01f)

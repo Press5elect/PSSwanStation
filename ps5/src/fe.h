@@ -953,6 +953,8 @@ bool discOf(const std::string& path, Disc& out);
 void installOpener();
 // A game plays from a drive: the watcher leaves the drives alone meanwhile.
 void setPlaying(bool on);
+// Opens the drive's tray (unlocking it first). False with `why` when it cannot.
+bool eject(const std::string& device, std::string& why);
 
 // Copying a disc, into memory or to a folder, on a thread of its own.
 enum Destination { ToGames, ToUsb, ToShare, ToNfs, DestinationCount };

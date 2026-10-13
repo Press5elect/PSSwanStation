@@ -556,7 +556,7 @@ unsigned generation(int source)
 
 std::string sourceName(int source)
 {
-	return source == Internal ? "Internal" : source == Usb ? "USB" : source == Optical ? "Disc" : "Network";
+	return source == Internal ? "Internal" : source == Usb ? "USB" : source == Optical ? "Disc Drive" : "Network";
 }
 
 bool sourceAvailable(int source)

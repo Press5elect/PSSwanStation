@@ -63,6 +63,10 @@ public:
 	virtual bool setSpeed(unsigned kilobytesPerSecond) = 0;
 	// What the commands go through, for the boot log ("pass1", "no pass device").
 	virtual std::string route() const = 0;
+	// Lets the drive's button open the tray again (the console locks it when it
+	// starts with a disc in a USB drive), and opens the tray.
+	virtual bool allowRemoval(std::string& how) = 0;
+	virtual bool eject(std::string& how) = 0;
 };
 
 // The drives there are now (/dev/cd0, /dev/cd1...).

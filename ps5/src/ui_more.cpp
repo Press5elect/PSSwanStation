@@ -3326,13 +3326,26 @@ void discDrivePage(Frame& f)
 		};
 		return;
 	}
+	const std::string device = disc.device;
+	auto ejectRow = [device] {
+		return action(icon::Upload, "Eject the disc", "Opens the drive's tray. A console started with a disc in a USB "
+				"drive locks the tray until PSSwanStation lets it go, which it does when it first sees the drive.", [device] {
+					std::string why;
+					if (discdrive::eject(device, why))
+					{
+						pop();
+						host::addMessage("The tray is open.");
+					}
+					else
+						message("The tray did not open", why);
+				});
+	};
 	if (!disc.playable)
 	{
-		const std::string why = disc.problem;
-		deferred = [why] {
-			pop();
-			message("Nothing to play in the drive", why);
-		};
+		std::vector<Item> items;
+		items.push_back(ejectRow());
+		const Item *focused = panelList(f, "Nothing to play in the drive", items, 860, 60 + 10, disc.problem);
+		standardHints(focused);
 		return;
 	}
 	const int slot = f.a;
@@ -3387,12 +3400,13 @@ void discDrivePage(Frame& f)
 		pop();
 		begin(game, slot, 0);
 	}));
+	items.push_back(ejectRow());
 	std::string note = disc.serial.empty() ? disc.name : disc.name + "   " + disc.serial;
 	if (!disc.reading.empty())
 		note += "\nThe drive gives " + disc.reading + ".";
 	if (!disc.fullSectors)
 		note += " Copies made from this drive lose the same.";
-	const Item *focused = panelList(f, "Play the disc", items, 860, 3 * 60 + 10, note);
+	const Item *focused = panelList(f, "Play the disc", items, 860, 4 * 60 + 10, note);
 	standardHints(focused);
 }
 

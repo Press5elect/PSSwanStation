@@ -5,7 +5,7 @@ Build 21
   Added
   - Discs from a USB CD or DVD drive, watched whenever PSSwanStation is out
     of its sandbox for USB (Settings, Games and network: USB drives, or USB
-    disc drive). A disc in the drive is under the library's new Disc tab,
+    disc drive). A disc in the drive is under the library's new Disc Drive tab,
     named from its serial; a drive with no disc, or one it cannot read, is
     there too and says why. Every step is in the boot log (disc drive:
     lines). Before it starts PSSwanStation asks how to
@@ -36,6 +36,10 @@ Build 21
     are. When /dev shows none, PSSwanStation now also sends the sandbox
     elevator Crux2 uses (sandbox-elevator.elf, beside lapy.elf), which gives
     it the console's own root. It needs the ELF loader on port 9021.
+  - A console started with a disc in a USB drive locks the tray. When
+    PSSwanStation first sees the drive it unlocks it, so the button opens
+    it again, and the drive's page has "Eject the disc". The tab is named
+    Disc Drive.
   On my console: nothing of this build yet. On the PC, a disc image
   standing in for the drive was copied byte for byte, played from memory
   and played from the "drive", for a drive that gives everything and for
