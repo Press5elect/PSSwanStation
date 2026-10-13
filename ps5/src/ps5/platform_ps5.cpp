@@ -295,7 +295,9 @@ void earlyInit()
 		}
 		outsideUsed = true;
 	}
-	diag::open(rootDir);
+	// The boot log is in the title's folder, wherever the files are kept:
+	// where the manual says it is, the same place in every set-up.
+	diag::open(appDir);
 	diag::mark("%s, build %d; title folder: %s; files: %s", AppName, BuildNumber, appDir.c_str(), rootDir.c_str());
 	if (migrated > 0)
 		diag::mark("storage: first start with the files outside: %d copied", migrated);

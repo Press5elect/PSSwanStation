@@ -26,6 +26,10 @@ Build 21
     The boot log says what the waits cost when a game closes.
   - The payload SDK's platform layer at its newest (b5efad5): a fix for
     wide characters' classes in the C locale.
+  Fixed
+  - The boot log was written where the files are kept, so with them on
+    the network share or outside the title's folder it was not in the
+    title's folder, where the manual says it is. It is there now, always.
   On my console: nothing of this build yet. On the PC, a disc image
   standing in for the drive was copied byte for byte, played from memory
   and played from the "drive", for a drive that gives everything and for
