@@ -74,6 +74,12 @@ Build 21
     leaves zero is no longer refused: the position is what is checked, and
     the CRC is made good for the emulator (as an .sbi's sectors are), with
     the .sbi of a copy judged by the position as well as the CRC.
+  - A short freeze at the start of each CD music track while the disc was
+    still being read into memory: with the drive now giving the
+    sub-channel, the game asking where the drive's head was during the
+    seek to the track waited for the drive. It is now answered from the
+    table of contents until the sector is in memory, and the first half
+    second of every track is read early, before the rest of the disc.
   - A disc in the drive had no cover: it was looked for by the game
     database's short name, and the covers collection names its pictures by
     the disc's Redump name ("Crash Bandicoot (USA)"). The game database now

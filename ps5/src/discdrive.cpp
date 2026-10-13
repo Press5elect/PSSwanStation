@@ -541,6 +541,10 @@ private:
 	// order from its start, as fast as the drive goes, until all of it is in
 	// memory and the drive has nothing more to do.
 	static constexpr uint32_t Ahead = 96;
+	// Blocks of each track's start read early: three blocks, about half a
+	// second of CD music, enough to cover the drive's seek to the rest.
+	static constexpr uint32_t TrackStartBlocks = 3;
+	std::vector<uint32_t> trackStarts;
 	uint64_t asks = 0, waits = 0;
 	double waited = 0, longestWait = 0, lastTold = -100, started = 0;
 	int audioBlocksSeen = 0;
@@ -581,6 +585,13 @@ private:
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		lastBlock = (reader.sectors + BlockSectors - 1) / BlockSectors;
+		for (size_t t = 0; t + 1 < reader.toc.size(); t++)
+			for (uint32_t k = 0; k < TrackStartBlocks; k++)
+			{
+				const uint32_t b = reader.toc[t].lba / BlockSectors + k;
+				if (b < lastBlock && reader.toc[t].lba > 0)
+					trackStarts.push_back(b);
+			}
 		uint32_t sweep = 0;	// the rest of the disc is read from here on
 		while (!stopping)
 		{
@@ -593,6 +604,16 @@ private:
 					next = b;
 					break;
 				}
+			// Then the start of every track (a few seconds of each), so a game
+			// that starts CD music or jumps to a track does not wait for the
+			// drive's seek; then the rest of the disc in order.
+			if (next == UINT32_MAX)
+				for (uint32_t b : trackStarts)
+					if (blocks.count(b) == 0 && failed.count(b) == 0)
+					{
+						next = b;
+						break;
+					}
 			if (next == UINT32_MAX)
 			{
 				while (sweep < lastBlock && (blocks.count(sweep) != 0 || failed.count(sweep) != 0))
@@ -683,7 +704,15 @@ public:
 			return true;
 		}
 		if (!stream->peekQ(static_cast<uint32_t>(index->file_offset) + offset, subq->data.data()))
-			return false;
+		{
+			// Not read yet: the position from the table of contents. Waiting
+			// for the drive here would stop the whole emulator (test 9: every
+			// new CD music track, while the game asked where the head was
+			// during the drive's seek to it). A LibCrypt check reads its own
+			// sectors, which are in memory by then.
+			const_cast<StreamImage *>(this)->GenerateSubChannelQ(subq, *index, offset);
+			return true;
+		}
 		makeCrc(subq->data.data());
 		return true;
 	}
