@@ -360,6 +360,21 @@ elevation::Status elevation::request(Capability capability, const char *helper_p
                           : Status::timeout;
 }
 
+// PSSwanStation: the helper alone, through the ELF loader, whatever access
+// the title already has. The sandbox elevator (ps5/elevator) answers once it
+// has given the title the console's own root, where /dev holds the drives.
+elevation::Status elevation::requestHelper(Capability capability, const char *helper_path) noexcept
+{
+    if (capability != Capability::filesystem)
+        return Status::unsupported_capability;
+    wire::Message message{};
+    message.pid = static_cast<std::uint32_t>(getpid());
+    message.capability = capability;
+    if (wire::validate(message) != Status::ok)
+        return Status::invalid_request;
+    return run_helper(helper_path, message);
+}
+
 const char *elevation::path() noexcept
 {
     return selected_path;

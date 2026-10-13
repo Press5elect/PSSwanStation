@@ -30,6 +30,12 @@ Build 21
   - The boot log was written where the files are kept, so with them on
     the network share or outside the title's folder it was not in the
     title's folder, where the manual says it is. It is there now, always.
+  Fixed
+  - USB disc drives were not found on the console: the usual way out of
+    the sandbox (Lapy) does not show the console's /dev, where the drives
+    are. When /dev shows none, PSSwanStation now also sends the sandbox
+    elevator Crux2 uses (sandbox-elevator.elf, beside lapy.elf), which gives
+    it the console's own root. It needs the ELF loader on port 9021.
   On my console: nothing of this build yet. On the PC, a disc image
   standing in for the drive was copied byte for byte, played from memory
   and played from the "drive", for a drive that gives everything and for
