@@ -184,6 +184,49 @@ public:
 
 	std::string route() const override { return passName.empty() ? "no pass device: " + passWhy : passName; }
 
+	bool allowRemoval(std::string& how) override
+	{
+		// cd(4)'s own call first, then PREVENT ALLOW MEDIUM REMOVAL (0x1E,
+		// allow) through the pass device.
+		if (ioctl(fd, CDIOCALLOW) == 0)
+		{
+			how = "CDIOCALLOW";
+			return true;
+		}
+		const int first = errno;
+		uint8_t cdb[12] = {};
+		cdb[0] = 0x1E;
+		if (command(cdb, nullptr, 0, 6))
+		{
+			how = "PREVENT ALLOW MEDIUM REMOVAL";
+			return true;
+		}
+		how = std::string("CDIOCALLOW: ") + strerror(first) + ", and the SCSI command failed";
+		return false;
+	}
+
+	bool eject(std::string& how) override
+	{
+		std::string allowed;
+		allowRemoval(allowed);
+		if (ioctl(fd, CDIOCEJECT) == 0)
+		{
+			how = "CDIOCEJECT";
+			return true;
+		}
+		const int first = errno;
+		uint8_t cdb[12] = {};
+		cdb[0] = 0x1B;					// START STOP UNIT
+		cdb[4] = 0x02;					// load/eject: eject
+		if (command(cdb, nullptr, 0, 6))
+		{
+			how = "START STOP UNIT";
+			return true;
+		}
+		how = std::string("CDIOCEJECT: ") + strerror(first) + ", and the SCSI command failed";
+		return false;
+	}
+
 private:
 	std::string device;
 	int fd = -1;
@@ -233,7 +276,7 @@ private:
 		passName = name;
 	}
 
-	bool command(const uint8_t cdb[12], uint8_t *data, uint32_t bytes)
+	bool command(const uint8_t cdb[12], uint8_t *data, uint32_t bytes, uint8_t cdbLength = 12)
 	{
 		union ccb ccb;
 		memset(&ccb, 0, sizeof(ccb));
@@ -241,8 +284,8 @@ private:
 		ccb.ccb_h.target_id = targetId;
 		ccb.ccb_h.target_lun = targetLun;
 		cam_fill_csio(&ccb.csio, 1, nullptr, bytes != 0 ? CAM_DIR_IN : CAM_DIR_NONE, MSG_SIMPLE_Q_TAG, data, bytes,
-				SSD_FULL_SIZE, 12, 10000);
-		memcpy(ccb.csio.cdb_io.cdb_bytes, cdb, 12);
+				SSD_FULL_SIZE, cdbLength, 10000);
+		memcpy(ccb.csio.cdb_io.cdb_bytes, cdb, cdbLength);
 		ccb.ccb_h.flags |= CAM_DEV_QFRZDIS;
 		const int result = ioctl(passFd, CAMIOCOMMAND, &ccb);
 		const uint32_t status = ccb.ccb_h.status & CAM_STATUS_MASK;

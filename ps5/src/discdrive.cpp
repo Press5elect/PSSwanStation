@@ -51,6 +51,7 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <set>
 #include <mutex>
 #include <new>
 #include <sys/stat.h>
@@ -666,6 +667,7 @@ Disc driveEntry(const std::string& device, const std::string& problem, bool empt
 void watch()
 {
 	std::map<std::string, int> tries;	// per device: identifications that failed for this disc
+	std::set<std::string> unlocked;		// drives whose tray was let go
 	while (watching)
 	{
 		if (!playing && job != JobRunning)
@@ -680,6 +682,14 @@ void watch()
 				std::unique_lock<std::mutex> busy(driveMutex);
 				std::string error;
 				std::unique_ptr<Drive> drive = openDevice(device, error);
+				// A console started with a disc in a USB drive locks the tray:
+				// it is let go the first time a drive is seen.
+				if (drive && unlocked.insert(device).second)
+				{
+					std::string how;
+					const bool ok = drive->allowRemoval(how);
+					diag::mark("disc drive: %s: the tray %s (%s)", device.c_str(), ok ? "is unlocked" : "could not be unlocked", how.c_str());
+				}
 				const std::string signature = drive ? signatureOf(*drive, error) : std::string();
 				drive.reset();
 				// "-": looked at, no disc; "": not looked at yet.
@@ -1212,6 +1222,29 @@ void setPlaying(bool on)
 	playing = on;
 }
 
+bool eject(const std::string& device, std::string& why)
+{
+	if (playing || job == JobRunning)
+	{
+		why = "The disc is in use: close the game, or wait for the copy to end.";
+		return false;
+	}
+	std::lock_guard<std::mutex> busy(driveMutex);
+	std::string error;
+	std::unique_ptr<Drive> drive = openDevice(device, error);
+	if (!drive)
+	{
+		why = "The drive could not be opened: " + error + ".";
+		return false;
+	}
+	std::string how;
+	const bool ok = drive->eject(how);
+	diag::mark("disc drive: %s: eject %s (%s)", device.c_str(), ok ? "done" : "failed", how.c_str());
+	if (!ok)
+		why = "The drive did not open its tray (" + how + "). Its own button may work now that the tray is unlocked.";
+	return ok;
+}
+
 std::string destinationName(int destination)
 {
 	switch (destination)
@@ -1412,6 +1445,8 @@ public:
 	}
 
 	bool setSpeed(unsigned) override { return !dataOnly(); }
+	bool allowRemoval(std::string& how) override { how = "the PC's stand-in"; return true; }
+	bool eject(std::string& how) override { how = "the PC's stand-in"; return true; }
 	std::string route() const override { return dataOnly() ? "no pass device (the PC's stand-in)" : "the PC's stand-in"; }
 
 private:
