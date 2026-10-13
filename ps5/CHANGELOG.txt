@@ -5,17 +5,38 @@ Build 21
   Added
   - Discs from a USB CD or DVD drive, watched whenever PSSwanStation is out
     of its sandbox for USB (Settings, Games and network: USB drives, or USB
-    disc drive). A disc in the drive is under the library's new Disc Drive tab,
-    named from its serial; a drive with no disc, or one it cannot read, is
-    there too and says why. Every step is in the boot log (disc drive:
-    lines). Before it starts PSSwanStation asks how to
-    play it: copy it (a .bin and .cue, with an .sbi for a LibCrypt disc) to
-    the games folder, a USB drive, the SMB share or the NFS share and play
-    the copy; copy it into memory and play it from there; or play it from
-    the drive. The drive is read as whole sectors with their sub-channel
-    when it lets PSSwanStation send it the SCSI command for that, else 2048
-    bytes a sector, which loses a game's videos, XA sound and CD music; the
-    choice page and the boot log say which.
+    disc drive). A disc in the drive is under the library's new Disc Drive
+    tab, named from its serial, with its cover; a drive with no disc, or
+    one it cannot read, is there too and says why. Before it starts,
+    PSSwanStation asks how to play it:
+      Copy it, then play the copy: a .bin and .cue (with an .sbi for a
+        LibCrypt disc) in the games folder, on a USB drive, the SMB share or
+        the NFS share.
+      Copy it into memory and play it: the whole disc is read first.
+      Play it from the drive: starts at once; behind the game the whole
+        disc is read into memory (what the game is about to read first,
+        then the start of every track, then the rest), and the drive then
+        rests. A seek of the real drive makes the emulated drive take
+        longer, never stops the emulator. The memory is given back when the
+        game closes.
+    The drive is read as whole sectors with their sub-channel (videos, XA
+    sound, CD music and LibCrypt's protection) when the console lets
+    PSSwanStation send it SCSI commands, else 2048 bytes a sector, which
+    loses videos, XA sound and CD music; the choice page and the boot log
+    (disc drive: lines) say which. CD music is read as CD audio; a
+    sub-channel whose check value the drive leaves zero is taken by its
+    position. A transfer the console's kernel refuses as too big is halved
+    and remembered.
+  - Finding the drive: the usual way out of the sandbox (Lapy) does not
+    show the console's /dev, where drives are. When /dev shows none,
+    PSSwanStation also sends the sandbox elevator Crux2 uses
+    (sandbox-elevator.elf, beside lapy.elf), which gives it the console's
+    own root. It needs the ELF loader on port 9021.
+  - A console started with a disc in a USB drive locks the tray: when
+    PSSwanStation first sees the drive it unlocks it, and the drive's page
+    has "Eject the disc".
+  - The game database carries each serial's Redump name, by which covers
+    are found for discs in the drive.
   Changed
   - Less work for the processor, as in Crux2 1.0.1: the clock comes from
     the processor's own counter (about 12 ns a read) instead of a system
@@ -26,76 +47,26 @@ Build 21
     The boot log says what the waits cost when a game closes.
   - The payload SDK's platform layer at its newest (b5efad5): a fix for
     wide characters' classes in the C locale.
+  - PSSwanStation's licence names its author, Press5elect, and asks for
+    credit, including from AI tools (licenses/ADDITIONAL-TERMS.txt, a term
+    under section 7(b) of the GPL).
   Fixed
   - The boot log was written where the files are kept, so with them on
     the network share or outside the title's folder it was not in the
     title's folder, where the manual says it is. It is there now, always.
-  Fixed
-  - USB disc drives were not found on the console: the usual way out of
-    the sandbox (Lapy) does not show the console's /dev, where the drives
-    are. When /dev shows none, PSSwanStation now also sends the sandbox
-    elevator Crux2 uses (sandbox-elevator.elf, beside lapy.elf), which gives
-    it the console's own root. It needs the ELF loader on port 9021.
-  - A console started with a disc in a USB drive locks the tray. When
-    PSSwanStation first sees the drive it unlocks it, so the button opens
-    it again, and the drive's page has "Eject the disc". The tab is named
-    Disc Drive.
-  - Playing from the drive froze every couple of seconds: it read under a
-    second ahead of the game at 4x, and the drive slowed down in between.
-    It now reads about sixteen seconds ahead at 8x, gives the drive
-    something to read every three seconds so it keeps spinning, and the
-    boot log says each time a read had to wait for it. Once two seconds
-    are ready the rest is read at a gentle pace (a block every 60 ms) by a
-    thread of the lowest priority.
-  - Still freezing after that: two causes, both in the boot log. Every
-    26-sector read was refused by the console's kernel as too big a
-    transfer (E2BIG), so each block was read again one sector at a time and
-    the reading never got ahead. Reads now go through a page-aligned
-    buffer, and a refused size is halved and remembered (the boot log says
-    the size the drive settled on). And a seek on a real drive takes 150 to
-    500 ms, for which the whole emulator stopped: now the emulated drive
-    takes that long over its seek or sector instead, as a PlayStation's own
-    drive does over a hard-to-read disc, and the game and its pictures go
-    on meanwhile (the emulator's log says how long each wait was). Disc
-    images in files or memory are not affected.
-  - Still hitching after that, with the game and the emulator running at
-    full speed: the graphics driver's suspend points took ten to twenty
-    times longer whenever the drive was being read, whatever the pace of
-    the reading, so the picture was shown late. Playing from the drive now
-    reads the whole disc into memory behind the game, as fast as the drive
-    goes (what the game is about to read first), and the drive then has
-    nothing more to do; the boot log says when the disc is all in memory
-    (a few minutes for a full CD). Until then the hitching remains; "Copy
-    it into memory and play it" avoids it altogether.
-  - CD music from the drive: the disc's audio sectors are now asked for as
-    CD audio (READ CD's own way), not as "any sector, every field", which
-    some drives answer with silence; the boot log says whether the drive's
-    audio sectors have sound in them. A Q sub-channel whose CRC the drive
-    leaves zero is no longer refused: the position is what is checked, and
-    the CRC is made good for the emulator (as an .sbi's sectors are), with
-    the .sbi of a copy judged by the position as well as the CRC.
-  - A short freeze at the start of each CD music track while the disc was
-    still being read into memory: with the drive now giving the
-    sub-channel, the game asking where the drive's head was during the
-    seek to the track waited for the drive. It is now answered from the
-    table of contents until the sector is in memory, and the first half
-    second of every track is read early, before the rest of the disc.
-  - A disc in the drive had no cover: it was looked for by the game
-    database's short name, and the covers collection names its pictures by
-    the disc's Redump name ("Crash Bandicoot (USA)"). The game database now
-    carries each serial's Redump name, and the disc's cover is downloaded
-    into covers/ under it, as for a disc image.
   Known problem
   - A console turned on with a disc in a USB drive cannot turn itself off
     afterwards (only by holding its power button). Start the console with
     the drive empty and put the disc in afterwards; the manual, the
     drive's page and Troubleshooting say so.
-  On my console: a PlayStation disc played from a USB drive for eight
-  minutes without hitching once it was read into memory (228 s for the
-  whole CD), its CD music playing, read with its sub-channel Q. On the
-  PC, a disc image standing in for the drive was copied byte for byte,
-  played from memory and played from the "drive", for a drive that gives
-  everything and for two that give less.
+  On my console: a PlayStation disc in a USB drive played from the
+  drive for eight minutes, read with its sub-channel, its CD music
+  playing, without hitching once it was in memory (228 s for a full CD).
+  The freeze it showed at the start of each CD music track before then is
+  fixed, but that fix has not been seen on the console. On the PC, a disc
+  image standing in for the drive was copied byte for byte, played from
+  memory and played from the "drive", for a drive that gives everything
+  and for two that give less.
 
 Build 20
   Added
