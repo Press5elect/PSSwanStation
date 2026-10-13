@@ -81,6 +81,20 @@ bool hasFile(const std::string& path)
 	return stat(path.c_str(), &st) == 0;
 }
 
+// Whether /dev shows an optical drive (cd0, cd1...).
+bool devHasDrives()
+{
+	bool found = false;
+	if (DIR *dir = opendir("/dev"))
+	{
+		while (const dirent *entry = readdir(dir))
+			if (std::strncmp(entry->d_name, "cd", 2) == 0)
+				found = true;
+		closedir(dir);
+	}
+	return found;
+}
+
 bool writableDir(const std::string& dir)
 {
 	mkdir(dir.c_str(), 0777);
@@ -216,6 +230,26 @@ void earlyInit()
 		elevated = status == elevation::Status::ok;
 		diag::mark("sandbox: leaving it %s (status %u, by way of %s)", elevated ? "granted" : "not granted",
 				(unsigned)status, elevation::path());
+		// Disc drives are in the console's own /dev, which that way of
+		// leaving the sandbox may not show (Lapy gives /data and the USB
+		// folders). The sandbox elevator, as Crux2 sends it, gives the title
+		// the console's root: then /dev is the real one.
+		const bool drivesWanted = options::frontend().discDrive || options::frontend().usb;
+		if (drivesWanted && !devHasDrives())
+		{
+			const char *helper = "/app0/sandbox-elevator.elf";
+			if (!hasFile(helper))
+				diag::mark("sandbox: /dev shows no disc drive, and %s is not there", helper);
+			else
+			{
+				const elevation::Status rooted = elevation::requestHelper(elevation::Capability::filesystem, helper);
+				if (rooted == elevation::Status::ok)
+					elevated = true;
+				diag::mark("sandbox: the elevator %s (status %u); /dev %s a disc drive now",
+						rooted == elevation::Status::ok ? "gave the console's root" : "did not answer yes", (unsigned)rooted,
+						devHasDrives() ? "shows" : "still shows no");
+			}
+		}
 	}
 	// The title's folder as this process sees it now. Outside the sandbox
 	// /app0 may no longer be a path: the folder is where the launcher mounted

@@ -35,5 +35,8 @@ enum class Status : std::uint32_t
 // is sent to the local elfldr. Only ok permits /data use.
 [[nodiscard]] Status request(Capability capability,
                              const char *helper_path = "/app0/lapy.elf") noexcept;
+// PSSwanStation: sends the helper at helper_path to the ELF loader and asks
+// it alone (no resident service, no check of the access already given).
+[[nodiscard]] Status requestHelper(Capability capability, const char *helper_path) noexcept;
 [[nodiscard]] const char *path() noexcept;
 } // namespace elevation

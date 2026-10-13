@@ -21,6 +21,9 @@ The PS5 frontend (ps5/)      GPL-3.0-or-later GPL-3.0.txt,             Copyright
   runtime, libc, threads,    GPL-2.0-or-later GPL-3.0.txt (as later    PSFlyCast (shell/ps5), used under the
   network share reader                        version)                 later version
   sandbox elevation client   GPL-3.0-or-later GPL-3.0.txt              ps5-native-app-boilerplate (BlackBearReloaded)
+  sandbox elevator           GPL-3.0-or-later GPL-3.0.txt              ps5-native-app-boilerplate's one-request
+  (sandbox-elevator.elf)                                               helper (BlackBearReloaded), as Crux2 carries
+                                                                       it, with this title's ID (ps5/elevator)
 Lapy helper (lapy.elf)       MIT              Lapy-MIT.txt             PS5-Lapy-JB-Daemon, the exact-title helper
                                                                        built unchanged (lapy-manifest.json is
                                                                        that build's record)

@@ -126,6 +126,12 @@ if hashlib.sha256(open(folder + "/lapy.elf", "rb").read()).hexdigest() != record
     sys.exit("build.sh: lapy.elf is not the file lapy-manifest.json describes")
 CHECK
 cp -- "$lapy/lapy.elf" "$lapy/lapy-manifest.json" "$app/"
+# The sandbox elevator (ps5/elevator, BlackBearReloaded's one-request helper as
+# Crux2 sends it, for PPSA99248): sent to the ELF loader when the way out of the
+# sandbox above does not show the console's /dev, where the disc drives are.
+"$PS5_PAYLOAD_SDK/bin/prospero-clang++" -std=c++20 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=none \
+    -o "$app/sandbox-elevator.elf" "$ps5/elevator/payload/main.cpp"
+python3 "$ps5/elevator/validate-elevation-helper.py" "$app/sandbox-elevator.elf" >&2
 # The cheat and patch database (DuckStation's chtdb), as its release ships it.
 staged_db=0
 for archive in cheats.zip patches.zip; do
