@@ -922,6 +922,7 @@ struct Disc
 	std::string device;		// /dev/cd1
 	std::string serial;		// SLUS-00594, or empty
 	std::string name;		// the game database's, or a name made from the serial
+	std::string coverName;	// the disc's Redump name: what its cover is found by
 	uint64_t bytes = 0;		// the whole disc, 2352 bytes a sector
 	int tracks = 0;
 	std::string reading;	// how the drive reads it (for the boot log and the choice page)
@@ -996,6 +997,8 @@ void init();
 bool find(const std::string& serial, Info& out);
 // The serial of the disc whose image file is named so (Redump's names), or empty.
 std::string serialByName(const std::string& fileTitle);
+// The serial's disc as Redump names it ("Crash Bandicoot (USA)"), or empty.
+std::string redumpName(const std::string& serial);
 std::string summary();
 }
 

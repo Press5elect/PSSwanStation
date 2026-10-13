@@ -45,6 +45,11 @@ Build 21
     It now reads about sixteen seconds ahead at 8x, gives the drive
     something to read every three seconds so it keeps spinning, and the
     boot log says each time the game had to wait for it.
+  - A disc in the drive had no cover: it was looked for by the game
+    database's short name, and the covers collection names its pictures by
+    the disc's Redump name ("Crash Bandicoot (USA)"). The game database now
+    carries each serial's Redump name, and the disc's cover is downloaded
+    into covers/ under it, as for a disc image.
   On my console: nothing of this build yet. On the PC, a disc image
   standing in for the drive was copied byte for byte, played from memory
   and played from the "drive", for a drive that gives everything and for

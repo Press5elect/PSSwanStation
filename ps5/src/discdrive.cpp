@@ -699,6 +699,9 @@ bool identify(const std::string& device, Disc& out, std::string& why)
 	else
 		out.name = out.serial.empty() ? std::string("PlayStation disc") : "PlayStation disc " + out.serial;
 	out.name = safeName(out.name);
+	// The cover is found by the disc's Redump name, as the collection names it.
+	const std::string redump = out.serial.empty() ? std::string() : gamedb::redumpName(out.serial);
+	out.coverName = redump.empty() ? out.name : safeName(redump);
 	out.bytes = (uint64_t)image.GetLBACount() * RawSector;
 	out.tracks = (int)image.GetTrackCount();
 	out.reading = modeText(image.readMode());

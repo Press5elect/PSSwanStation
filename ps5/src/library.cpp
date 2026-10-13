@@ -353,7 +353,7 @@ void run(int source, bool force)
 			Game game;
 			game.path = discdrive::streamPath(disc);
 			game.name = disc.name;
-			game.fileTitle = disc.name;
+			game.fileTitle = disc.coverName.empty() ? disc.name : disc.coverName;
 			game.size = disc.bytes;
 			game.source = Optical;
 			games.push_back(game);
