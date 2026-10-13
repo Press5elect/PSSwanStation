@@ -564,7 +564,7 @@ bool sourceAvailable(int source)
 	if (source == Usb)
 		return options::frontend().usb;
 	if (source == Optical)
-		return options::frontend().discDrive;
+		return options::frontend().discDrive || options::frontend().usb;
 	return true;
 }
 

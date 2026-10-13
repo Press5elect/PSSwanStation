@@ -926,6 +926,10 @@ struct Disc
 	int tracks = 0;
 	std::string reading;	// how the drive reads it (for the boot log and the choice page)
 	bool fullSectors = false;	// false: 2048 bytes a sector only (videos and CD music are lost)
+	// False for a drive listed with no disc, or one that cannot be read: the
+	// library shows it, and choosing it says why (`problem`).
+	bool playable = false;
+	std::string problem;
 };
 // Starts watching the drives (a thread of its own), when the setting is on.
 void start();

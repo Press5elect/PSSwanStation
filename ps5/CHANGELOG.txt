@@ -3,10 +3,12 @@ PSSwanStation - what changed
 
 Build 21
   Added
-  - Discs from a USB CD or DVD drive (Settings, Games and network, USB
-    disc drive; off at first, and like USB drives it needs PSSwanStation to
-    leave its sandbox). A disc in the drive is under the library's new Disc
-    tab, named from its serial. Before it starts PSSwanStation asks how to
+  - Discs from a USB CD or DVD drive, watched whenever PSSwanStation is out
+    of its sandbox for USB (Settings, Games and network: USB drives, or USB
+    disc drive). A disc in the drive is under the library's new Disc tab,
+    named from its serial; a drive with no disc, or one it cannot read, is
+    there too and says why. Every step is in the boot log (disc drive:
+    lines). Before it starts PSSwanStation asks how to
     play it: copy it (a .bin and .cue, with an .sbi for a LibCrypt disc) to
     the games folder, a USB drive, the SMB share or the NFS share and play
     the copy; copy it into memory and play it from there; or play it from
