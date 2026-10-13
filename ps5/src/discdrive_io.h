@@ -84,4 +84,13 @@ std::vector<std::string> deviceNames();
 // Opens one; null with `error` set when it cannot be.
 std::unique_ptr<Drive> openDevice(const std::string& device, std::string& error);
 
+// On the console: a USB drive the console did not attach as a disc drive,
+// read over USB by PSSwanStation itself (ps5/usbdrive_ps5.cpp). Its names are
+// the console's generic USB nodes (/dev/ugen2.3).
+namespace usb
+{
+std::vector<std::string> deviceNames();
+std::unique_ptr<Drive> openDevice(const std::string& device, std::string& error);
+}
+
 }
