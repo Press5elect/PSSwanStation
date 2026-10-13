@@ -134,7 +134,7 @@ public:
 		return true;
 	}
 
-	bool readCd(uint32_t lba, uint32_t count, Sub sub, uint8_t *out) override
+	bool readCd(uint32_t lba, uint32_t count, Sub sub, uint8_t *out, bool audio = false) override
 	{
 		if (passFd < 0 || count == 0)
 			return false;
@@ -147,7 +147,7 @@ public:
 			uint8_t cdb[12] = {};
 			const uint32_t at = lba + done;
 			cdb[0] = 0xBE;				// READ CD
-			cdb[1] = 0x00;				// any type of sector
+			cdb[1] = audio ? 0x04 : 0x00;		// CD-DA sectors, or any type of sector
 			cdb[2] = (uint8_t)(at >> 24);
 			cdb[3] = (uint8_t)(at >> 16);
 			cdb[4] = (uint8_t)(at >> 8);
@@ -155,9 +155,9 @@ public:
 			cdb[6] = (uint8_t)(piece >> 16);
 			cdb[7] = (uint8_t)(piece >> 8);
 			cdb[8] = (uint8_t)piece;
-			cdb[9] = 0xF8;				// sync, all headers, user data, EDC and ECC
+			cdb[9] = audio ? 0x10 : 0xF8;		// audio: its 2352 bytes; else sync, all headers, user data, EDC and ECC
 			cdb[10] = sub == Sub::Raw ? 0x01 : sub == Sub::Q ? 0x02 : 0x00;
-			if (command(cdb, out + (size_t)done * each, piece * each))
+			if (command(cdb, out + (size_t)done * each, piece * each, 12, !audio))
 			{
 				done += piece;
 				continue;
@@ -308,7 +308,7 @@ private:
 		passName = name;
 	}
 
-	bool command(const uint8_t cdb[12], uint8_t *data, uint32_t bytes, uint8_t cdbLength = 12)
+	bool command(const uint8_t cdb[12], uint8_t *data, uint32_t bytes, uint8_t cdbLength = 12, bool tell = true)
 	{
 		// The transfer goes through a buffer that starts on a page: the kernel
 		// counts a buffer's offset into its first page against the most it
@@ -342,7 +342,7 @@ private:
 			return true;
 		}
 		// Too big a transfer is the caller's to split, not a failure to tell.
-		if (!told && !(result != 0 && lastErrno == E2BIG))
+		if (tell && !told && !(result != 0 && lastErrno == E2BIG))
 		{
 			// The first failure is told in full: the rest of a run repeats it.
 			told = true;

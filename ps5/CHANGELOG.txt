@@ -58,6 +58,22 @@ Build 21
     drive does over a hard-to-read disc, and the game and its pictures go
     on meanwhile (the emulator's log says how long each wait was). Disc
     images in files or memory are not affected.
+  - Still hitching after that, with the game and the emulator running at
+    full speed: the graphics driver's suspend points took ten to twenty
+    times longer whenever the drive was being read, whatever the pace of
+    the reading, so the picture was shown late. Playing from the drive now
+    reads the whole disc into memory behind the game, as fast as the drive
+    goes (what the game is about to read first), and the drive then has
+    nothing more to do; the boot log says when the disc is all in memory
+    (a few minutes for a full CD). Until then the hitching remains; "Copy
+    it into memory and play it" avoids it altogether.
+  - CD music from the drive: the disc's audio sectors are now asked for as
+    CD audio (READ CD's own way), not as "any sector, every field", which
+    some drives answer with silence; the boot log says whether the drive's
+    audio sectors have sound in them. A Q sub-channel whose CRC the drive
+    leaves zero is no longer refused: the position is what is checked, and
+    the CRC is made good for the emulator (as an .sbi's sectors are), with
+    the .sbi of a copy judged by the position as well as the CRC.
   - A disc in the drive had no cover: it was looked for by the game
     database's short name, and the covers collection names its pictures by
     the disc's Redump name ("Crash Bandicoot (USA)"). The game database now
