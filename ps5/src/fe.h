@@ -550,6 +550,19 @@ void reset();
 // Runs the core for one display refresh (none, one or more emulated frames).
 void runFrame();
 std::string lastError();
+// The last start was refused because the disc is protected by LibCrypt and
+// its image has no .sbi file beside it (the emulator then stops it before it
+// boots).
+bool neededSbi();
+// The next start goes ahead without the .sbi: the game will most likely fail
+// its protection check, often far into the game.
+void startWithoutSbiOnce();
+// Whether a disc of this serial is protected by LibCrypt (the emulator's list).
+bool isLibCrypt(const std::string& serial);
+// The .sbi file a disc image needs beside it: the same folder, the same name.
+// Empty for a disc read from a drive (it gives the protection itself) or a
+// playlist.
+std::string sbiPathFor(const std::string& imagePath);
 
 // Fast forward and rewind, while they are held. Rewind steps back through
 // the states kept in memory (settings); it is refused when none are kept.
