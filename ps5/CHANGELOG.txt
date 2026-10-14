@@ -8,6 +8,8 @@ Build 23 (not released yet)
     the disc needs its .sbi, names the file and the folder it goes in, and
     offers to start it anyway. The game's details say whether the .sbi is
     there ("LibCrypt: Protected; .sbi found", or "Missing <name>.sbi").
+  - A disc in the drive wears its cover: the cover is printed on the disc
+    in the Disc Drive tab and turns with it.
 
 Build 22
   Added

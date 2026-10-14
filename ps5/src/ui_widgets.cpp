@@ -627,6 +627,20 @@ void ImDrawList::AddImageRounded(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2
 	kit->image(handle, rectOf(a, b), { uv0.x, uv0.y, uv1.x - uv0.x, uv1.y - uv0.y }, colourOf(col), rounding);
 }
 
+void ImDrawList::AddImageRotated(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0, ImVec2 uv1, ImU32 col,
+		float rounding, float angle)
+{
+	if (kit == nullptr)
+	{
+		AddImageRounded(texture, a, b, uv0, uv1, col, rounding);
+		return;
+	}
+	const uint32_t handle = fe::display::kitTexture(texture);
+	if (handle == 0)
+		return;
+	kit->image(handle, rectOf(a, b), { uv0.x, uv0.y, uv1.x - uv0.x, uv1.y - uv0.y }, colourOf(col), rounding, angle);
+}
+
 void ImDrawList::PushClipRect(ImVec2 a, ImVec2 b, bool)
 {
 	if (kit != nullptr)
@@ -1467,10 +1481,25 @@ bool driveArt(ImVec2 a, ImVec2 b, const std::string& path, const std::string& na
 		// Its shadow on the drive.
 		list->AddEllipseFilled(ImVec2(cx, slotY + faceH * 0.05f), ImVec2(discR * 0.95f, discR * 0.12f),
 				withAlpha(IM_COL32(0, 0, 0, 255), 0.45f * da));
-		list->AddCircleFilled(c, discR, withAlpha(IM_COL32(16, 16, 22, 255), da), 64);
-		// The data area's faint rings.
-		for (float k : { 0.93f, 0.80f, 0.66f, 0.52f })
-			list->AddCircle(c, discR * k, withAlpha(IM_COL32(255, 255, 255, 14), da), 64, px(1.f));
+		const bool label = cover.id != nullptr && cover.width > 0 && cover.height > 0;
+		list->AddCircleFilled(c, discR, withAlpha(label ? IM_COL32(200, 204, 214, 255) : IM_COL32(16, 16, 22, 255), da), 64);
+		if (label)
+		{
+			// The cover printed on the disc, turning with it: the middle square of
+			// the picture, inside the disc's edge.
+			const float aspect = (float)cover.width / (float)cover.height;
+			const ImVec2 uv0 = aspect > 1.f ? ImVec2(0.5f - 0.5f / aspect, 0.f) : ImVec2(0.f, 0.5f - 0.5f * aspect);
+			const ImVec2 uv1 = aspect > 1.f ? ImVec2(0.5f + 0.5f / aspect, 1.f) : ImVec2(1.f, 0.5f + 0.5f * aspect);
+			const float lr = discR * 0.965f;
+			list->AddImageRotated(cover.id, ImVec2(c.x - lr, c.y - lr), ImVec2(c.x + lr, c.y + lr), uv0, uv1,
+					withAlpha(IM_COL32_WHITE, da), lr, spin);
+			// Printed ink is matte: a little darker toward the edge, as the light falls off.
+			list->AddCircle(c, lr * 0.985f, withAlpha(IM_COL32(0, 0, 0, 255), 0.25f * da), 64, px(3.f));
+		}
+		else
+			// The data area's faint rings.
+			for (float k : { 0.93f, 0.80f, 0.66f, 0.52f })
+				list->AddCircle(c, discR * k, withAlpha(IM_COL32(255, 255, 255, 14), da), 64, px(1.f));
 		// The rainbow stays where the light is, swaying a little; brighter as it spins.
 		const float light = -0.75f + (some ? 0.12f * std::sin((float)now * 0.7f) : 0.f);
 		for (int side = 0; side < 2; side++)
@@ -1481,7 +1510,7 @@ bool driveArt(ImVec2 a, ImVec2 b, const std::string& path, const std::string& na
 				const float a0 = centre + (float)i * 0.06f, a1 = a0 + 0.06f;
 				const float fall = 1.f - std::fabs(((float)i + 0.5f) / 5.f);
 				ringPiece(list, c, discR * 0.40f, discR * 0.97f, a0, a1,
-						rainbow((float)(i + 5) / 10.f + (float)side * 0.5f, (0.16f + 0.16f * fast) * fall * da), 2);
+						rainbow((float)(i + 5) / 10.f + (float)side * 0.5f, (label ? 0.07f : 0.16f + 0.16f * fast) * fall * da), 2);
 			}
 		}
 		// The marks that turn with it (pressing marks near the middle, a nick in
@@ -1489,12 +1518,15 @@ bool driveArt(ImVec2 a, ImVec2 b, const std::string& path, const std::string& na
 		static const float marks[][3] = { { 0.0f, 0.36f, 0.35f }, { 2.1f, 0.38f, 0.20f }, { 3.9f, 0.35f, 0.28f } };
 		for (const auto& m : marks)
 		{
+			if (label)
+				break;	// the cover shows the turning
 			const float a0 = spin + m[0], len = m[2] * (1.f + fast * 4.f);
 			ringPiece(list, c, discR * m[1], discR * (m[1] + 0.035f), a0, a0 + len,
 					withAlpha(IM_COL32(220, 225, 235, 255), (0.30f - fast * 0.18f) * da), 5);
 		}
-		ringPiece(list, c, discR * 0.90f, discR * 0.99f, spin + 1.2f, spin + 1.2f + 0.05f + fast * 0.9f,
-				withAlpha(IM_COL32(255, 255, 255, 255), (0.35f - fast * 0.2f) * da), 4);
+		if (!label)
+			ringPiece(list, c, discR * 0.90f, discR * 0.99f, spin + 1.2f, spin + 1.2f + 0.05f + fast * 0.9f,
+					withAlpha(IM_COL32(255, 255, 255, 255), (0.35f - fast * 0.2f) * da), 4);
 		// Speed: arcs around the rim while it is read.
 		if (activity == discdrive::Reading && some)
 			for (int i = 0; i < 3; i++)
