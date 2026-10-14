@@ -226,6 +226,27 @@ void begin(const library::Game& game, int slot, int disc)
 	if (why.empty())
 		why = "The emulator could not start this game.";
 	detailsRestore();
+	// A LibCrypt-protected disc whose image has no .sbi beside it: said
+	// plainly, with the file it needs, and the choice to start it anyway.
+	if (host::neededSbi())
+	{
+		const std::string sbi = host::sbiPathFor(first);
+		const std::string named = sbi.empty() ? std::string("an .sbi file with the image's name")
+				: "\"" + baseName(sbi) + "\"";
+		const std::string where = sbi.empty() ? std::string("beside the disc image")
+				: "in the same folder as \"" + baseName(first) + "\"";
+		push(Page::Confirm, 0, 0, "This disc needs its .sbi file",
+				"The game is protected by LibCrypt, and the protection lives in the disc's sub-channel, which a .bin, "
+				".cue or .chd does not hold. The .sbi file keeps it: put " + named + " " + where + ". A disc copied "
+				"from a USB disc drive by PSSwanStation has its .sbi already, and a game played straight from the "
+				"drive needs none.\n\nStart it anyway? Without it the game will most likely fail its protection "
+				"check, sometimes only far into the game.",
+				[game, slot, disc] {
+					host::startWithoutSbiOnce();
+					begin(game, slot, disc);
+				});
+		return;
+	}
 	message("The game did not start", why);
 }
 
@@ -3224,6 +3245,24 @@ void detailsPage(Frame& f)
 	};
 	fact(icon::Disc, "ID", !det.serial.empty() ? det.serial : det.serialPending ? "Reading the disc\xe2\x80\xa6"
 			: det.serialRead ? "None on the disc" : "");
+	// A LibCrypt disc: whether the .sbi it needs is beside its image.
+	if (host::isLibCrypt(det.serial))
+	{
+		const std::string disc = detailsDiscPath();
+		const std::string sbi = host::sbiPathFor(disc);
+		std::string state;
+		if (discdrive::isDrivePath(disc) || discdrive::isRamPath(disc))
+			state = "Protected; read from the disc";
+		else if (sbi.empty())
+			state = "Protected; needs each disc's .sbi";
+		else if (smb::isNetworkPath(sbi))
+			state = "Protected; needs " + baseName(sbi);
+		else if (fileExists(sbi))
+			state = "Protected; .sbi found";
+		else
+			state = "Missing " + baseName(sbi);
+		fact(icon::Warning, "LibCrypt", state);
+	}
 	fact(icon::Clock, "Played", playedText(det.played.seconds));
 	fact(icon::Play, "Last", agoText(det.played.lastPlayed));
 	fact(icon::Drive, "Size", sizeText(game.size));

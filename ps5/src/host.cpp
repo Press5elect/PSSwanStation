@@ -51,6 +51,7 @@
 
 #include "common/vulkan/context.h"
 #include "core/system.h"
+#include "core/libcrypt_game_codes.h"
 
 // The core's (libretro_host_interface.cpp): the input as it is now, and the
 // run-ahead's rollback a change of it asks for, done at once.
@@ -109,6 +110,9 @@ GameInfo current;
 // that have none of their own.
 std::string firstDiscSerial;
 std::string errorText;
+// The last start was refused for a missing .sbi; the next one may go ahead without it.
+bool sbiMissing = false;
+bool allowNoSbiOnce = false;
 retro_system_av_info av{};
 double pacing;
 // Changes of input the run-ahead took between two frames (runFrame).
@@ -568,6 +572,8 @@ void logCallback(retro_log_level level, const char *format, ...)
 			text[--length] = '\0';
 		diag::mark("core %s: %s", names[std::min<unsigned>(level, 3)], text);
 	}
+	if (level == RETRO_LOG_ERROR && strstr(text, "without an SBI file") != nullptr)
+		sbiMissing = true;
 	if (level == RETRO_LOG_ERROR)
 	{
 		while (!errorText.empty() && errorText.back() == '\n')
@@ -688,6 +694,12 @@ bool environment(unsigned command, void *data)
 		retro_variable *variable = static_cast<retro_variable *>(data);
 		if (variable == nullptr || variable->key == nullptr)
 			return false;
+		// Started anyway without its .sbi, once, when asked after a refusal.
+		if (strcmp(variable->key, "swanstation_CDROM_AllowBootingWithoutSBIFile") == 0)
+		{
+			variable->value = allowNoSbiOnce ? "true" : "false";
+			return true;
+		}
 		variable->value = options::get(variable->key);
 		return variable->value != nullptr;
 	}
@@ -1331,6 +1343,37 @@ std::string lastError()
 	return errorText;
 }
 
+bool neededSbi()
+{
+	return sbiMissing;
+}
+
+void startWithoutSbiOnce()
+{
+	allowNoSbiOnce = true;
+}
+
+bool isLibCrypt(const std::string& serial)
+{
+	return !serial.empty() && LibcryptGameList::IsLibcryptGameCode(serial);
+}
+
+std::string sbiPathFor(const std::string& imagePath)
+{
+	if (imagePath.empty() || discdrive::isDrivePath(imagePath) || discdrive::isRamPath(imagePath))
+		return std::string();
+	const size_t slash = imagePath.find_last_of('/');
+	const size_t dot = imagePath.find_last_of('.');
+	const std::string ext = dot != std::string::npos && (slash == std::string::npos || dot > slash)
+			? imagePath.substr(dot) : std::string();
+	std::string lowered = ext;
+	for (char& c : lowered)
+		c = (char)tolower((unsigned char)c);
+	if (lowered == ".m3u")
+		return std::string();
+	return (ext.empty() ? imagePath : imagePath.substr(0, dot)) + ".sbi";
+}
+
 std::string knownSerial(const std::string& gamePath)
 {
 	return lookupSerial(gamePath);
@@ -1362,6 +1405,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 		return false;
 	stop();
 	errorText.clear();
+	sbiMissing = false;
 	diag::mark("game: starting %s", path.empty() ? "(the BIOS)" : path.c_str());
 	const double startBegan = now();
 
@@ -1384,6 +1428,9 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	// A disc played from its drive: the drive watcher leaves it alone.
 	discdrive::setPlaying(discdrive::isDrivePath(path));
 	bool loaded = retro_load_game(path.empty() ? nullptr : &info);
+	if (allowNoSbiOnce)
+		diag::mark("game: started without its .sbi, as asked");
+	allowNoSbiOnce = false;
 	// The core starts its BIOS when a disc image cannot be opened, as a console
 	// with an empty tray would; a game that was asked for and is not there is
 	// a failure to say so about.

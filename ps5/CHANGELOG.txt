@@ -1,6 +1,14 @@
 PSSwanStation - what changed
 ============================
 
+Build 23 (not released yet)
+  Changed
+  - A LibCrypt-protected game whose disc image has no .sbi file beside it
+    no longer ends with "The game did not start" alone: PSSwanStation says
+    the disc needs its .sbi, names the file and the folder it goes in, and
+    offers to start it anyway. The game's details say whether the .sbi is
+    there ("LibCrypt: Protected; .sbi found", or "Missing <name>.sbi").
+
 Build 22
   Added
   - A third way to make frame generation's pictures: MihawkGen, Mihawk's
