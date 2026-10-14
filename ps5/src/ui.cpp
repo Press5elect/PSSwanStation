@@ -1248,7 +1248,9 @@ void drawCell(LibraryView& view, int index, float x, float y, float cell, bool f
 	if (focused)
 		draw()->AddRectFilled(ImVec2(a.x - px(10), a.y - px(10)), ImVec2(b.x + px(10), b.y + px(10)),
 				withAlpha(t.accent, 0.20f), px(18));
-	if (cover.id != nullptr)
+	if (driveArt(a, b, game.path, game.name, cover))
+		;
+	else if (cover.id != nullptr)
 		imageFit(cover, a, b, 10);
 	else
 		coverPlaceholder(a, b, game.name, game.region);
@@ -1449,7 +1451,9 @@ void shelfCard(LibraryView& view, int index, ImVec2 a, ImVec2 b, float rounding,
 	const library::Game& game = view.games[(size_t)index];
 	const Image cover = coverOf(view, index);
 	const ImU32 tint = withAlpha(IM_COL32_WHITE, alpha);
-	if (cover.id != nullptr)
+	if (driveArt(a, b, game.path, game.name, cover, alpha))
+		;
+	else if (cover.id != nullptr)
 	{
 		draw()->AddRectFilled(a, b, withAlpha(IM_COL32(0, 0, 0, 255), 0.35f * alpha), px(rounding));
 		imageFit(cover, a, b, rounding, tint);
@@ -1518,6 +1522,23 @@ void heroBlock(LibraryView& view, int index, const std::string& shelfTitle, floa
 	const std::string total = playedText(played.seconds);
 	if (!total.empty())
 		line += "  \xc2\xb7  " + total + " in all";
+	// A drive's entry says what the drive is doing instead.
+	if (discdrive::isDrivePath(game.path))
+	{
+		discdrive::Disc disc;
+		static const char *const speeds[] = { "quiet", "normal speed", "full speed" };
+		const char *speed = speeds[std::clamp(options::frontend().discSpeed, 0, 2)];
+		if (!discdrive::discOf(game.path, disc) || disc.device == discdrive::NoDrive)
+			line = "Looking for a USB disc drive\xe2\x80\xa6";
+		else if (!disc.playable)
+			line = "The drive is waiting for a disc";
+		else if (discdrive::activity() == discdrive::Reading)
+			line = format("In the drive \xc2\xb7 reading at %s", speed);
+		else if (discdrive::activity() == discdrive::Spinning)
+			line = "In the drive \xc2\xb7 playing, the disc in memory";
+		else
+			line = format("In the drive, ready \xc2\xb7 %s", speed);
+	}
 	textFit(at(x, y), px(wide), withAlpha(t.pageDim, alpha), line, Body, 23);
 	y += 40;
 	if (meta.known && !meta.info.description.empty())
@@ -2020,7 +2041,9 @@ void libraryPage(bool active)
 		const float px0 = x1 + 40, px1 = W - 64;
 		const float side = std::min(px1 - px0, 420.f);
 		const Image cover = coverOf(view, view.cursor);
-		if (cover.id != nullptr)
+		if (driveArt(at(px0, top), at(px0 + side, top + side), game.path, game.name, cover))
+			;
+		else if (cover.id != nullptr)
 			imageFit(cover, at(px0, top), at(px0 + side, top + side), 12);
 		else
 			coverPlaceholder(at(px0, top), at(px0 + side, top + side), game.name, game.region);
@@ -3182,7 +3205,9 @@ void detailsPage(Frame& f)
 	}
 	if (cover.id == nullptr)
 		cover = image(det.cover);
-	if (cover.id != nullptr)
+	if (driveArt(at(cx, y + 48), at(cx + cs, y + 48 + cs), game.path, game.name, cover, 1.f, false))
+		;
+	else if (cover.id != nullptr)
 		imageFit(cover, at(cx, y + 48), at(cx + cs, y + 48 + cs), 14);
 	else
 		coverPlaceholder(at(cx, y + 48), at(cx + cs, y + 48 + cs), game.name, game.region);

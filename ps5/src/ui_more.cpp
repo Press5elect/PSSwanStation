@@ -3026,6 +3026,18 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"copy it into memory, or play it from the drive. Like USB drives, this makes PSSwanStation leave its "
 					"sandbox when it starts, and takes effect the next time it starts.",
 					[] { library::scan(library::Optical, true); }));
+			if (f.discDrive)
+				items.push_back(choice("Drive speed", std::clamp(f.discSpeed, 0, 2), { "Quiet", "Normal", "Max" },
+						"How fast the USB disc drive spins. Max (the usual): as fast as the drive goes, for the quickest "
+						"copies and the least waiting while a game plays from the drive. Normal: 24 times a CD's speed, "
+						"quieter, still far more than a game needs. Quiet: 8 times, the quietest; a copy takes longest. A "
+						"drive that fails a read twice is slowed a step for the rest of the session; changing this starts "
+						"it again from the speed chosen. Takes effect at the drive's next read.",
+						[](int i) {
+							options::frontend().discSpeed = i;
+							options::saveFrontend();
+							discdrive::speedChanged();
+						}));
 			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
 					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
 					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "

@@ -245,6 +245,14 @@ void hintBar(const std::vector<Hint>& hints, const std::string& left = "");
 void progressBar(ImVec2 a, ImVec2 b, float fraction);
 // A cover's placeholder: the game's name on a tinted card.
 void coverPlaceholder(ImVec2 a, ImVec2 b, const std::string& name, const std::string& region);
+// A disc drive's entry of the library (the Disc Drive tab), drawn alive: the
+// drive with its light and the disc in it, which drops in when it arrives,
+// turns while a game plays from it and spins fast while it is read; an empty
+// drive's tray slides out for a disc; no drive found sends out search pulses.
+// `cover`: the disc's cover, behind it softly. False when `path` is not a
+// drive's (the caller draws the cover as usual) or in a 3D scene.
+bool driveArt(ImVec2 a, ImVec2 b, const std::string& path, const std::string& name, const Image& cover,
+		float alpha = 1.f, bool withName = true);
 // The same card as a picture (aspect: its width over its height), for the
 // views that carry covers in 3D; made once a game.
 Image placeholderImage(const std::string& name, const std::string& region, float aspect);

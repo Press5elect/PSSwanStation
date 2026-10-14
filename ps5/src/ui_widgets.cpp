@@ -26,6 +26,7 @@
 */
 #include "ui.h"
 #include "display.h"
+#include "fe.h"
 
 #include "gfx/draw_list.hpp"
 #include "gfx/font.hpp"
@@ -37,6 +38,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <map>
 #include <cstring>
 
 // The files in ps5/assets, in the program's read-only data.
@@ -1306,6 +1308,284 @@ void progressBar(ImVec2 a, ImVec2 b, float fraction)
 	const float x0 = r.x + std::max(at, 0.f), x1 = r.x + std::min(at + piece, span);
 	if (x1 > x0)
 		frontList.rounded_rect({ x0, r.y, x1 - x0, r.h }, std::min(radius, (x1 - x0) * 0.5f), kitTheme->accent);
+}
+
+// ------------------------------------------------------- the disc drive, alive
+
+namespace
+{
+ImU32 rgba(float r, float g, float b, float a)
+{
+	const auto c = [](float v) { return (unsigned)std::clamp(v * 255.f + 0.5f, 0.f, 255.f); };
+	return IM_COL32(c(r), c(g), c(b), c(a));
+}
+
+// A rainbow's colour at h (0 to 1), as a CD's surface throws it.
+ImU32 rainbow(float h, float alpha)
+{
+	h = h - std::floor(h);
+	const float r = std::clamp(std::fabs(h * 6.f - 3.f) - 1.f, 0.f, 1.f);
+	const float g = std::clamp(2.f - std::fabs(h * 6.f - 2.f), 0.f, 1.f);
+	const float b = std::clamp(2.f - std::fabs(h * 6.f - 4.f), 0.f, 1.f);
+	return rgba(0.55f + 0.45f * r, 0.55f + 0.45f * g, 0.55f + 0.45f * b, alpha);
+}
+
+// A piece of a ring, from angle a0 to a1 (radians), as quads.
+void ringPiece(ImDrawList *list, ImVec2 c, float r0, float r1, float a0, float a1, ImU32 col, int steps = 6)
+{
+	for (int i = 0; i < steps; i++)
+	{
+		const float s0 = a0 + (a1 - a0) * (float)i / (float)steps, s1 = a0 + (a1 - a0) * (float)(i + 1) / (float)steps;
+		const ImVec2 p0(c.x + std::cos(s0) * r0, c.y + std::sin(s0) * r0), p1(c.x + std::cos(s0) * r1, c.y + std::sin(s0) * r1);
+		const ImVec2 p2(c.x + std::cos(s1) * r1, c.y + std::sin(s1) * r1), p3(c.x + std::cos(s1) * r0, c.y + std::sin(s1) * r0);
+		list->AddQuadFilled(p0, p1, p2, p3, col);
+	}
+}
+
+// When each disc was first seen (by its path), for the drop it arrives with.
+std::map<std::string, double> discArrived;
+// How far each drive's disc has turned, and how fast it turns now (turns a
+// second), so a change of pace eases instead of jumping.
+struct Turning
+{
+	double angle = 0, rate = 0, last = 0;
+};
+std::map<std::string, Turning> turning;
+}
+
+bool driveArt(ImVec2 a, ImVec2 b, const std::string& path, const std::string& name, const Image& cover, float alpha,
+		bool withName)
+{
+	if (inScene || !discdrive::isDrivePath(path))
+		return false;
+	discdrive::Disc disc;
+	const bool known = discdrive::discOf(path, disc);
+	enum { NoDrive, Empty, HasDisc } state = !known ? Empty : disc.device == discdrive::NoDrive ? NoDrive
+			: disc.playable ? HasDisc : Empty;
+	const Theme& t = theme();
+	ImDrawList *list = draw();
+	const double now = clock();
+	const bool moving = motion() == MotionFull;
+	const bool some = motion() != MotionOff;
+	const float w = b.x - a.x, h = b.y - a.y, s = std::min(w, h);
+	const float rounding = std::min(px(12), s * 0.06f);
+
+	// Behind: the cover, softly, or the theme's dark gradient with the accent in it.
+	const gfx::Rect r = rectOf(a, b);
+	if (cover.id != nullptr && state == HasDisc)
+	{
+		list->AddImageRounded(cover.soft != nullptr ? cover.soft : cover.id, a, b, ImVec2(0, 0), ImVec2(1, 1),
+				withAlpha(IM_COL32_WHITE, alpha), rounding);
+		list->AddRectFilled(a, b, withAlpha(IM_COL32(6, 8, 14, 255), 0.55f * alpha), rounding);
+	}
+	else
+	{
+		gfx::Color top = colourOf(t.accent), bottom = colourOf(t.background);
+		top = { top.r * 0.30f + 0.06f, top.g * 0.30f + 0.06f, top.b * 0.30f + 0.09f, alpha };
+		bottom = { bottom.r * 0.8f, bottom.g * 0.8f, bottom.b * 0.8f, alpha };
+		frontList.gradient_rect(r, rounding, top, bottom);
+	}
+	list->PushClipRect(a, b, true);
+
+	// The drive: a slim face across the lower part, its slot and its light.
+	const float faceH = s * 0.16f;
+	const float faceY0 = a.y + h * 0.70f, faceY1 = faceY0 + faceH;
+	const float faceX0 = a.x + w * 0.5f - s * 0.40f, faceX1 = a.x + w * 0.5f + s * 0.40f;
+	const float slotY = faceY0 + faceH * 0.40f;
+	const int activity = state == HasDisc ? discdrive::activity() : discdrive::Resting;
+	const float cx = a.x + w * 0.5f;
+
+	// The disc's place: above the slot, half out of it.
+	const float discR = s * 0.27f;
+	float discY = slotY - discR * 0.92f;
+	float discAlpha = 1.f;
+	if (state == HasDisc)
+	{
+		// Arriving: it drops in from above, overshoots and settles.
+		auto it = discArrived.find(path);
+		if (it == discArrived.end())
+			it = discArrived.emplace(path, now).first;
+		const float since = (float)(now - it->second);
+		if (moving && since < 1.2f)
+		{
+			const float k = since / 1.2f;
+			const float spring = 1.f - std::exp(-6.f * k) * std::cos(10.f * k);
+			discY -= (1.f - spring) * s * 0.75f;
+			discAlpha = std::clamp(k * 3.f, 0.f, 1.f);
+		}
+		else if (moving)
+			discY += std::sin((float)now * 1.3f) * s * 0.012f;	// it floats a little while it rests
+	}
+
+	// The search pulses of a drive not found, from where the drive would be.
+	if (state == NoDrive && some)
+		for (int i = 0; i < 3; i++)
+		{
+			const float k = (float)std::fmod(now * 0.45 + i / 3.0, 1.0);
+			list->AddCircle(ImVec2(cx, slotY), s * (0.08f + 0.55f * k), withAlpha(t.accent, (1.f - k) * 0.45f * alpha),
+					48, px(2.f));
+		}
+
+	// An empty drive: the tray comes out for a disc, and goes back in, with the
+	// place for a disc drawn in it.
+	if (state == Empty)
+	{
+		const float out = some ? 0.5f + 0.5f * std::sin((float)now * 1.1f) : 1.f;
+		const float trayH = s * 0.48f * (0.25f + 0.75f * (out * out * (3.f - 2.f * out)));
+		const float trayX0 = faceX0 + s * 0.08f, trayX1 = faceX1 - s * 0.08f;
+		list->AddRectFilled(ImVec2(trayX0, slotY - trayH), ImVec2(trayX1, slotY), withAlpha(IM_COL32(30, 34, 44, 255), alpha),
+				px(6));
+		list->AddRect(ImVec2(trayX0, slotY - trayH), ImVec2(trayX1, slotY), withAlpha(IM_COL32(255, 255, 255, 40), alpha), px(6),
+				0, px(1.5f));
+		const ImVec2 well(cx, slotY - trayH * 0.5f);
+		const float wellR = std::min(trayH * 0.42f, (trayX1 - trayX0) * 0.42f);
+		const float pulse = some ? 0.5f + 0.5f * std::sin((float)now * 3.0f) : 0.6f;
+		list->AddCircle(well, wellR, withAlpha(t.accent, (0.35f + 0.45f * pulse) * alpha), 48, px(2.5f));
+		list->AddCircle(well, wellR * 0.22f, withAlpha(t.accent, 0.5f * alpha), 24, px(2.f));
+		// An arrow above it, bobbing: a disc goes in here.
+		const float bob = some ? std::sin((float)now * 3.0f) * s * 0.02f : 0.f;
+		const float ay = slotY - trayH - s * 0.10f + bob, aw = s * 0.05f;
+		list->AddTriangleFilled(ImVec2(cx - aw, ay), ImVec2(cx + aw, ay), ImVec2(cx, ay + aw * 1.1f),
+				withAlpha(t.accent, (0.5f + 0.5f * pulse) * alpha));
+		list->AddRectFilled(ImVec2(cx - aw * 0.35f, ay - aw * 1.2f), ImVec2(cx + aw * 0.35f, ay), withAlpha(t.accent,
+				(0.5f + 0.5f * pulse) * alpha), px(2));
+	}
+
+	// The disc: a PlayStation disc's black side, the light's rainbow on it,
+	// its marks turning with it.
+	if (state == HasDisc)
+	{
+		Turning& turn = turning[path];
+		const double dt = turn.last > 0 ? std::clamp(now - turn.last, 0.0, 0.1) : 0.0;
+		turn.last = now;
+		const double want = !moving ? 0.0 : activity == discdrive::Reading ? 2.6 : activity == discdrive::Spinning ? 0.6 : 0.08;
+		turn.rate += (want - turn.rate) * std::min(1.0, dt * 2.5);
+		turn.angle = std::fmod(turn.angle + turn.rate * dt * 2.0 * M_PI, 2.0 * M_PI);
+		const float spin = (float)turn.angle, fast = (float)std::clamp(turn.rate / 2.6, 0.0, 1.0);
+		const ImVec2 c(cx, discY);
+		const float da = discAlpha * alpha;
+		// Its shadow on the drive.
+		list->AddEllipseFilled(ImVec2(cx, slotY + faceH * 0.05f), ImVec2(discR * 0.95f, discR * 0.12f),
+				withAlpha(IM_COL32(0, 0, 0, 255), 0.45f * da));
+		list->AddCircleFilled(c, discR, withAlpha(IM_COL32(16, 16, 22, 255), da), 64);
+		// The data area's faint rings.
+		for (float k : { 0.93f, 0.80f, 0.66f, 0.52f })
+			list->AddCircle(c, discR * k, withAlpha(IM_COL32(255, 255, 255, 14), da), 64, px(1.f));
+		// The rainbow stays where the light is, swaying a little; brighter as it spins.
+		const float light = -0.75f + (some ? 0.12f * std::sin((float)now * 0.7f) : 0.f);
+		for (int side = 0; side < 2; side++)
+		{
+			const float centre = light + (float)side * (float)M_PI;
+			for (int i = -5; i < 5; i++)
+			{
+				const float a0 = centre + (float)i * 0.06f, a1 = a0 + 0.06f;
+				const float fall = 1.f - std::fabs(((float)i + 0.5f) / 5.f);
+				ringPiece(list, c, discR * 0.40f, discR * 0.97f, a0, a1,
+						rainbow((float)(i + 5) / 10.f + (float)side * 0.5f, (0.16f + 0.16f * fast) * fall * da), 2);
+			}
+		}
+		// The marks that turn with it (pressing marks near the middle, a nick in
+		// the rim), drawn longer and fainter as it spins faster.
+		static const float marks[][3] = { { 0.0f, 0.36f, 0.35f }, { 2.1f, 0.38f, 0.20f }, { 3.9f, 0.35f, 0.28f } };
+		for (const auto& m : marks)
+		{
+			const float a0 = spin + m[0], len = m[2] * (1.f + fast * 4.f);
+			ringPiece(list, c, discR * m[1], discR * (m[1] + 0.035f), a0, a0 + len,
+					withAlpha(IM_COL32(220, 225, 235, 255), (0.30f - fast * 0.18f) * da), 5);
+		}
+		ringPiece(list, c, discR * 0.90f, discR * 0.99f, spin + 1.2f, spin + 1.2f + 0.05f + fast * 0.9f,
+				withAlpha(IM_COL32(255, 255, 255, 255), (0.35f - fast * 0.2f) * da), 4);
+		// Speed: arcs around the rim while it is read.
+		if (activity == discdrive::Reading && some)
+			for (int i = 0; i < 3; i++)
+			{
+				const float a0 = -spin * 1.0f + (float)i * 2.094f;
+				ringPiece(list, c, discR * 1.05f, discR * 1.09f, a0, a0 + 0.9f, withAlpha(t.accent, 0.55f * fast * da), 8);
+			}
+		// The middle: the clear ring, the stacking ring, the hole.
+		list->AddCircleFilled(c, discR * 0.30f, withAlpha(IM_COL32(190, 198, 212, 255), 0.30f * da), 48);
+		list->AddCircle(c, discR * 0.22f, withAlpha(IM_COL32(255, 255, 255, 255), 0.30f * da), 48, px(1.5f));
+		list->AddCircleFilled(c, discR * 0.12f, withAlpha(IM_COL32(6, 8, 12, 255), da), 32);
+		list->AddCircle(c, discR, withAlpha(IM_COL32(255, 255, 255, 50), da), 64, px(1.5f));
+		// The laser: a glint that runs along a radius while the disc is read.
+		if (activity == discdrive::Reading && some)
+		{
+			const float k = 0.5f + 0.5f * std::sin((float)now * 2.2f);
+			const float rr = discR * (0.38f + 0.55f * k);
+			const ImVec2 g(c.x + std::cos(1.9f) * rr, c.y + std::sin(1.9f) * rr);
+			list->AddCircleFilled(g, s * 0.022f, withAlpha(IM_COL32(255, 90, 90, 255), 0.35f * da), 16);
+			list->AddCircleFilled(g, s * 0.009f, withAlpha(IM_COL32(255, 220, 220, 255), 0.9f * da), 12);
+		}
+		// A copy's progress: a ring of the accent around the disc.
+		const discdrive::Status status = discdrive::status();
+		if (discdrive::jobState() == discdrive::JobRunning && status.progress >= 0.f)
+		{
+			list->AddCircle(c, discR * 1.14f, withAlpha(IM_COL32(255, 255, 255, 255), 0.12f * da), 64, px(3.f));
+			ringPiece(list, c, discR * 1.12f, discR * 1.16f, -(float)M_PI * 0.5f,
+					-(float)M_PI * 0.5f + 2.f * (float)M_PI * std::clamp(status.progress, 0.f, 1.f), withAlpha(t.accent, da), 48);
+		}
+	}
+
+	// The face of the drive over the disc's lower half: the disc is in it.
+	list->AddRectFilled(ImVec2(faceX0, faceY0), ImVec2(faceX1, faceY1), withAlpha(IM_COL32(24, 27, 36, 255),
+			(state == NoDrive ? 0.55f : 1.f) * alpha), px(8));
+	list->AddRectFilledMultiColor(ImVec2(faceX0 + px(2), faceY0 + px(2)), ImVec2(faceX1 - px(2), faceY0 + faceH * 0.35f),
+			withAlpha(IM_COL32(255, 255, 255, 255), 0.07f * alpha), withAlpha(IM_COL32(255, 255, 255, 255), 0.07f * alpha),
+			withAlpha(IM_COL32(255, 255, 255, 255), 0.f), withAlpha(IM_COL32(255, 255, 255, 255), 0.f));
+	list->AddRect(ImVec2(faceX0, faceY0), ImVec2(faceX1, faceY1), withAlpha(IM_COL32(255, 255, 255, 255), 0.10f * alpha), px(8),
+			0, px(1.f));
+	list->AddRectFilled(ImVec2(faceX0 + s * 0.06f, slotY - px(1.5f)), ImVec2(faceX1 - s * 0.06f, slotY + px(1.5f)),
+			withAlpha(IM_COL32(0, 0, 0, 255), 0.85f * alpha), px(2));
+	// The eject button.
+	{
+		const float ex = faceX0 + s * 0.07f, ey = faceY0 + faceH * 0.72f, e = s * 0.018f;
+		list->AddTriangleFilled(ImVec2(ex - e, ey), ImVec2(ex + e, ey), ImVec2(ex, ey - e * 1.1f),
+				withAlpha(IM_COL32(255, 255, 255, 255), 0.30f * alpha));
+		list->AddRectFilled(ImVec2(ex - e, ey + e * 0.35f), ImVec2(ex + e, ey + e * 0.65f),
+				withAlpha(IM_COL32(255, 255, 255, 255), 0.30f * alpha));
+	}
+	// The light: green blinking while read, green while a game plays, the
+	// accent with a disc, amber for an empty tray, red with no drive.
+	{
+		ImU32 led = t.accent;
+		float on = 1.f;
+		if (state == NoDrive)
+		{
+			led = IM_COL32(240, 70, 70, 255);
+			on = some ? 0.35f + 0.65f * (0.5f + 0.5f * std::sin((float)now * 2.0f)) : 0.8f;
+		}
+		else if (state == Empty)
+		{
+			led = IM_COL32(255, 176, 50, 255);
+			on = some ? 0.4f + 0.6f * (0.5f + 0.5f * std::sin((float)now * 1.1f)) : 0.8f;
+		}
+		else if (activity == discdrive::Reading)
+		{
+			led = IM_COL32(80, 230, 120, 255);
+			on = some ? (std::fmod(now * 7.0, 1.0) < 0.55 ? 1.f : 0.25f) : 1.f;
+		}
+		else if (activity == discdrive::Spinning)
+			led = IM_COL32(80, 230, 120, 255);
+		const ImVec2 lc(faceX1 - s * 0.07f, faceY0 + faceH * 0.70f);
+		list->AddCircleFilled(lc, s * 0.040f, withAlpha(led, 0.18f * on * alpha), 24);
+		list->AddCircleFilled(lc, s * 0.016f, withAlpha(led, (0.35f + 0.65f * on) * alpha), 16);
+	}
+	list->PopClipRect();
+
+	// What it is: the disc's name (or the drive's state), over the top.
+	if (withName && s > px(110))
+	{
+		const float unitsWide = w / unit;
+		const float size = std::clamp(unitsWide * 0.075f, 14.f, 26.f);
+		const std::vector<std::string> lines = wrapText(name, w - px(24), Bold, size);
+		float y = a.y + h * 0.05f;
+		for (size_t line = 0; line < lines.size() && line < 2; line++)
+		{
+			textCentred(ImVec2(cx, y), withAlpha(IM_COL32(255, 255, 255, 230), alpha), lines[line], Bold, size);
+			y += px(size * 1.15f);
+		}
+	}
+	return true;
 }
 
 void coverPlaceholder(ImVec2 a, ImVec2 b, const std::string& name, const std::string& region)
