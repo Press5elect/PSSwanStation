@@ -58,7 +58,7 @@ export PS5_CLANG=${PS5_CLANG:-$(command -v clang-18 || command -v clang)}
 hui=${HUI_DIR:-$src/../PS5_VKHomebrewUI}
 # The interface kit's revision: mihawk-99/PS5_VKHomebrewUI (BlackBearReloaded's
 # ps5-homebrew-ui with a Vulkan backend), as PS5_VulkanTemplate pins it.
-hui_revision=2188642afbcc8d84d36149124f3d9e39dc1b1a05
+hui_revision=ea00f4febd38fbaeedc1ba371744d4fc22fd4db1
 libsmb2=${LIBSMB2_DIR:-$src/../deps-src/libsmb2}
 rcheevos=${RCHEEVOS_DIR:-$src/../deps-src/rcheevos}
 lapy=${LAPY_HELPER_DIR:-$src/../deps-src/lapy}

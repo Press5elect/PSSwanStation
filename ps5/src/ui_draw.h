@@ -96,6 +96,10 @@ public:
 			ImU32 col = IM_COL32_WHITE);
 	void AddImageRounded(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0, ImVec2 uv1, ImU32 col, float rounding,
 			ImDrawFlags flags = 0);
+	// The picture turned about its centre inside a..b (radians, clockwise); with
+	// the rounding at half the size, a square picture turns inside its circle.
+	void AddImageRotated(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0, ImVec2 uv1, ImU32 col, float rounding,
+			float angle);
 	void PushClipRect(ImVec2 a, ImVec2 b, bool intersect = true);
 	void PopClipRect();
 	void PathLineTo(ImVec2 point);
