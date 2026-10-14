@@ -99,7 +99,9 @@ void *upscale(void *texture, int width, int height, float u, float v, int outWid
 // every movement checked from both frames' side. `debug`: the movement shown
 // in colours over the picture. `method`: 0 the title's own, 1 AMD
 // FSR3's optical flow, through swordpdf's ps5-framegen (frames at fixed
-// moments, nearest the phase, none ahead).
+// moments, nearest the phase, none ahead), 2 MihawkGen: Mihawk's small trained
+// network (third_party/mihawkgen), from the two pictures alone, at the same fixed
+// moments and with none ahead.
 void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality = 1,
 		bool debug = false, int method = 0);
 // The next picture has no picture before it (another game, a state loaded).

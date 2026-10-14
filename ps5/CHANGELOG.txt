@@ -1,6 +1,18 @@
 PSSwanStation - what changed
 ============================
 
+Build 22 (not released yet)
+  Added
+  - A third way to make frame generation's pictures: MihawkGen, Mihawk's
+    trained network (432,308 parameters, github.com/mihawk-99/PS5_MihawkGen),
+    under Settings, Picture, Generation method. It looks at the game's two
+    pictures alone, estimates the movement and a mask at four scales, warps
+    both pictures and mixes them, and leaves what did not move exactly as it
+    was. It makes one, two or three pictures between two of the game's, at
+    even steps, and none ahead; the quality, ahead and movement view
+    settings do not apply to it. Game by game like the other picture
+    settings, and in the web panel.
+
 Build 21
   Added
   - Discs from a USB CD or DVD drive, watched whenever PSSwanStation is out

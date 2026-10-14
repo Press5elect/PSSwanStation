@@ -44,7 +44,7 @@ def main():
         name="PSSwanStation: SwanStation (the emulator, with the libraries in its tree: libchdr with LZMA and zstd, "
              "xxHash, Xbyak, stb, libretro-common, OpenBIOS) and the PS5 frontend in ps5/ (with miniz, stb_vorbis, "
              "dr_mp3, AMD's FSR 1 and CAS headers, NVIDIA Image Scaling, AMD FidelityFX SDK's FSR3 optical flow through swordpdf's ps5-framegen "
-             "and PS5SX2's USB pad decoder, Crux2's clock and pacing wait, the disc drive after DuckStation's (GPL) "
+             "and Mihawk's MihawkGen frame generation with its network, and PS5SX2's USB pad decoder, Crux2's clock and pacing wait, the disc drive after DuckStation's (GPL) "
              "and 5S2CD's disc readers, "
              "Project Nayuki's QR Code generator, the sandbox elevation "
              "client and Font Awesome Free's icons)",

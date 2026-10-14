@@ -1824,7 +1824,7 @@ void runFrame()
 	// Frame generation: which picture this refresh is to show. Ahead (fgMode
 	// 1): from the game's latest picture on, along its movement, instead of
 	// between the last two, which waits for the latest.
-	// (The optical flow makes no frames ahead: with it, they are between.)
+	// (The optical flow and MihawkGen make no frames ahead: with them, they are between.)
 	const bool ahead = settings.fgMode == 1 && settings.fgMethod == 0;
 	const bool capped = settings.fgCap == 1 && displayHz > 100.0;
 	const bool video = cadence.videoAtFrame != ~0ull && emulatedFrames - cadence.videoAtFrame < 30;
