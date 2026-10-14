@@ -2677,6 +2677,20 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 			"frame. A picture file: " + shownRoot() + "borders/<serial>.png "
 			"for one game (SLUS-12345.png), or default.png for all; .jpg works too.",
 			[] { display::forgetAmbient(); }));
+	items.push_back(pictureChoice(forGame, "dynamic_resolution", "Adaptive resolution", { "Off", "On" },
+			"While a game cannot keep its own speed at the resolution chosen (Emulation, Resolution scale), the "
+			"resolution is lowered a step at a time until it can, and raised again, a step at a time, once it has kept "
+			"its speed for a while; never above the one chosen, nor below half of it. A step remakes the picture "
+			"memory: a moment's hitch. A step that did not hold is not tried again until the game is started anew. "
+			"Not while fast forwarding, rewinding or paused.",
+			[] { host::resetAdaptiveResolution(); }));
+	items.push_back(pictureChoice(forGame, "widescreen_patch", "Use the game's own widescreen", { "Off", "On" },
+			"With the aspect ratio set wide (16:9 and wider, Emulation) or the widescreen hack on, a game that has a "
+			"widescreen patch in the patch database uses it by itself: the game's own camera and culling made wide, "
+			"rather than the emulator's general widescreen hack, which can leave things popping in at the edges. "
+			"The patch for the ratio chosen is preferred; one marked as crashing, or for menus only, is never picked. "
+			"A widescreen patch switched on by hand in Cheats is always the one used.",
+			[] { cheats::apply(); }));
 	items.push_back(pictureChoice(forGame, "pacing", "Frame pacing",
 			{ "By the display", "The game's own speed", "The game's own speed, by the clock" },
 			"By the display: one frame of the game for each refresh when their rates are within one percent, and "
@@ -3038,6 +3052,13 @@ void moreSettings(int kind, std::vector<Item>& items)
 							options::saveFrontend();
 							discdrive::speedChanged();
 						}));
+			items.push_back(fact("Mods", cheats::modsSummary(),
+					"Mods are text files that change a game, a feature at a time, without changing its disc image: "
+					"patches written only where the bytes the mod expects are found (so a later part of the game is "
+					"patched when it is loaded, and another version of the game is left alone), GameShark codes, and "
+					"emulator options a feature needs. Put a mod's folder (with its mod.txt) or a .mod file in "
+					+ shownRoot() + "mods, or in PSSwanStation/mods on a USB drive. A game's mods are under Cheats in "
+					"its details, each feature switched on and off by itself. MANUAL.md describes the format."));
 			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
 					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
 					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "

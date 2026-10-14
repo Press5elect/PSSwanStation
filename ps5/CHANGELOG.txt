@@ -10,6 +10,19 @@ Build 23 (not released yet)
     there ("LibCrypt: Protected; .sbi found", or "Missing <name>.sbi").
   - A disc in the drive wears its cover: the cover is printed on the disc
     in the Disc Drive tab and turns with it.
+  Added
+  - Mods: text files in mods/ (or PSSwanStation/mods on a USB drive) that
+    change a game a feature at a time without changing its disc image:
+    patches written only where the bytes the mod expects are found,
+    GameShark codes, and emulator options a feature needs. Under Cheats in
+    a game's details, each feature switched on and off by itself; mistakes
+    in a mod are named in the boot log. The format is in MANUAL.md.
+  - Use the game's own widescreen (Settings, Picture): with the picture set
+    wide, a game's widescreen patch from the patch database is used by
+    itself, instead of the general widescreen hack.
+  - Adaptive resolution (Settings, Picture): while a game cannot keep its
+    speed, the resolution scale is lowered a step at a time (to half the
+    one chosen at most), and raised again once it keeps its speed.
 
 Build 22
   Added

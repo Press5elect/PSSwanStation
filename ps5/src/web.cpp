@@ -214,7 +214,7 @@ bool secret(const std::string& path)
 bool writable(const std::string& path)
 {
 	static const char *const folders[] = { "games/", "bios/", "cheats/", "covers/", "textures/", "music/", "layouts/",
-		"borders/", "data/splits/", "data/watch/", "data/recordings/" };
+		"borders/", "mods/", "data/splits/", "data/watch/", "data/recordings/" };
 	for (const char *folder : folders)
 		if (path.compare(0, strlen(folder), folder) == 0 && path.size() > strlen(folder))
 			return true;

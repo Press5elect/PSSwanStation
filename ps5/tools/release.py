@@ -81,7 +81,7 @@ LOCAL = {
     "slang-shaders": ("SLANG_SHADERS_DIR", SRC.parent / "deps-src/slang-shaders"),
 }
 # Folders of the title that are the user's: a release has them empty.
-USER_FOLDERS = ("games", "bios", "covers", "cheats", "textures", "layouts", "borders", "music", "memcards", "data",
+USER_FOLDERS = ("games", "bios", "covers", "cheats", "textures", "layouts", "borders", "music", "memcards", "mods", "data",
                 "logs", "screenshots", ".update")
 NEVER_NAMES = ("network.cfg", "frontend.cfg", ".env", "klog.txt", "psswanstation-boot.log", "cheats.zip", "patches.zip")
 NEVER_ENDINGS = (".cue", ".chd", ".iso", ".img", ".pbp", ".ecm", ".mds", ".m3u", ".exe", ".psexe", ".mcd", ".mcr",
