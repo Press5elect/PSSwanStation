@@ -113,6 +113,21 @@ target_include_directories(smb2 PRIVATE "${LIBSMB2_DIR}/include" "${LIBSMB2_DIR}
 target_include_directories(smb2 INTERFACE "${LIBSMB2_DIR}/include")
 target_compile_options(smb2 PRIVATE -w)
 
+# mbedTLS 3.6 LTS (Apache-2.0): the TLS of src/tls_client.cpp, for HTTPS once
+# the console's own client cannot be used (after the sandbox elevator). Its
+# library/ as it is, with src/mbedtls_config_fe.h over the default
+# configuration.
+set(MBEDTLS_DIR "${ROOT}/../deps-src/mbedtls-3.6.7" CACHE PATH "mbedTLS 3.6.7")
+file(GLOB MBEDTLS_SOURCES "${MBEDTLS_DIR}/library/*.c")
+add_library(mbedtls_fe STATIC ${MBEDTLS_SOURCES})
+target_include_directories(mbedtls_fe PUBLIC "${MBEDTLS_DIR}/include" PRIVATE "${MBEDTLS_DIR}/library")
+target_compile_definitions(mbedtls_fe PUBLIC
+	"MBEDTLS_USER_CONFIG_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/src/mbedtls_config_fe.h\"")
+target_compile_options(mbedtls_fe PRIVATE -w)
+if(SWANSTATION_PS5)
+	target_compile_definitions(mbedtls_fe PRIVATE SWANSTATION_PS5=1)
+endif()
+
 # libnfs (LGPL-2.1-or-later): NFS shares, versions 3 and 4, AUTH_SYS. Built
 # from its sources as libsmb2 is; on the console with the same socket shims
 # (nfs/compat.c, and libsmb2's in smb/compat.c).
@@ -201,6 +216,7 @@ set(frontend_sources
 	third_party/mihawkgen/src/fg_neural.cpp
 	third_party/mihawkgen/src/fg_splat.cpp
 	src/mihawkgen_model.cpp
+	src/tls_client.cpp
 	src/music.cpp
 	src/memcard.cpp
 	src/netplay.cpp
@@ -277,7 +293,7 @@ set_source_files_properties(${HUI_DIR}/src/gfx/vk/vk_renderer.cpp PROPERTIES COM
 	"-include;${ROOT}/dep/vulkan-loader/include/vulkan_loader.h")
 
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources})
-target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos
+target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos mbedtls_fe
 	glslang glslang-default-resource-limits)
 target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
@@ -322,4 +338,13 @@ if(SWANSTATION_PS5)
 else()
 	target_compile_definitions(swanstation PRIVATE SWANSTATION_HOST=1)
 	target_link_libraries(swanstation PRIVATE dl pthread)
+endif()
+
+# The PC's test of the title's own TLS client (tests/tls/run.sh): a local
+# HTTPS server with a certificate of its own.
+if(NOT SWANSTATION_PS5)
+	add_executable(tls-test tests/tls/tls_test.cpp src/tls_client.cpp)
+	target_include_directories(tls-test PRIVATE src)
+	target_link_libraries(tls-test PRIVATE mbedtls_fe)
+	target_compile_options(tls-test PRIVATE -std=c++20)
 endif()

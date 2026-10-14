@@ -17,6 +17,7 @@
 */
 #include "fe.h"
 #include "display.h"
+#include "tls_client.h"
 
 #include <atomic>
 #include <chrono>
@@ -293,6 +294,10 @@ bool httpWanted()
 	return getenv("SWANSTATION_HTTP") != nullptr;
 }
 
+// The title's own TLS in curl's place (SWANSTATION_OWN_TLS, or after
+// httpUseOwnTls): the console's way after the sandbox elevator, tried on a PC.
+bool ownTls = getenv("SWANSTATION_OWN_TLS") != nullptr;
+
 std::string quoted(const std::string& text)
 {
 	std::string out = "'";
@@ -302,6 +307,12 @@ std::string quoted(const std::string& text)
 }
 }
 
+void httpUseOwnTls(const char *why)
+{
+	ownTls = true;
+	diag::mark("http: the title's own TLS from now on (%s)", why);
+}
+
 int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, int *error)
 {
 	out.clear();
@@ -309,6 +320,15 @@ int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds,
 		*error = 0;
 	if (!httpWanted())
 		return -1;
+	if (ownTls)
+	{
+		fe::tls::setLog([](const char *line) { diag::mark("%s", line); });
+		std::string why;
+		const int status = fe::tls::get(url, out, seconds, 8u << 20, &why);
+		if (status < 0)
+			diag::mark("http: request failed: %s", why.c_str());
+		return status;
+	}
 	// The body, then the status on a line of its own.
 	const std::string command = format("curl -sS -L --max-time %u -A PSSwanStation/1.0 -w '\\n%%{http_code}' %s 2>/dev/null",
 			seconds, quoted(url).c_str());
@@ -337,6 +357,14 @@ int httpDownload(const std::string& url, const std::string& path, uint64_t limit
 {
 	if (!httpWanted())
 		return -1;
+	if (ownTls)
+	{
+		std::string why;
+		const int status = fe::tls::download(url, path, limit, progress, 60, &why);
+		if (status != 200)
+			diag::mark("http: the download failed: %d %s", status, why.c_str());
+		return status;
+	}
 	// curl writes the file; this watches it grow.
 	const std::string command = format("curl -sS -L --max-time 3600 -A PSSwanStation/1.0 --max-filesize %llu -o %s "
 			"-w '%%{http_code}' %s 2>/dev/null", (unsigned long long)limit, quoted(path).c_str(), quoted(url).c_str());

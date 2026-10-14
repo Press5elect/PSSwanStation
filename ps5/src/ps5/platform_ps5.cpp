@@ -282,6 +282,8 @@ void earlyInit()
 				{
 					elevated = true;
 					drivesWhy.clear();
+					// The console's HTTPS client refuses every public certificate from now on.
+					httpUseOwnTls("the sandbox elevator gave the console's root");
 				}
 				else if (elevated)
 					drivesWhy = "The sandbox elevator did not answer yes (status " + std::to_string((unsigned)rooted)
