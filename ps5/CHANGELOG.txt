@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Build 22 (not released yet)
+Build 22
   Added
   - A third way to make frame generation's pictures: MihawkGen, Mihawk's
     trained network (432,308 parameters, github.com/mihawk-99/PS5_MihawkGen),
@@ -12,6 +12,24 @@ Build 22 (not released yet)
     even steps, and none ahead; the quality, ahead and movement view
     settings do not apply to it. Game by game like the other picture
     settings, and in the web panel.
+  - USB disc drives the console does not attach as a disc drive (it lists
+    them only as a USB device) are read by PSSwanStation itself, over USB.
+  - With "USB disc drive" on and no drive found, the library's Disc Drive
+    tab says so, and choosing it says why as far as the title can tell.
+  - The boot log names each drive's maker, model and bus, the USB ports'
+    state, and the console's own USB messages ("usb bus:" lines).
+
+  Fixed
+  - RetroAchievements, cover downloads and the update check could not reach
+    their servers while "USB drives" or "USB disc drive" was on. Leaving the
+    sandbox for the drives makes the console's own HTTPS client refuse
+    every certificate; PSSwanStation now uses an HTTPS client of its own
+    (mbedTLS) from that moment, checking certificates against the
+    console's list.
+  - Disc drives are read at 16x, not as fast as they go: a drive on a USB
+    bridge failed after fifteen seconds at full speed and dropped off the
+    bus. Two failed reads in a row slow the drive further (8x, then 4x),
+    and a failed read is tried again after a pause.
 
 Build 21
   Added

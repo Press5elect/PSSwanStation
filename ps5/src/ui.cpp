@@ -2493,6 +2493,8 @@ void aboutItems(std::vector<Item>& items)
 			"FSR3 optical flow (MIT)."));
 	items.push_back(fact("MihawkGen", "GPL-3.0-or-later", "The third frame generation method is MihawkGen, Mihawk's trained "
 			"network for the PS5 (github.com/mihawk-99/PS5_MihawkGen), with its weights."));
+	items.push_back(fact("mbedTLS", "Apache-2.0", "HTTPS after the sandbox elevator (RetroAchievements, covers, the "
+			"updater) goes through mbedTLS 3.6 by The Mbed TLS Contributors."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));

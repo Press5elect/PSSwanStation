@@ -9,8 +9,15 @@
 	cover fetcher), which runs in a title's sandbox. One request at a time: a
 	long download (the updater's) holds the others back until it is done or
 	stopped.
+
+	Once the title has left its sandbox through the sandbox elevator, the
+	console's client refuses every public certificate (0x8095f00c), so the
+	requests go through the title's own TLS instead (tls_client.cpp): from the
+	moment the elevator answers yes (httpUseOwnTls), or from the first request
+	refused that way.
 */
 #include "fe.h"
+#include "tls_client.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -48,6 +55,24 @@ std::mutex mutex;
 bool tried, ok;
 int templateId = -1;
 int reported;
+// The title's own TLS instead of the console's client (see above).
+bool ownTls;
+// The console's client's answer to a certificate it will not take.
+constexpr int CertificateRefused = (int)0x8095f00c;
+
+void tlsLog(const char *line)
+{
+	diag::mark("%s", line);
+}
+
+void switchToOwnTls(const char *why)
+{
+	if (ownTls)
+		return;
+	ownTls = true;
+	fe::tls::setLog(tlsLog);
+	diag::mark("http: the title's own TLS from now on (%s)", why);
+}
 
 bool init()
 {
@@ -131,12 +156,44 @@ int begin(const std::string& url, unsigned seconds, int& status, int *error)
 }
 }
 
+namespace
+{
+int ownGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, int *error)
+{
+	if (error != nullptr)
+		*error = 0;
+	if (!init())
+		return -1;
+	std::string why;
+	const int status = fe::tls::get(url, out, seconds, 8u << 20, &why);
+	if (status < 0 && reported++ < 12)
+		diag::mark("http: request failed: %s (%s)", why.c_str(), shown(url).c_str());
+	return status;
+}
+}
+
+void httpUseOwnTls(const char *why)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	switchToOwnTls(why);
+}
+
 int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, int *error)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	out.clear();
+	if (ownTls)
+		return ownGet(url, out, seconds, error);
 	int status = -1;
-	const int request = begin(url, seconds, status, error);
+	int failure = 0;
+	const int request = begin(url, seconds, status, &failure);
+	if (error != nullptr)
+		*error = failure;
+	if (request < 0 && failure == CertificateRefused)
+	{
+		switchToOwnTls("the console's client refused a certificate");
+		return ownGet(url, out, seconds, error);
+	}
 	if (request < 0)
 		return -1;
 	// An error's body is read too: it is the server's reason. Only so much of it.
@@ -172,8 +229,22 @@ int httpDownload(const std::string& url, const std::string& path, uint64_t limit
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	int status = -1;
+	int failure = 0;
 	// The whole of it may take minutes: the time limit is on each read.
-	const int request = begin(url, 3600, status, nullptr);
+	const int request = ownTls ? -1 : begin(url, 3600, status, &failure);
+	if (request < 0 && failure == CertificateRefused)
+		switchToOwnTls("the console's client refused a certificate");
+	if (request < 0 && ownTls)
+	{
+		if (!init())
+			return -1;
+		std::string why;
+		const int got = fe::tls::download(url, path, limit, progress, 60, &why);
+		if (got != 200)
+			diag::mark("http: the download failed: %d%s%s (%s)", got, why.empty() ? "" : ", ", why.c_str(),
+					shown(url).c_str());
+		return got;
+	}
 	if (request < 0)
 		return -1;
 	if (status != 200)

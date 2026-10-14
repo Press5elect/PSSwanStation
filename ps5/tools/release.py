@@ -77,6 +77,7 @@ LOCAL = {
     "libretro-cheats": ("LIBRETRO_DATABASE_DIR", SRC.parent / "deps-src/libretro-database"),
     "libnfs": ("LIBNFS_DIR", SRC.parent / "deps-src/libnfs"),
     "glslang": ("GLSLANG_DIR", SRC.parent / "deps-src/glslang"),
+    "mbedtls": ("MBEDTLS_DIR", SRC.parent / "deps-src/mbedtls-3.6.7"),
     "slang-shaders": ("SLANG_SHADERS_DIR", SRC.parent / "deps-src/slang-shaders"),
 }
 # Folders of the title that are the user's: a release has them empty.

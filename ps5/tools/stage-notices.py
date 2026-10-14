@@ -37,6 +37,7 @@ def main():
     libnfs = Path(sys.argv[10]) if len(sys.argv) > 10 else src.parent / "deps-src/libnfs"
     slang = Path(sys.argv[11]) if len(sys.argv) > 11 else src.parent / "deps-src/slang-shaders"
     glslang = Path(sys.argv[12]) if len(sys.argv) > 12 else src.parent / "deps-src/glslang"
+    mbedtls = Path(sys.argv[13]) if len(sys.argv) > 13 else src.parent / "deps-src/mbedtls-3.6.7"
     parts = []
     title = at(src, "https://github.com/Press5elect/PSSwanStation")
     parts.append(dict(
@@ -44,7 +45,7 @@ def main():
         name="PSSwanStation: SwanStation (the emulator, with the libraries in its tree: libchdr with LZMA and zstd, "
              "xxHash, Xbyak, stb, libretro-common, OpenBIOS) and the PS5 frontend in ps5/ (with miniz, stb_vorbis, "
              "dr_mp3, AMD's FSR 1 and CAS headers, NVIDIA Image Scaling, AMD FidelityFX SDK's FSR3 optical flow through swordpdf's ps5-framegen "
-             "and Mihawk's MihawkGen frame generation with its network, and PS5SX2's USB pad decoder, Crux2's clock and pacing wait, the disc drive after DuckStation's (GPL) "
+             "and Mihawk's MihawkGen frame generation with its network, and PS5SX2's USB pad decoder, an HTTPS client of its own on mbedTLS, Crux2's clock and pacing wait, the disc drive after DuckStation's (GPL) "
              "and 5S2CD's disc readers, "
              "Project Nayuki's QR Code generator, the sandbox elevation "
              "client and Font Awesome Free's icons)",
@@ -90,6 +91,9 @@ def main():
                       artifacts=["eboot.bin"], source=at(libnfs)))
     parts.append(dict(id="rcheevos", name="rcheevos (RetroAchievements)", licence="MIT", artifacts=["eboot.bin"],
                       source=at(rcheevos)))
+    parts.append(dict(id="mbedtls", name="mbedTLS 3.6 (HTTPS once the sandbox elevator has run: RetroAchievements, "
+                      "covers, the updater)", licence="Apache-2.0 (licenses/Apache-2.0.txt)", artifacts=["eboot.bin"],
+                      source=at(mbedtls)))
     parts.append(dict(id="glslang", name="glslang (shader presets brought in from a USB drive are compiled with it)",
                       licence="BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache-2.0 and GPL-3.0-or-later with the "
                               "Bison exception (licenses/glslang-LICENSE.txt)", artifacts=["eboot.bin"], source=at(glslang)))

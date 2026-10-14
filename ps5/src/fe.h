@@ -148,6 +148,10 @@ int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds,
 int httpDownload(const std::string& url, const std::string& path, uint64_t limit,
 		const std::function<bool(uint64_t done, uint64_t total)>& progress);
 bool httpAvailable();
+// HTTPS through the title's own TLS from now on (the console's client
+// refuses public certificates once the sandbox elevator has run). `why` goes
+// into the boot log.
+void httpUseOwnTls(const char *why);
 
 // Seconds to add to UTC for the console's local time (its time zone and
 // summer time), for clocks on the screen.

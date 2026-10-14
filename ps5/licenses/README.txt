@@ -79,6 +79,15 @@ generation): Mihawk's                                                  (Mihawk):
 trained network                                                        compute shaders and network.fgw
                                                                        (ps5/third_party/mihawkgen); the weights hold
                                                                        no image, clip or game
+mbedTLS 3.6.7 (HTTPS after   Apache-2.0       Apache-2.0.txt           github.com/Mbed-TLS/mbedtls at mbedtls-3.6.7
+the sandbox elevator)                                                  (The Mbed TLS Contributors): library/
+                                                                       unmodified, configured by
+                                                                       ps5/src/mbedtls_config_fe.h; the client
+                                                                       around it (ps5/src/tls_client.cpp) follows
+                                                                       what ps5-native-app-boilerplate
+                                                                       (BlackBearReloaded, GPL-3.0-or-later)
+                                                                       measured: the name lookup and the
+                                                                       certificate list's place
 PS5SX2's USB pad decoder     GPL-3.0-or-later GPL-3.0.txt              github.com/Swordpdf/PS5SX2 at 6ccf48047a12,
 (USB controllers)                                                      by swordpdf: OrbisUsbPadDecode.h unmodified
                                                                        (ps5/third_party/ps5sx2-usbpad); the reader
