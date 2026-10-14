@@ -18,6 +18,15 @@ Build 22
     tab says so, and choosing it says why as far as the title can tell.
   - The boot log names each drive's maker, model and bus, the USB ports'
     state, and the console's own USB messages ("usb bus:" lines).
+  - Drive speed (Settings, Games and network, and the web panel): Quiet
+    (8x a CD), Normal (24x) or Max, the usual, as fast as the drive goes.
+    The boot log says how many MB/s a copy and a disc read into memory took.
+  - The Disc Drive tab draws the drive and its disc, alive: the disc drops
+    in when it arrives and floats while it rests, turns while a game plays
+    from it, and spins fast with a laser glint, a blinking light and a
+    progress ring while it is read; an empty drive slides its tray out for
+    a disc; a drive not found sends out search pulses. The line under the
+    name says what the drive is doing.
 
   Fixed
   - RetroAchievements, cover downloads and the update check could not reach
@@ -26,10 +35,10 @@ Build 22
     every certificate; PSSwanStation now uses an HTTPS client of its own
     (mbedTLS) from that moment, checking certificates against the
     console's list.
-  - Disc drives are read at 16x, not as fast as they go: a drive on a USB
-    bridge failed after fifteen seconds at full speed and dropped off the
-    bus. Two failed reads in a row slow the drive further (8x, then 4x),
-    and a failed read is tried again after a pause.
+  - A drive that fails a read twice is slowed a step (24x, 16x, 8x, 4x)
+    for the rest of the session, and a failed read is tried again after a
+    pause: a drive on a USB bridge failed at full speed and dropped off the
+    bus.
 
 Build 21
   Added

@@ -341,6 +341,7 @@ struct Frontend
 	bool covers = true;			// download missing covers
 	bool usb = false;			// leave the sandbox at start to read USB drives
 	bool discDrive = false;		// a USB CD or DVD drive: leave the sandbox at start to read it
+	int discSpeed = 2;			// its speed: 0 quiet (8x a CD), 1 normal (24x), 2 as fast as it goes
 	bool ramCache = true;		// read a network game whole into memory before it starts
 	bool notifications = false;	// the console's pop-up notices
 	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch (3, before build 15: fit with FSR 1)
@@ -966,6 +967,14 @@ void installOpener();
 void setPlaying(bool on);
 // Opens the drive's tray (unlocking it first). False with `why` when it cannot.
 bool eject(const std::string& device, std::string& why);
+// What the drive is doing, for the library's picture of it: resting, turning
+// for a game that plays from it (its disc already in memory), or reading (a
+// copy, or a game's disc read into memory behind it).
+enum Activity { Resting, Spinning, Reading };
+int activity();
+// The drive speed setting changed: every drive starts again from the new
+// speed (a drive slowed after failures too), from its next read.
+void speedChanged();
 
 // Copying a disc, into memory or to a folder, on a thread of its own.
 enum Destination { ToGames, ToUsb, ToShare, ToNfs, DestinationCount };

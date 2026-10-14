@@ -185,21 +185,39 @@ void buildDataSector(uint32_t lba, const uint8_t *data, uint8_t *out)
 }
 
 // A drive and the way it is read.
-// How fast each drive is read, in kilobytes a second: 16x a CD to start
-// with, not as fast as the drive goes. Build 21's tests: an ASUS BW-16D1HT on
-// a JMicron USB 2.0 bridge gave a hardware failure fifteen seconds into a
-// game read at full speed, behind which the whole disc was being read, and
-// then fell off the bus until it was plugged in again. A failing read slows
-// the drive a step (8x, then 4x), for as long as PSSwanStation runs.
+// How fast each drive is read, in kilobytes a second (SET CD SPEED), from the
+// "Drive speed" setting: as fast as the drive goes (0xFFFF, the default), 24x
+// a CD, or 8x for a quiet drive. Build 21's tests: an ASUS BW-16D1HT on a
+// JMicron USB 2.0 bridge gave a hardware failure fifteen seconds into a game
+// read at full speed, behind which the whole disc was being read, and then
+// fell off the bus until it was plugged in again; but at 16x it read at about
+// 2 MB/s, too slow for a game read from the drive and for a copy into memory.
+// So the drive starts at the speed chosen, and a failing read slows it a step
+// (24x, 16x, 8x, 4x) for as long as PSSwanStation runs or until the setting
+// changes.
+constexpr unsigned SpeedMax = 0xFFFF;
+constexpr unsigned SpeedSteps[] = { SpeedMax, 4234, 2822, 1411, 706 };	// max, 24x, 16x, 8x, 4x (176.4 KB/s a 1x)
 std::mutex speedMutex;
-std::map<std::string, unsigned> driveSpeeds;
-constexpr unsigned SpeedSteps[] = { 2822, 1411, 706 };	// 16x, 8x, 4x (176.4 KB/s a 1x)
+std::map<std::string, unsigned> driveSpeeds;	// a drive slowed after failures
+std::atomic<unsigned> speedSetting{ 0 };		// changes with the setting: readers apply it again
+// A game's disc is being read into memory behind it (the library's picture of the drive spins fast).
+std::atomic<bool> streamBusy{ false };
+
+unsigned chosenSpeed()
+{
+	switch (options::frontend().discSpeed)
+	{
+	case 0: return 1411;
+	case 1: return 4234;
+	default: return SpeedMax;
+	}
+}
 
 unsigned speedOf(const std::string& device)
 {
 	std::lock_guard<std::mutex> lock(speedMutex);
 	const auto it = driveSpeeds.find(device);
-	return it != driveSpeeds.end() ? it->second : SpeedSteps[0];
+	return it != driveSpeeds.end() ? std::min(it->second, chosenSpeed()) : chosenSpeed();
 }
 
 // The next step down; false when the drive is already at the slowest.
@@ -207,14 +225,21 @@ bool slowDown(const std::string& device)
 {
 	std::lock_guard<std::mutex> lock(speedMutex);
 	const auto it = driveSpeeds.find(device);
-	const unsigned now = it != driveSpeeds.end() ? it->second : SpeedSteps[0];
-	for (size_t i = 0; i + 1 < sizeof(SpeedSteps) / sizeof(SpeedSteps[0]); i++)
-		if (SpeedSteps[i] == now)
+	const unsigned now = it != driveSpeeds.end() ? std::min(it->second, chosenSpeed()) : chosenSpeed();
+	for (unsigned step : SpeedSteps)
+		if (step < now)
 		{
-			driveSpeeds[device] = SpeedSteps[i + 1];
+			driveSpeeds[device] = step;
 			return true;
 		}
 	return false;
+}
+
+std::string speedText(unsigned speed)
+{
+	if (speed >= SpeedMax)
+		return "as fast as it goes";
+	return std::to_string((speed + 88) / 176) + "x (" + std::to_string(speed) + " KB/s)";
 }
 
 struct Reader
@@ -231,11 +256,13 @@ struct Reader
 	bool aborted() const { return abort != nullptr && abort->load(); }
 
 	// The drive told how fast to read (speedOf), as this reader opened it.
+	unsigned appliedSetting = ~0u;
 	void applySpeed()
 	{
+		appliedSetting = speedSetting.load();
 		const unsigned speed = speedOf(device);
 		const bool ok = drive->setSpeed(speed);
-		diag::mark("disc drive: %s: read at %ux (%u KB/s)%s", device.c_str(), (speed + 88) / 176, speed,
+		diag::mark("disc drive: %s: read %s%s", device.c_str(), speedText(speed).c_str(),
 				ok ? "" : "; the drive did not take the speed");
 	}
 
@@ -320,6 +347,9 @@ struct Reader
 	{
 		if (lba + count > sectors)
 			return false;
+		// The setting changed while this reader was open.
+		if (appliedSetting != ~0u && appliedSetting != speedSetting.load())
+			applySpeed();
 		for (int attempt = 0; attempt < 3 && !aborted(); attempt++)
 		{
 			if (readOnce(lba, count, raw, q))
@@ -496,9 +526,8 @@ public:
 		reader.abort = &stopping;
 		if (!reader.open(device, error))
 			return false;
-		// The whole disc is read into memory behind the game, at the drive's
-		// speed for PSSwanStation (16x, slower after failures): not as fast as
-		// it goes, which a drive on a weak USB bridge did not survive.
+		// The whole disc is read into memory behind the game, at the speed
+		// chosen in the settings (slower after failures).
 		reader.applySpeed();
 		started = now();
 		worker = std::thread([this] { run(); });
@@ -685,16 +714,19 @@ private:
 			}
 			if (next == UINT32_MAX)
 			{
+				streamBusy = false;
 				if (!allRead)
 				{
 					allRead = true;
-					diag::mark("disc drive: the whole disc is in memory (%u blocks, %llu MB) after %.0f s; the drive has "
-							"nothing more to read", lastBlock, (unsigned long long)(blocks.size() * BlockSectors * RawSector / 1000000),
-							now() - started);
+					const double took = std::max(now() - started, 0.001);
+					const double megabytes = (double)(blocks.size() * BlockSectors * RawSector) / 1048576.0;
+					diag::mark("disc drive: the whole disc is in memory (%u blocks, %.0f MB) after %.0f s (%.1f MB/s); the "
+							"drive has nothing more to read", lastBlock, megabytes, took, megabytes / took);
 				}
 				wake.wait(lock);
 				continue;
 			}
+			streamBusy = true;
 			lock.unlock();
 			const uint32_t lba = next * BlockSectors;
 			const uint32_t count = std::min(BlockSectors, reader.sectors - lba);
@@ -1151,8 +1183,11 @@ bool readWhole(const Disc& disc, std::shared_ptr<RamDisc>& out)
 		}
 		jobDone = (uint64_t)(lba + count) * RawSector;
 	}
-	diag::mark("disc drive: %s read into memory in %.1f s (%u MB)", disc.device.c_str(), now() - began,
-			(unsigned)(jobTotal.load() >> 20));
+	{
+		const double took = std::max(now() - began, 0.001);
+		diag::mark("disc drive: %s read into memory in %.1f s (%u MB, %.1f MB/s)", disc.device.c_str(), took,
+				(unsigned)(jobTotal.load() >> 20), (double)jobTotal.load() / 1048576.0 / took);
+	}
 	out = std::move(ram);
 	return true;
 }
@@ -1590,6 +1625,27 @@ void installOpener()
 void setPlaying(bool on)
 {
 	playing = on;
+	if (!on)
+		streamBusy = false;
+}
+
+int activity()
+{
+	if (job == JobRunning)
+		return Reading;
+	if (playing)
+		return streamBusy ? Reading : Spinning;
+	return Resting;
+}
+
+void speedChanged()
+{
+	{
+		std::lock_guard<std::mutex> lock(speedMutex);
+		driveSpeeds.clear();
+	}
+	speedSetting++;
+	diag::mark("disc drive: speed set to %s", speedText(chosenSpeed()).c_str());
 }
 
 bool eject(const std::string& device, std::string& why)

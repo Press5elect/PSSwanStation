@@ -256,6 +256,7 @@ std::vector<Field> fields()
 		{ "covers", nullptr, &c.covers, 0, 1 },
 		{ "usb", nullptr, &c.usb, 0, 1 },
 		{ "disc_drive", nullptr, &c.discDrive, 0, 1 },
+		{ "disc_speed", &c.discSpeed, nullptr, 0, 2 },
 		{ "ram_cache", nullptr, &c.ramCache, 0, 1 },
 		{ "notifications", nullptr, &c.notifications, 0, 1 },
 		{ "scaling", &c.scaling, nullptr, 0, 3 },
