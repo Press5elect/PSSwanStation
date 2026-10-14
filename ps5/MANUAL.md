@@ -259,7 +259,7 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 | Display output | 60 Hz, 120 Hz, or 120 Hz with variable refresh rate; from the next start |
 | Black frame insertion | At 120 Hz, a black refresh between a 60 fps game's frames |
 | Frame generation | Pictures made between the game's, with a generation method, quality, mode and rate settings |
-| Generation method (under Frame generation) | The title's own (the default), or AMD FSR3's optical flow, from AMD's FidelityFX SDK |
+| Generation method (under Frame generation) | The title's own (the default), AMD FSR3's optical flow, from AMD's FidelityFX SDK, or MihawkGen, Mihawk's small trained network |
 
 **Scaling filters.** Smooth blends neighbouring pixels; square pixels shows them as squares; sharp bilinear keeps pixels even and crisp at any size. FSR 1 and NIS follow edges, then sharpen; CAS sharpens fine detail without halos. FSR and NIS pay off most at a lower internal resolution (3x or 4x). A picture larger than the screen (8x on a 1080p screen) is made smaller by averaging, whichever filter is chosen.
 
@@ -271,7 +271,7 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 
 **Frame generation** (Off or On) makes pictures between the game's own: a 30 fps game moves at 60 on a 60 Hz screen, or up to 120 at 120 Hz. It never changes the game's speed or sound. Its settings:
 
-- **Generation method:** the title's own, which is the default, or AMD FSR3's optical flow. On my test pictures its frames are about half as far from the true ones as the title's own. Its frames take the picture's look (film grain, colours, scaling filter, sharpening and picture tube) like the title's own;
+- **Generation method:** the title's own, which is the default, AMD FSR3's optical flow, or MihawkGen (a trained network of 0.43 million parameters that reads the game's two pictures alone; its quality, ahead and movement-view settings do not apply, and it makes none ahead). On my test pictures its frames are about half as far from the true ones as the title's own. Its frames take the picture's look (film grain, colours, scaling filter, sharpening and picture tube) like the title's own;
 - **Quality:** Performance, Balanced, or Quality (checks each movement from both pictures' side);
 - **Mode:** between the game's last two pictures, or ahead of the latest (no waiting, more mistakes where movement turns);
 - **Up to the screen's rate**, or up to 60 a second at 120 Hz;
@@ -312,7 +312,7 @@ Settings (in the menu) holds PSSwanStation's own sections and every setting of t
 | Section | What it holds |
 | --- | --- |
 | Interface | Library: view, cover downloads, clock, update check. Look: theme, accent colour, size (up to 140%), high contrast, colour-blind safe colours, animations. The swan: lively, calm or still; dressed for the theme; seasonal touches; the start-up animation; the swan screen saver. Buttons and notices: confirm button, frame rate, console notices |
-| Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation (the title's own, or AMD FSR3's optical flow) |
+| Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation (the title's own, AMD FSR3's optical flow, or MihawkGen) |
 | Sound | The game's volume; the menus' sound set, interface sounds volume and start-up sound; menu music (the kit's songs, or your own .ogg files in `music/`) and its volume |
 | Controllers | Players: who holds a pad, multitap, each player's controller type. USB controllers (an experiment: PS3 pads, a DualShock 3 on a cable, Xbox 360 pads and other USB gamepads, as the next player or with player 1). The pad: buttons (remapping, turbo), stick dead zone, vibration, player lights, tilt steering |
 | Shortcuts and rewind | The held-OPTIONS shortcuts, fast forward speed, rewind and its memory |

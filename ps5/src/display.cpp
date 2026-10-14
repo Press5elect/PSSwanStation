@@ -69,6 +69,7 @@
 #include "gfx/vk/vk_renderer.hpp"
 #define PS5_FRAMEGEN_VULKAN_HEADER "vulkan_loader.h"
 #include "ps5_framegen.h"
+#include "framegen.h"
 
 #include <miniz.h>
 
@@ -77,6 +78,12 @@
 #include <cstring>
 #include <map>
 #include <vector>
+
+namespace fe::mihawkgen
+{
+const void *model();
+size_t modelSize();
+}
 
 namespace Vulkan
 {
@@ -170,6 +177,9 @@ void generationShutdown();
 void flowShutdown();
 void flowForget();
 bool flowView(void *texture, VkImageView& view);
+void mihawkShutdown();
+void mihawkForget();
+bool mihawkView(void *texture, VkImageView& view);
 void lookShutdown();
 // The interface kit: its renderer draws every layer of the interface, in the
 // swapchain's pass, over the game's picture.
@@ -634,6 +644,7 @@ void shutdown()
 	lookShutdown();
 	generationShutdown();
 	flowShutdown();
+	mihawkShutdown();
 	fsrShutdown();
 	std::vector<Target *> targets = { &captureTarget, &ambientTarget };
 	for (Target& level : blurLevels)
@@ -1624,7 +1635,7 @@ bool viewBehind(void *texture, VkImageView& view, VkImageLayout& layout)
 		}
 	// A frame of the optical flow's (the look, the grain among it, comes
 	// after it as after the title's own).
-	if (flowView(texture, view))
+	if (flowView(texture, view) || mihawkView(texture, view))
 		return true;
 	const auto it = dynamicViews.find(texture);
 	if (it == dynamicViews.end())
@@ -1638,6 +1649,7 @@ void forgetGenerated()
 {
 	generation.haveNow = generation.haveBefore = generation.haveMovement = false;
 	flowForget();
+	mihawkForget();
 }
 
 namespace
@@ -2039,6 +2051,233 @@ void *generatedFlow(void *texture, int width, int height, float u, float v, bool
 	const int k = std::clamp((int)std::lround(phase * (float)(f.generated + 1)), 1, f.made);
 	return (void *)f.out[k - 1].set;
 }
+
+// The third way: MihawkGen, Mihawk's small trained network (432,308 parameters,
+// third_party/mihawkgen, GPL-3.0-or-later). It reads the game's two pictures
+// and nothing else, estimates a flow and a mask at four scales, warps both
+// pictures with them and mixes them, then keeps the regions that did not move
+// exactly as they were. It makes a picture at any moment t between the two, so
+// n of them (up to 3) are made at 1 / (n + 1) of the way apart, as the optical
+// flow's are, when the second picture arrives; none ahead.
+struct Mihawk
+{
+	fg_context *ctx = nullptr;
+	bool failed = false;
+	int width = 0, height = 0;
+	Target frame[2];					// the game's last two pictures; frame[cur] is the latest
+	int cur = 0;
+	Vulkan::Texture output;				// what the network writes (storage image, kept in GENERAL)
+	Picture *outputSet = nullptr;
+	Target out[3];						// the made pictures, nearest the picture before first
+	int made = 0;
+	int generated = 1;
+	int refreshes = 0, lastRefreshes = 2;
+	uint64_t keptAt = 0;
+	bool haveNow = false, havePrev = false;
+	double reportedAt = 0;
+	double costSum = 0;
+	int costCount = 0;
+} mihawk;
+
+void mihawkShutdown()
+{
+	Mihawk& m = mihawk;
+	if (m.ctx != nullptr)
+		fg_context_destroy(m.ctx);
+	m.ctx = nullptr;
+	retire(m.outputSet);
+	m.outputSet = nullptr;
+	m.output.Destroy(false);
+	for (Target& target : m.frame)
+		destroyTarget(target);
+	for (Target& target : m.out)
+		destroyTarget(target);
+	m.width = m.height = 0;
+	m.made = 0;
+	m.cur = 0;
+	m.haveNow = m.havePrev = false;
+}
+
+void mihawkForget()
+{
+	mihawk.haveNow = mihawk.havePrev = false;
+	mihawk.made = 0;
+}
+
+bool mihawkView(void *texture, VkImageView& view)
+{
+	if (texture == nullptr)
+		return false;
+	for (const Target& target : mihawk.frame)
+		if (texture == (void *)target.set && target.framebuffer != VK_NULL_HANDLE)
+		{
+			view = target.texture.GetView();
+			return true;
+		}
+	for (const Target& target : mihawk.out)
+		if (texture == (void *)target.set && target.framebuffer != VK_NULL_HANDLE)
+		{
+			view = target.texture.GetView();
+			return true;
+		}
+	return false;
+}
+
+// Everything a render pass or a copy wrote, visible to the compute shaders, and what they read safe to overwrite.
+void mihawkBarrier(VkCommandBuffer cmd, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess, VkPipelineStageFlags dstStage,
+		VkAccessFlags dstAccess)
+{
+	VkMemoryBarrier barrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+	barrier.srcAccessMask = srcAccess;
+	barrier.dstAccessMask = dstAccess;
+	vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+}
+
+void *generatedMihawk(void *texture, int width, int height, float u, float v, bool fresh, float phase)
+{
+	Mihawk& m = mihawk;
+	if (m.failed)
+		return nullptr;
+	VkDevice device = g_vulkan_context->GetDevice();
+	if (m.width != width || m.height != height)
+	{
+		if (m.ctx != nullptr)
+		{
+			g_vulkan_context->WaitForGPUIdle();
+			mihawkShutdown();
+		}
+		fg_create_info info{};
+		info.device = device;
+		info.physical_device = gpu;
+		info.width = (uint32_t)width;
+		info.height = (uint32_t)height;
+		info.slots = Vulkan::Context::NUM_COMMAND_BUFFERS;
+		info.output_format = VK_FORMAT_R8G8B8A8_UNORM;
+		char error[256] = {};
+		VkResult result = fg_context_create(&info, &m.ctx, error, sizeof(error));
+		if (result == VK_SUCCESS)
+			result = fg_context_load_network(m.ctx, mihawkgen::model(), mihawkgen::modelSize(), error, sizeof(error));
+		if (result != VK_SUCCESS || !fg_method_available(m.ctx, FG_METHOD_NEURAL))
+		{
+			diag::mark("frame generation (MihawkGen): %s (%d); the title's own is used", error, (int)result);
+			mihawkShutdown();
+			m.failed = true;
+			return nullptr;
+		}
+		if (!m.output.Create((uint32_t)width, (uint32_t)height, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT,
+				VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+		{
+			diag::mark("frame generation (MihawkGen): no image for its output; the title's own is used");
+			mihawkShutdown();
+			m.failed = true;
+			return nullptr;
+		}
+		m.output.TransitionToLayout(g_vulkan_context->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_GENERAL);
+		m.outputSet = makePicture(m.output.GetView(), VK_IMAGE_LAYOUT_GENERAL);
+		m.width = width;
+		m.height = height;
+		diag::mark("frame generation (MihawkGen): pictures of %d x %d", width, height);
+	}
+	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
+	if (fresh)
+	{
+		VkImageView view = VK_NULL_HANDLE;
+		VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		if (!viewBehind(texture, view, layout))
+			return nullptr;
+		// A picture kept long ago is not the one before this one.
+		const bool follows = m.haveNow && frames - m.keptAt <= 16;
+		if (m.refreshes > 0)
+			m.lastRefreshes = m.refreshes;
+		m.refreshes = 0;
+		m.generated = std::clamp(m.lastRefreshes - 1, 1, 3);
+		m.cur ^= 1;
+		Target& now = m.frame[m.cur];
+		const Target& before = m.frame[m.cur ^ 1];
+		if (!ensureTarget(now, width, height, swapFormat, shaderPass))
+			return nullptr;
+		// The picture, at its size, into the frame the network reads.
+		Picture source{ view, layout, 0 };
+		{
+			VkClearValue clear{};
+			VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+			begin.renderPass = shaderPass;
+			begin.framebuffer = now.framebuffer;
+			begin.renderArea = { { 0, 0 }, { (uint32_t)width, (uint32_t)height } };
+			begin.clearValueCount = 1;
+			begin.pClearValues = &clear;
+			vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+			Presented p{};
+			p.picture = &source;
+			const float r[4] = { -1.f, -1.f, 1.f, 1.f }, uv[4] = { 0.f, 0.f, u, v }, tint[4] = { 1.f, 1.f, 1.f, 1.f };
+			memcpy(p.rect, r, sizeof(r));
+			memcpy(p.uv, uv, sizeof(uv));
+			memcpy(p.tint, tint, sizeof(tint));
+			p.nearest = true;
+			presentRecord(cmd, p, width, height);
+			vkCmdEndRenderPass(cmd);
+			now.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			now.drawn = true;
+		}
+		m.made = 0;
+		if (follows && m.havePrev && before.framebuffer != VK_NULL_HANDLE)
+		{
+			const uint32_t slot = g_vulkan_context->GetCurrentCommandBufferIndex();
+			for (int i = 0; i < m.generated; i++)
+			{
+				if (!ensureTarget(m.out[i], width, height, swapFormat, shaderPass))
+					break;
+				// The pictures written (and the output last read by a render pass) are visible to the network.
+				mihawkBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT |
+						VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+						VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+				fg_frame_pair pair{};
+				pair.prev_color = before.texture.GetView();
+				pair.next_color = now.texture.GetView();
+				pair.t = (float)(i + 1) / (float)(m.generated + 1);
+				fg_record_generate(m.ctx, cmd, slot, FG_METHOD_NEURAL, &pair, m.output.GetView());
+				mihawkBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+						VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+				VkClearValue clear{};
+				VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+				begin.renderPass = shaderPass;
+				begin.framebuffer = m.out[i].framebuffer;
+				begin.renderArea = { { 0, 0 }, { (uint32_t)width, (uint32_t)height } };
+				begin.clearValueCount = 1;
+				begin.pClearValues = &clear;
+				vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+				Presented p{};
+				p.picture = m.outputSet;
+				const float r[4] = { -1.f, -1.f, 1.f, 1.f }, uv[4] = { 0.f, 0.f, 1.f, 1.f }, tint[4] = { 1.f, 1.f, 1.f, 1.f };
+				memcpy(p.rect, r, sizeof(r));
+				memcpy(p.uv, uv, sizeof(uv));
+				memcpy(p.tint, tint, sizeof(tint));
+				p.nearest = true;
+				presentRecord(cmd, p, width, height);
+				vkCmdEndRenderPass(cmd);
+				m.out[i].texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				m.out[i].drawn = true;
+				m.made = i + 1;
+			}
+			// The network has read the picture before this one: it may be drawn over by a later frame.
+			mihawkBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+					VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		}
+		m.havePrev = m.haveNow;
+		m.haveNow = true;
+		m.keptAt = frames;
+	}
+	m.refreshes++;
+	if (!m.haveNow)
+		return nullptr;
+	if (phase >= 0.999f || m.made == 0)
+		return (void *)m.frame[m.cur].set;
+	// The made picture nearest this moment.
+	const int k = std::clamp((int)std::lround(phase * (float)(m.generated + 1)), 1, m.made);
+	return (void *)m.out[k - 1].set;
+}
 } // namespace
 
 void *generated(void *texture, int width, int height, float u, float v, bool fresh, float phase, int quality, bool debug,
@@ -2050,6 +2289,12 @@ void *generated(void *texture, int width, int height, float u, float v, bool fre
 	{
 		void *made = generatedFlow(texture, width, height, u, v, fresh, std::min(phase, 1.f), debug);
 		if (made != nullptr || !flow.failed)
+			return made;
+	}
+	if (method == 2)
+	{
+		void *made = generatedMihawk(texture, width, height, u, v, fresh, std::min(phase, 1.f));
+		if (made != nullptr || !mihawk.failed)
 			return made;
 	}
 	return generatedOwn(texture, width, height, u, v, fresh, phase, quality, debug);

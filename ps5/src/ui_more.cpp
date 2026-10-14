@@ -2747,24 +2747,29 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	if (generation != 0)
 	{
 		const int method = now_("fg_method");
-		items.push_back(pictureChoice(forGame, "fg_method", "Generation method", { "PSSwanStation's own", "AMD FSR3 optical flow" },
+		items.push_back(pictureChoice(forGame, "fg_method", "Generation method", { "PSSwanStation's own", "AMD FSR3 optical flow", "MihawkGen" },
 				"Two ways of finding how the picture moved and drawing the pictures between. PSSwanStation's own: its "
 				"movement search, with the quality, ahead and movement view settings below. AMD FSR3 optical flow: the "
 				"optical flow of AMD's FidelityFX SDK (FSR3), which finds the movement without the game's help; its "
 				"interpolation tries several movements for every few pixels and keeps what has not changed for a while (a score, a map) still; on test pictures its "
 				"made pictures are about half as far from the true ones as the title's own. It makes one, two or three "
 				"pictures between two of the game's, at even steps, so a rate that does not divide the screen's (a PAL "
-				"game at 120 Hz) moves a little less evenly; and it makes none ahead.", [] { display::forgetGenerated(); }));
+				"game at 120 Hz) moves a little less evenly; and it makes none ahead. MihawkGen: Mihawk's small trained "
+				"network (0.43 million parameters, about 2 ms at 4K on the PS5), which looks at the game's two pictures and "
+				"nothing else: it estimates the movement and a mask at four scales, warps both pictures and mixes them, and "
+				"leaves what has not moved exactly as it was. On pictures it was not trained on it comes close to research "
+				"models many times its size. It makes one, two or three pictures between two of the game's, as the optical "
+				"flow does, and none ahead.", [] { display::forgetGenerated(); }));
 		{
 			Item item = pictureChoice(forGame, "fg_quality", "Generation quality", { "Performance", "Balanced", "Quality" },
 					"How hard frame generation works. Performance: less for the graphics processor, decided more "
 					"coarsely, for when the frame rate drops with it on. Quality: movement looked for in a finer "
 					"picture, decided at the game's own size, and every movement checked from both frames' side, so "
 					"that what comes into view or goes out of it is not smeared.", [] { display::forgetGenerated(); });
-			if (method == 1)
+			if (method == 1 || method == 2)
 			{
 				item.enabled = false;
-				item.value = "The optical flow's own";
+				item.value = method == 2 ? "The network's own" : "The optical flow's own";
 			}
 			items.push_back(item);
 		}
@@ -2775,11 +2780,11 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 					"latest picture is shown the moment it comes, and the made ones carry its movement on until the "
 					"next: no delay, more mistakes where movement changes (a turn, a stop).",
 					[] { display::forgetGenerated(); });
-			if (method == 1)
+			if (method == 1 || method == 2)
 			{
 				item.enabled = false;
 				item.value = "Between the game's";
-				item.info += " The optical flow makes them between only.";
+				item.info += method == 2 ? " MihawkGen makes them between only." : " The optical flow makes them between only.";
 			}
 			items.push_back(item);
 		}
@@ -2807,7 +2812,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"A view for checking frame generation: over the made pictures, the movement found is shown as a "
 				"colour (its way) and a strength (its length), and grey where it is not believed. With the optical "
 				"flow: grey no movement, green a movement, red and blue an edge where the frame before's or this one's "
-				"side was kept, magenta an edge blended."));
+				"side was kept, magenta an edge blended. MihawkGen has no such view."));
 	}
 }
 

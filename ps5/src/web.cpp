@@ -288,6 +288,7 @@ const std::vector<Setting>& settingsList()
 		{ "signal", "Video signal", { "As it is", "Dither smoothed", "S-Video", "Composite" }, 0, 3, 1 },
 		{ "frame_generation", "Frame generation", { "Off", "On" }, 0, 1, 1 },
 		{ "fg_quality", "Frame generation quality", { "Performance", "Balanced", "Quality" }, 0, 2, 1 },
+		{ "fg_method", "Frame generation method", { "PSSwanStation's own", "AMD FSR3 optical flow", "MihawkGen" }, 0, 2, 1 },
 		{ "pacing", "Frame pacing", { "By the display", "The game's speed", "By the clock" }, 0, 2, 1 },
 		{ "show_fps", "Frame counter", { "Off", "On" }, 0, 1, 1 },
 		{ "rewind", "Rewind", { "Off", "On" }, 0, 1, 1 },

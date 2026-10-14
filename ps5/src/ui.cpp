@@ -2491,6 +2491,8 @@ void aboutItems(std::vector<Item>& items)
 			"backend of PS5_VKHomebrewUI."));
 	items.push_back(fact("AMD FSR3 optical flow", "MIT", "The optical flow frame generation is AMD FidelityFX SDK 2.3.0's "
 			"FSR3 optical flow (MIT)."));
+	items.push_back(fact("MihawkGen", "GPL-3.0-or-later", "The third frame generation method is MihawkGen, Mihawk's trained "
+			"network for the PS5 (github.com/mihawk-99/PS5_MihawkGen), with its weights."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));
@@ -4468,7 +4470,7 @@ bool generationTest()
 	void *shown = display::generated(picture.id, picture.width, picture.height, 1.f, 1.f, step == 0,
 			getenv("SWANSTATION_FG_AHEAD") != nullptr ? phase + (step == steps - 1 ? 0.f : 1.f) : phase,
 			getenv("SWANSTATION_FG_LIGHTER") != nullptr ? 0 : quality != nullptr ? atoi(quality) : 1,
-			getenv("SWANSTATION_FG_DEBUG") != nullptr, getenv("SWANSTATION_FG_FLOW") != nullptr ? 1 : 0);
+			getenv("SWANSTATION_FG_DEBUG") != nullptr, getenv("SWANSTATION_FG_MIHAWK") != nullptr ? 2 : getenv("SWANSTATION_FG_FLOW") != nullptr ? 1 : 0);
 	display::present(shown != nullptr ? shown : picture.id, 0, 0, (float)picture.width, (float)picture.height, 0, 0, 1, 1,
 			1.f, true);
 	diag::mark("generation test: display frame %llu shows picture %d at phase %.2f%s", (unsigned long long)display::frameCount(),

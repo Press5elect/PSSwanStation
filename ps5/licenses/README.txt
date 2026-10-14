@@ -74,6 +74,11 @@ second frame generation),    shaders);        GPL-3.0.txt              flow, run
 through ps5-framegen         GPL-3.0-or-later                          github.com/Swordpdf/ps5-framegen at
                              (ps5-framegen)                            64362101757c (swordpdf), unmodified
                                                                        (ps5/third_party/ps5-framegen)
+MihawkGen (the third frame  GPL-3.0-or-later GPL-3.0.txt              github.com/mihawk-99/PS5_MihawkGen at bb45cf1c5369
+generation): Mihawk's                                                  (Mihawk): framegen/ unmodified, with its
+trained network                                                        compute shaders and network.fgw
+                                                                       (ps5/third_party/mihawkgen); the weights hold
+                                                                       no image, clip or game
 PS5SX2's USB pad decoder     GPL-3.0-or-later GPL-3.0.txt              github.com/Swordpdf/PS5SX2 at 6ccf48047a12,
 (USB controllers)                                                      by swordpdf: OrbisUsbPadDecode.h unmodified
                                                                        (ps5/third_party/ps5sx2-usbpad); the reader

@@ -278,7 +278,7 @@ std::vector<Field> fields()
 		{ "fg_cap", &c.fgCap, nullptr, 0, 1 },
 		{ "fg_videos", &c.fgVideos, nullptr, 0, 1 },
 		{ "fg_mode", &c.fgMode, nullptr, 0, 1 },
-		{ "fg_method", &c.fgMethod, nullptr, 0, 1 },
+		{ "fg_method", &c.fgMethod, nullptr, 0, 2 },
 		{ "fg_runahead", nullptr, &c.fgRunAhead, 0, 1 },
 		{ "fg_debug", nullptr, &c.fgDebug, 0, 1 },
 		{ "crt", &c.crt, nullptr, 0, 72 },
