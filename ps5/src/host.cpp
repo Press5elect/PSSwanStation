@@ -113,6 +113,8 @@ std::string errorText;
 // The last start was refused for a missing .sbi; the next one may go ahead without it.
 bool sbiMissing = false;
 bool allowNoSbiOnce = false;
+// When adaptive resolution last stepped: the emulator's notice of the change is not shown then.
+double adaptiveStepAt = -100;
 retro_system_av_info av{};
 double pacing;
 // Changes of input the run-ahead took between two frames (runFrame).
@@ -666,6 +668,9 @@ bool environment(unsigned command, void *data)
 		{
 			if (strncmp(message->msg, "ERROR: ", 7) == 0)
 				errorText = message->msg + 7;
+			// Adaptive resolution's own step is not announced on the screen.
+			if (now() - adaptiveStepAt < 5.0 && strncmp(message->msg, "Resolution changed", 18) == 0)
+				return true;
 			pushMessage(message->msg, std::clamp(message->frames / 60.0, 1.5, 10.0), -1);
 		}
 		return true;
@@ -673,7 +678,8 @@ bool environment(unsigned command, void *data)
 	case RETRO_ENVIRONMENT_SET_MESSAGE_EXT:
 	{
 		const retro_message_ext *message = static_cast<const retro_message_ext *>(data);
-		if (message != nullptr && message->msg != nullptr)
+		if (message != nullptr && message->msg != nullptr &&
+				!(now() - adaptiveStepAt < 5.0 && strncmp(message->msg, "Resolution changed", 18) == 0))
 			pushMessage(message->msg, std::clamp(message->duration / 1000.0, 1.0, 10.0),
 					message->type == RETRO_MESSAGE_TYPE_PROGRESS ? std::max<int>(message->progress, 0) : -1);
 		return true;
@@ -1618,6 +1624,15 @@ void runOne(bool keep)
 		recordStop();
 	if (emulatedFrames == 60 && getenv("SWANSTATION_PLAY") != nullptr)
 		playbackStart(getenv("SWANSTATION_PLAY"));
+	// A test reads a word of the game's memory (SWANSTATION_PEEK=800107F0) at frame 300.
+	if (emulatedFrames == 300 && getenv("SWANSTATION_PEEK") != nullptr)
+	{
+		const uint32_t address = (uint32_t)strtoul(getenv("SWANSTATION_PEEK"), nullptr, 16) & 0x1FFFFFu;
+		const uint8_t *ram = static_cast<const uint8_t *>(retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM));
+		if (ram != nullptr && address + 4 <= retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM))
+			diag::mark("peek: %08X holds %02x %02x %02x %02x", address | 0x80000000u, ram[address], ram[address + 1],
+					ram[address + 2], ram[address + 3]);
+	}
 #endif
 	frameInputs();
 	// Values frozen in the game's memory (Find in memory) are written back.
@@ -1699,6 +1714,11 @@ int runNetplay(int due)
 	} while (ran < due);
 	return ran;
 }
+}
+
+namespace
+{
+void adaptResolution();
 }
 
 void runFrame()
@@ -1978,6 +1998,7 @@ void runFrame()
 		shownThisSecond = 0;
 		ranThisSecond = 0;
 		secondStarted = t;
+		adaptResolution();
 	}
 	// Options that hide or show others: the core says which after a change.
 	static unsigned seen;
@@ -2002,6 +2023,86 @@ void setFastForward(bool on)
 	audio::setMuted(ffOn || rewindOn);
 	pacing = 1.0;
 	clockNext = 0;
+}
+
+namespace
+{
+// Adaptive resolution: once a second, from the emulator's speed. Two seconds
+// under 95% of the game's own rate lower the resolution scale a step (held
+// under the user's own value, options::hold); twenty seconds at full speed
+// raise it a step, up to the scale chosen. A raise that is followed by a drop
+// within fifteen seconds caps the scale below it for the rest of the game.
+struct Adaptive
+{
+	int scale = 0;			// held now; 0: the user's own
+	int slow = 0, good = 0;	// seconds in a row
+	int cap = 0;			// the highest that held, after a raise did not; 0: none
+	double changedAt = 0, raisedAt = -100;
+	std::string game;
+} adaptive;
+
+void holdScale(int scale, int chosen)
+{
+	adaptive.scale = scale >= chosen ? 0 : scale;
+	options::hold("swanstation_GPU_ResolutionScale", adaptive.scale == 0 ? "" : std::to_string(adaptive.scale));
+	adaptive.changedAt = now();
+	adaptiveStepAt = now();
+	adaptive.slow = adaptive.good = 0;
+}
+
+void adaptResolution()
+{
+	const options::Frontend& settings = options::frontend();
+	const char *own = options::own("swanstation_GPU_ResolutionScale");
+	const int chosen = own != nullptr ? atoi(own) : 1;
+	if (!settings.dynamicResolution || !isRunning || !frameIsHardware || chosen <= 2 || adaptive.game != current.path)
+	{
+		if (adaptive.scale != 0 || adaptive.game != current.path)
+		{
+			adaptive = Adaptive();
+			adaptive.game = current.path;
+			options::hold("swanstation_GPU_ResolutionScale", "");
+		}
+		return;
+	}
+	// Not while the speed is the player's doing, nor just after a change (the
+	// picture memory was remade) or a start.
+	if (isPaused || ffOn || rewindOn || netplay::active() || now() - adaptive.changedAt < 4.0 || coreFps() <= 0)
+		return;
+	const int current = adaptive.scale != 0 ? adaptive.scale : chosen;
+	const float speed = fpsMeasured / coreFps();
+	if (speed < 0.95f)
+	{
+		adaptive.good = 0;
+		if (++adaptive.slow >= 2 && current > std::max(2, chosen / 2))
+		{
+			// The raise just made did not hold: no higher than before it.
+			if (now() - adaptive.raisedAt < 15.0)
+				adaptive.cap = current - 1;
+			holdScale(current - 1, chosen);
+			diag::mark("resolution: %dx (the game ran at %.0f%% of its speed)", current - 1, speed * 100.f);
+		}
+	}
+	else if (speed > 0.995f)
+	{
+		adaptive.slow = 0;
+		const int ceiling = adaptive.cap != 0 ? adaptive.cap : chosen;
+		if (++adaptive.good >= 20 && current < ceiling)
+		{
+			holdScale(current + 1, chosen);
+			adaptive.raisedAt = now();
+			diag::mark("resolution: %dx (back up a step)", current + 1);
+		}
+	}
+	else
+		adaptive.slow = adaptive.good = 0;
+}
+}
+
+void resetAdaptiveResolution()
+{
+	adaptive = Adaptive();
+	options::hold("swanstation_GPU_ResolutionScale", "");
 }
 
 bool fastForward()
@@ -2831,6 +2932,7 @@ void tick()
 	}
 	platform::padMotion(settings.motion != 0 || gun);
 	sleepSafeTick();
+	cheats::followWidescreen();
 	// Verbose logging: the emulator says more ("Developer", a level short of
 	// its debugging chatter), and a line about speed goes to the boot log
 	// every ten seconds of play.

@@ -274,6 +274,8 @@ std::vector<Field> fields()
 		{ "pacing", &c.pacing, nullptr, 0, 2 },
 		{ "display_mode", &c.displayMode, nullptr, 0, 2 },
 		{ "black_frames", nullptr, &c.blackFrames, 0, 1 },
+		{ "dynamic_resolution", nullptr, &c.dynamicResolution, 0, 1 },
+		{ "widescreen_patch", nullptr, &c.widescreenPatch, 0, 1 },
 		{ "frame_generation", &c.frameGeneration, nullptr, 0, 2 },
 		{ "fg_quality", &c.fgQuality, nullptr, 0, 2 },
 		{ "fg_cap", &c.fgCap, nullptr, 0, 1 },
@@ -372,7 +374,7 @@ std::vector<PictureField>& pictureFields()
 	{
 		static const char *const names[] = { "scaling", "scaler", "fsr_sharpness", "linear_filter", "signal", "brightness",
 				"contrast", "saturation", "gamma", "grain", "pacing", "black_frames", "frame_generation", "fg_quality", "fg_cap", "fg_videos",
-				"fg_mode", "fg_method", "fg_runahead", "crt", "border", "preset" };
+				"fg_mode", "fg_method", "fg_runahead", "crt", "border", "preset", "dynamic_resolution", "widescreen_patch" };
 		for (const Field& field : fields())
 			for (const char *name : names)
 				if (!strcmp(field.name, name))

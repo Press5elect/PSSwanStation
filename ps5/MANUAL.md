@@ -291,6 +291,30 @@ Activation = EndFrame
 800B7526 03E7
 ```
 
+**Mods.** A mod changes a game a feature at a time, without changing its disc image. It is a text file: a folder with a `mod.txt` in it, or a `<name>.mod` file, in `mods/` (or `PSSwanStation/mods/` on a USB drive). A game's mods are under Cheats in its details, above the patches, each feature switched on and off by itself; what is on is kept for that game. Settings, Games and network, "Mods" says how many were found and whether any could not be read (the boot log's `mods:` lines say which line). The format:
+
+```
+name = Faster start
+version = 1.0
+author = Someone
+description = What the mod does.
+games = SLUS-00594, SCES-00344
+
+[feature]
+name = Skip the logos
+description = What this part does.
+on = yes
+patch = 80041234: 2a 00 02 24 > 00 00 00 00
+code = 80041238 0000
+setting = swanstation_GPU_WidescreenHack = false
+```
+
+A `patch` writes the new bytes only where the old ones are found, so a part of the game loaded later from the disc is patched when it arrives, and another version of the game is left alone; addresses are in the console's 2 MB of memory (80000000 to 801FFFFF), and the bytes are as many on each side. `code` lines are GameShark codes as they are, and `setting` lines are emulator options the feature needs while it is on. Mods are text: they carry no game data and can be shared. Like cheats, they are off in netplay and in RetroAchievements' hardcore mode.
+
+**The game's own widescreen** (Settings, Picture). With the aspect ratio set to 16:9 or wider, or the widescreen hack on, a game that has a widescreen patch in the patch database uses it by itself: the game's own camera made wide, without the general hack's pop-in at the edges. Its Cheats page shows it as "On, by itself".
+
+**Adaptive resolution** (Settings, Picture, on as it comes). While a game cannot keep its speed at the resolution scale chosen, the scale is lowered a step at a time, down to half of it, and raised again once the game has kept its speed for twenty seconds. A step costs a moment's hitch; a raise that does not hold is not tried again until the game starts anew. The boot log's `resolution:` lines say when.
+
 **Find in memory** (menu, while a game runs). The classic cheat search: look for a value (a byte, two or four), or one that went up, down, changed or stayed the same, and narrow it down while you play. What is left can be watched over the game, set, frozen at a value, or made a cheat in the game's own cheat file. Not available in RetroAchievements' hardcore mode.
 
 **Speedrun timer** (menu, "Speedrun timer"). A timer at the top right, in game time (pauses and loading don't count) or real time. OPTIONS held with Cross splits (and starts), with Square takes the last split back, with Triangle stops and resets. Splits can trigger by themselves when a value in the game's memory becomes a number (found with Find in memory), and the timer can start the same way. The best run and best splits are kept for each game; a run with fast forward, rewind or a state load counts as practice.

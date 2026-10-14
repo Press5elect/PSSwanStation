@@ -2868,22 +2868,24 @@ void discsPage(Frame& f)
 void cheatItems(std::vector<Item>& items, bool running)
 {
 	std::vector<cheats::Cheat>& list = cheats::list();
-	bool anyPatch = false, anyCheat = false;
+	bool anyMod = false, anyPatch = false, anyCheat = false;
 	for (const cheats::Cheat& cheat : list)
-		(cheat.patch ? anyPatch : anyCheat) = true;
-	for (int pass = 0; pass < 2; pass++)
+		(!cheat.mod.empty() ? anyMod : cheat.patch ? anyPatch : anyCheat) = true;
+	for (int pass = 0; pass < 3; pass++)
 	{
-		const bool patches = pass == 0;
-		if (patches ? !anyPatch : !anyCheat)
+		// Mods first, then the database's patches, then cheats.
+		const bool mods = pass == 0, patches = pass == 1;
+		if (mods ? !anyMod : patches ? !anyPatch : !anyCheat)
 			continue;
-		items.push_back(header(patches ? "PATCHES" : "CHEATS"));
+		items.push_back(header(mods ? "MODS" : patches ? "PATCHES" : "CHEATS"));
 		for (size_t i = 0; i < list.size(); i++)
 		{
 			const cheats::Cheat& cheat = list[i];
-			if (cheat.patch != patches)
+			if (!cheat.mod.empty() != mods || (!mods && cheat.patch != patches))
 				continue;
 			Item item;
-			item.label = cheat.group.empty() ? cheat.name : cheat.group + ":  " + cheat.name;
+			item.label = !cheat.mod.empty() ? cheat.mod + ":  " + cheat.name
+					: cheat.group.empty() ? cheat.name : cheat.group + ":  " + cheat.name;
 			item.enabled = cheat.supported && (running || !cheat.manual);
 			std::string chosenValue;
 			if (!cheat.choices.empty())
@@ -2905,6 +2907,14 @@ void cheatItems(std::vector<Item>& items, bool running)
 			else
 				item.value = cheat.enabled ? "On" : "Off";
 			item.ticked = cheat.enabled && !cheat.manual;
+			if (!cheat.enabled && (int)i == cheats::automaticWidescreen())
+			{
+				item.value = "On, by itself";
+				item.ticked = true;
+				item.info += (cheat.description.empty() ? "" : "\n\n") + std::string("On by itself because the picture is "
+						"set wide (Settings, Picture: \"Use the game's own widescreen\"). Switching it on here keeps it on "
+						"whatever the picture is.");
+			}
 			item.info = cheat.description;
 			if (!cheat.author.empty())
 				item.info += (item.info.empty() ? "" : "\n\n") + std::string("By ") + cheat.author;

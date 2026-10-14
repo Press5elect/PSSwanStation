@@ -75,7 +75,7 @@ constexpr int Depth = 8;
 
 // The user's folders kept on the share when everything is.
 const char *const everyFolder[] = { "bios", "covers", "cheats", "data", "textures", "music", "borders", "layouts",
-		"memcards" };
+		"memcards", "mods" };
 
 std::mutex runMutex;			// one sync at a time
 std::mutex statusMutex;

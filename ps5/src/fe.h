@@ -365,6 +365,8 @@ struct Frontend
 	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
 	int displayMode = 0;
 	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
+	bool dynamicResolution = true;	// the resolution scale lowered while the game cannot keep its speed (host.cpp)
+	bool widescreenPatch = true;	// a wide picture asked for: the game's own widescreen patch, when it has one
 	int frameGeneration = 0;	// pictures made between the game's (display::generated): 0 off, 1 on (2, before build 15: lighter)
 	int fgQuality = 1;			// 0 performance, 1 balanced, 2 quality (with the two-way check)
 	int fgCap = 0;				// 0 up to the screen's rate, 1 up to 60 a second
@@ -550,6 +552,8 @@ void reset();
 // Runs the core for one display refresh (none, one or more emulated frames).
 void runFrame();
 std::string lastError();
+// Adaptive resolution starts again from the resolution chosen (a setting changed, another game).
+void resetAdaptiveResolution();
 // The last start was refused because the disc is protected by LibCrypt and
 // its image has no .sbi file beside it (the emulator then stops it before it
 // boots).
@@ -891,6 +895,7 @@ struct Cheat
 	std::string code;			// GameShark lines, '+' separated; '?' where a choice goes
 	bool manual = false;		// applied once on request, not every frame
 	bool patch = false;			// from the patch database (widescreen, 60 fps...)
+	std::string mod;			// a mod package's feature: the package's name and version
 	bool supported = true;		// every code type is one the emulator has
 	bool enabled = false;
 	// A value the user picks, put in place of the code's '?' digits: named
@@ -909,6 +914,17 @@ void init();
 // A later disc of a game often has no file of its own in the database: the
 // first disc's (`firstDisc`) is then used.
 void loadFor(const std::string& serial, const std::string& firstDisc = "");
+// The mod packages found (mods.cpp's format, in <root>mods and PSSwanStation/mods
+// on a USB drive): how many, for how many games, and what could not be read.
+std::string modsSummary();
+// Where mods are looked for, the first one the title's own.
+std::vector<std::string> modFolders();
+// The patch used for a wide picture by itself (the game's own widescreen patch,
+// the picture being set wide), as an index into list(); -1 for none.
+int automaticWidescreen();
+// Applies the cheats again when that choice changed (the aspect ratio was set
+// wide or back while a game runs). Called every frame; cheap otherwise.
+void followWidescreen();
 void unload();
 // The serial the list was found under.
 const std::string& serial();
