@@ -156,7 +156,7 @@ def check_folder(folder, parts):
     for name in sorted(set(re.findall(r"\b([A-Za-z0-9.-]+-?[A-Za-z0-9.]*\.(?:txt|rst))\b", table))):
         if name not in ("README.txt", "LEGAL.txt", "BUILD.txt") and not (folder / "licenses" / name).exists():
             problems.append("licenses/README.txt names %s, which is not in licenses/" % name)
-    for name in ("LEGAL.txt", "README.txt", "CHANGELOG.txt", "BUILD.txt", "eboot.bin", "sce_sys/param.json",
+    for name in ("LEGAL.txt", "README.txt", "CHANGELOG.txt", "PRIVACY.md", "BUILD.txt", "eboot.bin", "sce_sys/param.json",
                  "sce_module/libc.prx", "lapy.elf", "lapy-manifest.json", "licenses/GPL-3.0.txt",
                  "licenses/ADDITIONAL-TERMS.txt"):
         if not (folder / name).is_file():

@@ -845,6 +845,35 @@ void shutdownInFlight()
 	CHECK_EQ(get("award:1002:1"), "1");
 	CHECK_EQ(get("award:1003:1"), "1");
 	CHECK_EQ(get("refused"), "0");
+
+	section("an unlock made while the server cannot be reached is kept, and sent after the next login");
+	const std::string unsent = fe::rootDir + "data/achievements-unsent.txt";
+	remove(unsent.c_str());
+	control("op=forget");
+	clearMemory();
+	ach::init(hooks(), freshCache);
+	ach::setHardcore(true);
+	ach::loginWithToken(User, token);
+	expect(Event::LoggedIn, 10, false);
+	ach::gameStarted(disc);
+	expect(Event::GameLoaded, 15);
+	frames(2);
+	control("op=down&value=1");
+	const size_t offlineFrom = seen.size();
+	poke(0x10, 1);
+	step();
+	CHECK_EQ(count(Event::Unlocked, offlineFrom), 1);
+	frames(30);
+	ach::shutdown();
+	control("op=down&value=0");
+	CHECK_EQ(get("award:1001:1"), "0");
+	CHECK(fe::fileExists(unsent));
+	ach::init(hooks(), freshCache);
+	ach::loginWithToken(User, token);
+	expect(Event::LoggedIn, 10, false);
+	waitFor("the kept unlock at the server", [] { return get("award:1001:1") == "1"; });
+	ach::shutdown();
+	CHECK(!fe::fileExists(unsent));
 }
 
 // Earns the first two achievements and starts the count of the third.

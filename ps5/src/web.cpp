@@ -202,11 +202,13 @@ bool safeRelative(const std::string& path)
 	return true;
 }
 
-// What is never served: the share's password, RetroAchievements' key, the panel's own key.
+// What is never served: the share's password, RetroAchievements' key (and the
+// unsent unlocks, whose requests carry it), the panel's own key.
 bool secret(const std::string& path)
 {
 	const std::string lower = lowercase(path);
 	return lower == "network.cfg" || lower == "data/retroachievements.cfg" || lower == "data/web.cfg"
+			|| lower == "data/achievements-unsent.txt"
 			|| lower.find(".tmp") == lower.size() - 4;
 }
 

@@ -71,6 +71,7 @@ void switchToOwnTls(const char *why)
 		return;
 	ownTls = true;
 	fe::tls::setLog(tlsLog);
+	fe::tls::setUserAgent(userAgent());
 	diag::mark("http: the title's own TLS from now on (%s)", why);
 }
 
@@ -93,7 +94,7 @@ bool init()
 	const int pool = sceNetPoolCreate("psswanstation-http", 64 * 1024, 0);
 	const int ssl = pool >= 0 ? sceSslInit(256 * 1024) : -1;
 	const int context = ssl >= 0 ? sceHttp2Init(pool, ssl, 256 * 1024, 1) : -1;
-	templateId = context >= 0 ? sceHttp2CreateTemplate(context, "PSSwanStation/1.0", 3, 1) : -1;
+	templateId = context >= 0 ? sceHttp2CreateTemplate(context, userAgent().c_str(), 3, 1) : -1;
 	diag::mark("http: net %#x pool %#x ssl %#x http2 %#x template %#x", (unsigned)net, (unsigned)pool, (unsigned)ssl,
 			(unsigned)context, (unsigned)templateId);
 	ok = templateId >= 0;

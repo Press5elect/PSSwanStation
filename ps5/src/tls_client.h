@@ -29,6 +29,8 @@ void setCertificateFiles(const std::vector<std::string>& files);
 // What it says about itself (the certificates read, a failure's reason), for
 // the boot log. Called on the requesting thread.
 void setLog(void (*log)(const char *message));
+// What the requests say they come from (User-Agent); "PSSwanStation" until set.
+void setUserAgent(const std::string& agent);
 
 // One GET. The status code (the body is kept for error statuses too, up to
 // 64 KiB; for a success up to `limit` bytes), or -1 with `why` set when no

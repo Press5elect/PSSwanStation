@@ -51,7 +51,7 @@ def main():
              "client and Font Awesome Free's icons)",
         licence="GPL-3.0 as a whole; the PS5 title Copyright (C) 2026 Press5elect, with an attribution term "
                 "under section 7(b) (licenses/ADDITIONAL-TERMS.txt); each library's own in licenses/README.txt",
-        artifacts=["eboot.bin", "sce_sys/", "README.txt", "CHANGELOG.txt", "LEGAL.txt", "licenses/"],
+        artifacts=["eboot.bin", "sce_sys/", "README.txt", "CHANGELOG.txt", "PRIVACY.md", "LEGAL.txt", "licenses/"],
         source=title))
     parts.append(dict(
         id="ps5-vulkan", name="PS5_Vulkan: the RADV link recipe, the packaging tool and sce_module/libc.prx",

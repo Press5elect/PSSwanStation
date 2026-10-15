@@ -173,13 +173,47 @@ double now()
 
 using namespace fe;
 
+extern "C" const char *rc_version_string(void);
+
+namespace fe
+{
+std::string userAgent()
+{
+#if defined(SWANSTATION_PS5)
+	const char *system = "PS5";
+#else
+	const char *system = "PC";
+#endif
+	return format("PSSwanStation/%d (%s) rcheevos/%s", BuildNumber, system, rc_version_string());
+}
+}
+
 // Where the updater asks for the newest release: the repository this title's
 // source is in.
 constexpr const char *ReleasesUrl = "https://api.github.com/repos/Press5elect/PSSwanStation/releases/latest";
 
-int main(int, char **)
+int main(int argc, char **argv)
 {
 	platform::earlyInit();
+	// A home-screen forwarder starts the title with --rom <game> (and
+	// --exit-after-game): PS5 Forwarder Format, section 10.
+	std::string launchRom;
+	bool exitAfterGame = false;
+	for (int i = 0; i < argc && argv != nullptr; i++)
+	{
+		if (argv[i] == nullptr)
+			continue;
+		const std::string arg = argv[i];
+		if ((arg == "--rom" || arg == "-rom") && i + 1 < argc && argv[i + 1] != nullptr)
+			launchRom = argv[++i];
+		else if (arg.rfind("--rom=", 0) == 0)
+			launchRom = arg.substr(6);
+		else if (arg == "--exit-after-game")
+			exitAfterGame = true;
+	}
+	if (argc > 1)
+		diag::mark("main: started with %d argument(s)%s%s%s", argc - 1, launchRom.empty() ? "" : ", --rom ",
+				launchRom.c_str(), exitAfterGame ? ", --exit-after-game" : "");
 	// An update that a power cut interrupted is undone before anything reads
 	// the title's files.
 	if (update::recover(appDir))
@@ -252,6 +286,8 @@ int main(int, char **)
 #endif
 	covers::init();
 	ui::init();
+	if (!launchRom.empty())
+		ui::startFromArguments(launchRom, exitAfterGame);
 	if (options::frontend().updateCheck && platform::httpAvailable())
 		update::check();
 	diag::mark("main: running");

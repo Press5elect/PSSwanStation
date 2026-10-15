@@ -4440,6 +4440,7 @@ bool quitRequested()
 	return quit;
 }
 
+
 bool blocksEmulation()
 {
 	return !stack.empty();
@@ -4690,6 +4691,131 @@ bool swanSheet()
 }
 #endif
 
+// ------------------------------------------------- a game a forwarder asked for
+
+struct Forwarded
+{
+	std::string rom;
+	bool exitAfter = false;
+	bool pending = false;		// not found yet: the library is still being read
+	bool started = false;		// handed to launch()
+	double since = 0;
+	int idleFrames = 0;			// after it: frames with no game and no page
+} forwarded;
+
+// The game `rom` names, from the library first (its discs and cover come with
+// it), else a file of that name. False with `wait` when a source the game may
+// be on is still being read.
+bool findForwarded(const std::string& rom, library::Game& out, bool& wait)
+{
+	wait = false;
+	const bool network = smb::isNetworkPath(rom);
+	const bool absolute = network || (!rom.empty() && rom[0] == '/');
+	std::vector<std::string> candidates;
+	if (absolute)
+	{
+		candidates.push_back(rom);
+		// "data/homebrew/..." without its first '/' is common in forwarders.
+	}
+	else
+	{
+		candidates.push_back("/" + rom);
+		candidates.push_back(appDir + rom);
+		candidates.push_back(rootDir + rom);
+		candidates.push_back(rootDir + "games/" + rom);
+	}
+	const std::string wanted = lowercase(rom);
+	const std::string wantedTitle = lowercase(fileTitle(rom));
+	for (int source = 0; source < library::SourceCount; source++)
+	{
+		for (const library::Game& game : library::games(source))
+		{
+			bool match = false;
+			for (const std::string& c : candidates)
+				match = match || game.path == c || std::find(game.discs.begin(), game.discs.end(), c) != game.discs.end();
+			if (!absolute && !match)
+				match = lowercase(game.name) == wanted || lowercase(game.fileTitle) == wantedTitle ||
+						lowercase(baseName(game.path)) == wanted || lowercase(fileTitle(game.path)) == wantedTitle;
+			if (match)
+			{
+				out = game;
+				return true;
+			}
+		}
+		if (library::sourceAvailable(source) && library::scanning(source))
+			wait = true;
+	}
+	// Not in the library (a folder it does not read): the file itself.
+	for (const std::string& c : candidates)
+		if ((network && c == rom) || (!network && fileExists(c)))
+		{
+			out = library::Game();
+			out.path = c;
+			out.name = fileTitle(c);
+			out.fileTitle = fileTitle(c);
+			out.source = network ? library::Network : library::Internal;
+			return true;
+		}
+	return false;
+}
+
+void forwardedFrame()
+{
+	Forwarded& f = forwarded;
+	if (f.pending)
+	{
+		splash.state = Splash::Over;
+		// Files being brought from the share first; a page open waits too.
+		if (netfiles::working() || !stack.empty())
+			return;
+		library::Game game;
+		bool wait = false;
+		if (findForwarded(f.rom, game, wait))
+		{
+			f.pending = false;
+			f.started = true;
+			diag::mark("forwarder: starting %s", game.path.c_str());
+			launch(game, -1, -1);
+			return;
+		}
+		// The library's first scans start with the title: a moment for them to begin.
+		if ((wait && now() - f.since < 60.0) || now() - f.since < 3.0)
+			return;
+		f.pending = false;
+		diag::mark("forwarder: %s was not found", f.rom.c_str());
+		message("The game was not found", "The home-screen shortcut asked for \"" + f.rom + "\", which is not in the "
+				"library or at that place. A shortcut names a game by its full path (/data/homebrew/PPSA99248/games/"
+				"<file>.cue, /mnt/usb0/psx/<file>.chd, or smb://server/share/<file>), or by its name as the library shows "
+				"it.");
+		f.started = f.exitAfter;	// closes once this is read, when asked to
+		return;
+	}
+	// --exit-after-game: back to the home screen when the game has ended (or
+	// did not start), once nothing is left on the screen for two seconds.
+	if (f.started && f.exitAfter)
+	{
+		if (!host::running() && stack.empty())
+		{
+			if (++f.idleFrames > 120)
+			{
+				diag::mark("forwarder: the game ended; closing, as asked");
+				quit = true;
+			}
+		}
+		else
+			f.idleFrames = 0;
+	}
+}
+
+void startFromArguments(const std::string& rom, bool exitAfterGame)
+{
+	forwarded = Forwarded();
+	forwarded.rom = rom;
+	forwarded.exitAfter = exitAfterGame;
+	forwarded.pending = !rom.empty();
+	forwarded.since = now();
+}
+
 void frame()
 {
 	widgetsFrame();
@@ -4708,6 +4834,7 @@ void frame()
 		consumeInput();
 	}
 
+	forwardedFrame();
 	const bool game = host::running();
 	// L1 and R1 held as the title starts: the safe start page, before anything else.
 	static bool safeAsked;

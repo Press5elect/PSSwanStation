@@ -323,6 +323,7 @@ int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds,
 	if (ownTls)
 	{
 		fe::tls::setLog([](const char *line) { diag::mark("%s", line); });
+		fe::tls::setUserAgent(userAgent());
 		std::string why;
 		const int status = fe::tls::get(url, out, seconds, 8u << 20, &why);
 		if (status < 0)
@@ -330,8 +331,8 @@ int httpGet(const std::string& url, std::vector<uint8_t>& out, unsigned seconds,
 		return status;
 	}
 	// The body, then the status on a line of its own.
-	const std::string command = format("curl -sS -L --max-time %u -A PSSwanStation/1.0 -w '\\n%%{http_code}' %s 2>/dev/null",
-			seconds, quoted(url).c_str());
+	const std::string command = format("curl -sS -L --max-time %u -A %s -w '\\n%%{http_code}' %s 2>/dev/null",
+			seconds, quoted(userAgent()).c_str(), quoted(url).c_str());
 	FILE *pipe = popen(command.c_str(), "r");
 	if (pipe == nullptr)
 		return -1;
@@ -366,8 +367,9 @@ int httpDownload(const std::string& url, const std::string& path, uint64_t limit
 		return status;
 	}
 	// curl writes the file; this watches it grow.
-	const std::string command = format("curl -sS -L --max-time 3600 -A PSSwanStation/1.0 --max-filesize %llu -o %s "
-			"-w '%%{http_code}' %s 2>/dev/null", (unsigned long long)limit, quoted(path).c_str(), quoted(url).c_str());
+	const std::string command = format("curl -sS -L --max-time 3600 -A %s --max-filesize %llu -o %s "
+			"-w '%%{http_code}' %s 2>/dev/null", quoted(userAgent()).c_str(), (unsigned long long)limit, quoted(path).c_str(),
+			quoted(url).c_str());
 	std::atomic<bool> done{false};
 	std::atomic<bool> stopped{false};
 	std::thread watcher([&] {
