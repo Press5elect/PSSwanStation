@@ -45,6 +45,8 @@
 #include <ctime>
 #include <deque>
 #include <map>
+#include <sstream>
+#include <sys/stat.h>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -90,6 +92,7 @@ struct ServerCall
 	void *callbackData = nullptr;
 	int status = NoAnswer;
 	std::string body;
+	bool replay = false;	// an unlock or score kept from an earlier run, sent again (no callback)
 };
 
 struct BadgeJob
@@ -182,12 +185,19 @@ struct State
 	std::deque<DiscResult> discResults;
 	bool quit = false;
 	double lastCallsUntil = 0;
+	// Unlocks and scores sent but not yet taken by the server (by their
+	// request, which carries what the server checks): written at shutdown,
+	// sent again after the next login (RetroAchievements: unlocks earned
+	// offline are kept and sent when the connection returns).
+	std::map<std::string, std::string> unsent;
+	bool replayed = false;
 
 	std::thread callThread, discThread, badgeThread[BadgeThreads];
 };
 
 std::mutex mutex;
 State *state;	// from init() to shutdown()
+void replayUnsent(State& s);
 
 // ------------------------------------------------------------------- events
 void addEvent(State& s, Event::Kind kind, const std::string& title, const std::string& text, int points = 0,
@@ -697,6 +707,9 @@ void RC_CCONV loginCallback(int result, const char *error, rc_client_t *client, 
 			user->score_softcore);
 	s.lastError.clear();
 	addEvent(s, Event::LoggedIn, safe(user->display_name), format("%u points", points), (int)points);
+	replayUnsent(s);
+	startThread(s.callThread, callWorker, s);
+	s.callWake.notify_one();
 	identify(s);
 }
 
@@ -785,10 +798,77 @@ void RC_CCONV serverCall(const rc_api_request_t *request, rc_client_server_callb
 	}
 	{
 		std::lock_guard<std::mutex> lock(s.queueMutex);
+		if (call.lastCall)
+			s.unsent[call.url] = call.name;
 		s.calls.push_back(std::move(call));
 	}
 	startThread(s.callThread, callWorker, s);
 	s.callWake.notify_one();
+}
+
+std::string unsentFile()
+{
+	return rootDir + "data/achievements-unsent.txt";
+}
+
+// The kept unlocks and scores, written where only this console reads them
+// (each request carries the account's token, as the login file does).
+void writeUnsent(State& s)
+{
+	const std::string file = unsentFile();
+	std::map<std::string, std::string> unsent;
+	{
+		std::lock_guard<std::mutex> lock(s.queueMutex);
+		unsent = s.unsent;
+	}
+	if (unsent.empty())
+	{
+		remove(file.c_str());
+		return;
+	}
+	FILE *f = fopen(file.c_str(), "w");
+	if (f == nullptr)
+		return;
+	for (const auto& [url, name] : unsent)
+		fprintf(f, "%s\t%s\n", name.c_str(), url.c_str());
+	fclose(f);
+	chmod(file.c_str(), 0600);
+	diag::mark("achievements: %d unlock(s) or score(s) not taken by the server yet; kept to send at the next login",
+			(int)unsent.size());
+}
+
+// After a login: what an earlier run could not send goes now, once.
+void replayUnsent(State& s)
+{
+	if (s.replayed)
+		return;
+	s.replayed = true;
+	std::vector<uint8_t> bytes;
+	if (!readFile(unsentFile(), bytes))
+		return;
+	std::istringstream in(std::string(bytes.begin(), bytes.end()));
+	std::string line;
+	int queued = 0;
+	std::lock_guard<std::mutex> lock(s.queueMutex);
+	while (std::getline(in, line))
+	{
+		const size_t tab = line.find('\t');
+		if (tab == std::string::npos)
+			continue;
+		ServerCall call;
+		call.name = line.substr(0, tab);
+		call.url = line.substr(tab + 1);
+		if (call.url.rfind("https://", 0) != 0 && call.url.rfind("http://", 0) != 0)
+			continue;
+		call.replay = true;
+		call.lastCall = true;
+		call.unlock = call.name == "awardachievement";
+		s.unsent[call.url] = call.name;
+		s.calls.push_back(std::move(call));
+		queued++;
+	}
+	if (queued > 0)
+		diag::mark("achievements: sending %d unlock(s) or score(s) kept from an earlier run", queued);
 }
 
 void RC_CCONV logMessage(const char *message, const rc_client_t *)
@@ -997,6 +1077,20 @@ void completed(State& s, bool mastered)
 
 void answer(State& s, ServerCall& call)
 {
+	// An unlock or score the server took (or refused for good) is no longer kept.
+	if (call.lastCall && call.status != NoAnswer && call.status != NotSent &&
+			(call.status < 500 && call.status != 429))
+	{
+		std::lock_guard<std::mutex> lock(s.queueMutex);
+		s.unsent.erase(call.url);
+	}
+	if (call.replay)
+	{
+		diag::mark("achievements: a kept %s %s", call.name.c_str(), call.status == 200 ? "was taken by the server"
+				: call.status == NoAnswer || call.status == NotSent ? "could not be sent; kept again"
+				: format("was refused (HTTP %d)", call.status).c_str());
+		return;
+	}
 	rc_api_server_response_t response{};
 	long remaining = -1;
 	if (call.status == NotSent)
@@ -1168,6 +1262,7 @@ void shutdown()
 		for (ServerCall& call : answers)
 			answer(s, call);
 	}
+	writeUnsent(s);
 	rc_client_destroy(s.client);
 #if !defined(SWANSTATION_PS5)
 	rc_api_set_image_host(nullptr);

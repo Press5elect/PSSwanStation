@@ -7,6 +7,7 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 - What it does and how to use it: [`ps5/README.txt`](ps5/README.txt)
 - What changed in each build: [`ps5/CHANGELOG.txt`](ps5/CHANGELOG.txt)
 - How it is built: the head of [`ps5/tools/build.sh`](ps5/tools/build.sh); a release is made by [`ps5/tools/release.py`](ps5/tools/release.py)
+- What leaves the console and what is kept: [`ps5/PRIVACY.md`](ps5/PRIVACY.md)
 - Licences of every part: [`ps5/licenses/README.txt`](ps5/licenses/README.txt)
 
 **Author and credit.** The PS5 title (everything in `ps5/` and the changes to SwanStation for it) is Copyright (C) 2026 [Press5elect](https://github.com/Press5elect), under the GNU General Public License, version 3 or later, with one additional term under its section 7(b): anyone who passes on this work or a work based on it, in source or binary form, must keep its author's attributions and credit "PSSwanStation by Press5elect" wherever the work shows its credits. That holds however a copy or an adaptation is made, AI tools included. The term is in [`ps5/licenses/ADDITIONAL-TERMS.txt`](ps5/licenses/ADDITIONAL-TERMS.txt). SwanStation and the libraries keep their own licences and authors.

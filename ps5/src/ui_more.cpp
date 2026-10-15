@@ -2888,8 +2888,9 @@ void moreSettings(int kind, std::vector<Item>& items)
 			Item item;
 			item.label = "Play back a recording";
 			item.icon = icon::Play;
-			item.enabled = !files.empty() && mode != recorder::Recording;
-			item.value = files.empty() ? "None of this game" : format("%d kept", (int)files.size());
+			item.enabled = !files.empty() && mode != recorder::Recording && !host::restricted();
+			item.value = host::restricted() ? "Not in hardcore mode" : files.empty() ? "None of this game"
+					: format("%d kept", (int)files.size());
 			item.info = "Starts the game from where a recording began and gives it the presses that were recorded, "
 					"frame by frame, while the pads are left out (OPTIONS still opens the menu). A recording plays "
 					"the same only with the same settings and cheats, and on the same build. Recordings of this game "

@@ -89,6 +89,7 @@ using Clock = std::chrono::steady_clock;
 std::mutex mutex;
 void (*logger)(const char *) = nullptr;
 std::vector<std::string> certificateFiles;
+std::string agent = "PSSwanStation";
 
 void say(const char *format, ...) __attribute__((format(printf, 1, 2)));
 void say(const char *format, ...)
@@ -698,7 +699,7 @@ int request(const std::string& start, unsigned seconds, bool wholeTime, uint64_t
 		const bool defaultPort = (url.secure && url.port == 443) || (!url.secure && url.port == 80);
 		std::string head = "GET " + url.path + " HTTP/1.1\r\nHost: " + url.host +
 				(defaultPort ? "" : ":" + std::to_string(url.port)) +
-				"\r\nUser-Agent: PSSwanStation/1.0\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n";
+				"\r\nUser-Agent: " + agent + "\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n";
 		if (!connection.write(head, why))
 			return -1;
 		std::string line;
@@ -815,6 +816,12 @@ void setCertificateFiles(const std::vector<std::string>& files)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	certificateFiles = files;
+}
+
+void setUserAgent(const std::string& value)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	agent = value;
 }
 
 void setLog(void (*log)(const char *message))

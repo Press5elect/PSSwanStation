@@ -22,7 +22,25 @@ Build 23 (not released yet)
     itself, instead of the general widescreen hack.
   - Adaptive resolution (Settings, Picture): while a game cannot keep its
     speed, the resolution scale is lowered a step at a time (to half the
-    one chosen at most), and raised again once it keeps its speed.
+    one chosen at most), and raised again once it keeps its speed. Off as
+    it comes.
+  - PS5 Forwarder support: a forwarder (or anything that starts the title)
+    can name a game with --rom <path> (a full path, a path from the title
+    folder such as games/<folder>/<file>, or the game's name), and
+    --exit-after-game closes the title when that game is closed. A game not
+    found says so.
+  RetroAchievements
+  - Each request names PSSwanStation and its build number (its User-Agent),
+    as RetroAchievements asks of an emulator before it is approved for
+    hardcore mode.
+  - Playback of a recording cannot be started in hardcore mode, and stops if
+    hardcore mode comes on.
+  - The message at a game's start says whether it is in Hardcore mode or
+    Softcore.
+  - An unlock or leaderboard entry made while the server cannot be reached
+    is kept (data/achievements-unsent.txt) if the title closes first, and
+    sent after the next sign-in.
+  - PRIVACY.md: what leaves the console, where to, and what is kept.
 
 Build 22
   Added

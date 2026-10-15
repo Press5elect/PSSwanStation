@@ -365,7 +365,7 @@ struct Frontend
 	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
 	int displayMode = 0;
 	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
-	bool dynamicResolution = true;	// the resolution scale lowered while the game cannot keep its speed (host.cpp)
+	bool dynamicResolution = false;	// the resolution scale lowered while the game cannot keep its speed (host.cpp)
 	bool widescreenPatch = true;	// a wide picture asked for: the game's own widescreen patch, when it has one
 	int frameGeneration = 0;	// pictures made between the game's (display::generated): 0 off, 1 on (2, before build 15: lighter)
 	int fgQuality = 1;			// 0 performance, 1 balanced, 2 quality (with the two-way check)
@@ -1085,10 +1085,20 @@ int themeSounds();
 bool quitRequested();
 // The emulator must not run this frame (a menu is over the game).
 bool blocksEmulation();
+// A game asked for when the title was started (a home-screen forwarder's
+// --rom, PS5 Forwarder Format section 10): a full path (/data/..., /mnt/usb0/...,
+// smb://...), a path under the title's or the files' folder, or a name found
+// in the library. It starts as soon as it is found; with `exitAfterGame` the
+// title closes when the game ends.
+void startFromArguments(const std::string& rom, bool exitAfterGame);
 }
 
 // ------------------------------------------------------------------ helpers
 std::string format(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+// What every HTTP request says it comes from: "PSSwanStation/<build> (PS5)
+// rcheevos/<version>". RetroAchievements tells emulators apart by it, and asks
+// for a name of the emulator's own with a version that goes up.
+std::string userAgent();
 bool fileExists(const std::string& path);
 bool dirExists(const std::string& path);
 void makeDir(const std::string& path);		// 0777, with its parents

@@ -1193,7 +1193,10 @@ void achievementEvents()
 			addNotice("RetroAchievements", "Signing in failed: " + event.text, "", 7.0);
 			break;
 		case E::GameLoaded:
-			addNotice(event.title, event.text + (achievements::hardcore() ? "  \xc2\xb7  hardcore" : ""));
+			// Which mode the game is played in, said as it starts (RetroAchievements asks for it).
+			addNotice(event.title, event.text + (achievements::hardcore() ? "  \xc2\xb7  Hardcore mode" : "  \xc2\xb7  Softcore"));
+			if (achievements::hardcore())
+				addMessage("Hardcore mode: loading states, cheats, mods, rewind and recordings are off.", 5.0);
 			break;
 		case E::GameUnknown:
 			addMessage("RetroAchievements has no achievements for this disc.", 4.0);
@@ -2689,6 +2692,12 @@ bool playbackStart(const std::string& file)
 {
 	if (!isRunning || netOn)
 		return false;
+	// RetroAchievements' hardcore mode allows no recorded presses.
+	if (restricted())
+	{
+		addMessage("Recordings are not played back in hardcore mode (RetroAchievements).", 4.0);
+		return false;
+	}
 	stopRecorder("a playback began");
 	std::vector<uint8_t> state;
 	recorder::Info info;
@@ -2933,6 +2942,9 @@ void tick()
 	platform::padMotion(settings.motion != 0 || gun);
 	sleepSafeTick();
 	cheats::followWidescreen();
+	// Hardcore mode came on during a playback: it ends.
+	if (recorder::mode() == recorder::Playing && restricted())
+		stopRecorder("hardcore mode");
 	// Verbose logging: the emulator says more ("Developer", a level short of
 	// its debugging chatter), and a line about speed goes to the boot log
 	// every ten seconds of play.

@@ -313,7 +313,7 @@ A `patch` writes the new bytes only where the old ones are found, so a part of t
 
 **The game's own widescreen** (Settings, Picture). With the aspect ratio set to 16:9 or wider, or the widescreen hack on, a game that has a widescreen patch in the patch database uses it by itself: the game's own camera made wide, without the general hack's pop-in at the edges. Its Cheats page shows it as "On, by itself".
 
-**Adaptive resolution** (Settings, Picture, on as it comes). While a game cannot keep its speed at the resolution scale chosen, the scale is lowered a step at a time, down to half of it, and raised again once the game has kept its speed for twenty seconds. A step costs a moment's hitch; a raise that does not hold is not tried again until the game starts anew. The boot log's `resolution:` lines say when.
+**Adaptive resolution** (Settings, Picture, off as it comes). While a game cannot keep its speed at the resolution scale chosen, the scale is lowered a step at a time, down to half of it, and raised again once the game has kept its speed for twenty seconds. A step costs a moment's hitch; a raise that does not hold is not tried again until the game starts anew. The boot log's `resolution:` lines say when.
 
 **Find in memory** (menu, while a game runs). The classic cheat search: look for a value (a byte, two or four), or one that went up, down, changed or stayed the same, and narrow it down while you play. What is left can be watched over the game, set, frozen at a value, or made a cheat in the game's own cheat file. Not available in RetroAchievements' hardcore mode.
 
@@ -323,7 +323,15 @@ A `patch` writes the new bytes only where the old ones are found, so a part of t
 
 **Texture packs.** Replacement 2D art in the vram-write format (files named `vram-write-<number>.png`) goes in `textures/<serial>/`, or in `PSSwanStation/textures/<serial>/` on a USB drive. Switch on "Enable VRAM Write Texture Replacement" (Enhancement). Packs that replace a 3D game's textures are not supported by this emulator.
 
-**RetroAchievements.** Settings, RetroAchievements: switch it on and sign in with your retroachievements.org account. The password is typed once; only the token the server returns is kept. Hardcore mode earns more, and switches off state loading, cheats and rewind.
+**RetroAchievements.** Settings, RetroAchievements: switch it on and sign in with your retroachievements.org account. The password is typed once; only the token the server returns is kept. Hardcore mode earns more, and switches off state loading, cheats and rewind. The message at a game's start says which mode it is in ("Hardcore mode" or "Softcore"). In hardcore mode a recording cannot be played back, and playback stops if hardcore comes on. An unlock made while the server cannot be reached is sent when it comes back; if the title is closed first, the unlock is kept in `data/achievements-unsent.txt` and sent after the next sign-in. What is sent, and what is kept, is in [PRIVACY.md](PRIVACY.md) (also in the title folder).
+
+**Starting a game from a forwarder.** A PS5 forwarder (an icon on the home screen for one game), or anything else that starts the title, can name the game with launch arguments:
+
+```
+--rom "games/<folder>/<file>.chd" --exit-after-game
+```
+
+`--rom` takes a full path (`/data/homebrew/PPSA99248/games/...`, `/mnt/usb0/...`), a path from the title folder (or from `/data/psswanstation` when your files live there), or the game's name as the library shows it. The game must be in the library: the title waits for the library's first scan of a USB drive or share (a minute at most). With `--exit-after-game` the title closes when that game is closed, back to the home screen. A game that is not found says so (and, with `--exit-after-game`, the title closes once that message is closed). The boot log's `main:` and `forwarder:` lines say what was asked and found.
 
 **Netplay** (an experiment). Two consoles, one game, players 1 and 2: start the game, then menu, Netplay. One console hosts and shows its address; the other chooses "Join a game" and types it (port 28800). Both need the same disc, BIOS and build. Memory cards, cheats, states, fast forward and rewind are out while it lasts. It has only run between two PCs.
 
