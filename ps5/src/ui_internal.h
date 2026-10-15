@@ -72,6 +72,9 @@ enum class Page
 	Shaders,		// shader presets brought in from a USB drive
 	WhatsNew,		// what changed: a: the build the console had before (0: every build)
 	DiscDrive,		// how to play the disc in a drive (the game in `chosen`); a: state slot
+	// ui_esde.cpp
+	Themes,			// the ES-DE theme: which, its variant, colours, sizes
+	ThemeDownload,	// ES-DE themes to fetch
 };
 
 struct Frame
@@ -156,6 +159,10 @@ Item choice(const std::string& label, int current, std::vector<std::string> name
 // Draws a list in the box and works it with the pad. The item under the
 // cursor, or null.
 const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, float x1, float y1);
+// A list in a panel in the middle of the screen, over whatever is behind
+// (`rowsHigh` units of rows), with a note under it.
+const Item *panelList(Frame& f, const std::string& title, std::vector<Item>& items, float panelW, float rowsHigh,
+		const std::string& note = "");
 // A page that is one list at the left with an explanation at the right.
 const Item *menuPage(Frame& f, const std::string& title, const std::string& subtitle, std::vector<Item>& items,
 		float listWidth = 780);
@@ -205,6 +212,39 @@ void flowRescan();
 // Draws view `index` between `top` and `bottom` (in units) and, when `active`,
 // moves the cursor with the pad. False when there is no such view.
 bool flowView(int index, const FlowGames& games, int& cursor, bool active, bool fresh, float top, float bottom);
+
+// ----------------------------------------------------------- ui_esde.cpp
+
+// The games an ES-DE theme's gamelist view shows, as the library has them.
+struct EsdeGames
+{
+	int count = 0;
+	std::function<const library::Game&(int)> game;
+	// What the game database knows of a game, or null.
+	std::function<const gamedb::Info *(int)> info;
+};
+// The library's "view" setting for "the ES-DE theme chosen" (themes.cfg names it).
+constexpr int EsdeView = 62;
+// The ES-DE themes found, as the View choice names them ("ES-DE: Art Book Next").
+std::vector<std::string> esdeViewNames();
+// The chosen theme among those (-1: none), and choosing one.
+int esdeViewIndex();
+void esdeChooseView(int index);
+// The themes folders are read again when next looked at.
+void esdeRescan();
+// The library is set to an ES-DE theme that is there.
+bool esdeChosen();
+// Draws the chosen theme's gamelist view over the whole screen and moves its
+// list with the pad (when `active`); `hints` go in the theme's help. False
+// when the theme cannot be drawn (esdeProblem says why): the caller draws
+// the library its own way.
+bool esdeView(const EsdeGames& games, int& cursor, bool active, bool fresh, const std::vector<Hint>& hints);
+std::string esdeProblem();
+// The "View" choice as libraryViewNames() lists it: the current one, and choosing.
+int libraryViewChoice();
+void chooseLibraryView(int index);
+void themesPage(Frame& f);
+void themeDownloadPage(Frame& f);
 
 // ----------------------------------------------------------- ui_more.cpp
 

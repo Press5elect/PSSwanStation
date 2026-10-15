@@ -38,7 +38,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <atomic>
 #include <map>
+#include <memory>
+#include <thread>
 #include <cstring>
 
 // The files in ps5/assets, in the program's read-only data.
@@ -639,6 +642,21 @@ void ImDrawList::AddImageRotated(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2
 	if (handle == 0)
 		return;
 	kit->image(handle, rectOf(a, b), { uv0.x, uv0.y, uv1.x - uv0.x, uv1.y - uv0.y }, colourOf(col), rounding, angle);
+}
+
+void ImDrawList::AddImageGradient(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0, ImVec2 uv1, ImU32 top,
+		ImU32 bottom, float rounding)
+{
+	if (kit == nullptr)
+	{
+		AddImageRounded(texture, a, b, uv0, uv1, top, rounding);
+		return;
+	}
+	const uint32_t handle = fe::display::kitTexture(texture);
+	if (handle == 0)
+		return;
+	kit->image_gradient(handle, rectOf(a, b), { uv0.x, uv0.y, uv1.x - uv0.x, uv1.y - uv0.y }, colourOf(top),
+			colourOf(bottom), rounding);
 }
 
 void ImDrawList::PushClipRect(ImVec2 a, ImVec2 b, bool)
@@ -1265,7 +1283,7 @@ void buttonGlyph(ImVec2 centre, float size, uint32_t button)
 }
 
 // How wide a button's symbol is, in pixels.
-static float glyphWidth(float size, uint32_t button)
+float glyphWidth(float size, uint32_t button)
 {
 	using namespace platform;
 	if (button == Cross || button == Circle || button == Square || button == Triangle)
@@ -1771,3 +1789,144 @@ void imageFit(const Image& image, ImVec2 a, ImVec2 b, float rounding, ImU32 tint
 }
 
 }
+
+// ------------------------------------------------------------ theme fonts
+
+namespace fe::fontbake
+{
+bool bake(const std::vector<uint8_t>& ttf, std::string& out, std::string& why);
+}
+
+namespace fe::ui
+{
+namespace
+{
+
+// A theme's font file, baked on a thread of its own (a few hundred
+// milliseconds), then uploaded by the frame.
+struct FileFace
+{
+	std::string path;
+	std::string blob, why;
+	gfx::Font font;
+	hui::ui::FontRef ref;
+	std::atomic<int> state{0};	// 0 baking, 1 baked, 2 ready, -1 failed
+};
+std::vector<std::unique_ptr<FileFace>> fileFaces;
+
+const hui::ui::FontRef *fileRef(int font)
+{
+	if (font >= 0 && font < (int)fileFaces.size() && fileFaces[(size_t)font]->state.load() == 2)
+		return &fileFaces[(size_t)font]->ref;
+	return &kitFonts.regular;
+}
+
+Face fileFace(int font, float em, float lineHeight)
+{
+	return { fileRef(font), em, lineHeight > 0 ? lineHeight : em };
+}
+
+}
+
+int fontFile(const std::string& path)
+{
+	if (path.empty() || !fontsReady)
+		return -1;
+	for (size_t i = 0; i < fileFaces.size(); i++)
+	{
+		FileFace& f = *fileFaces[i];
+		if (f.path != path)
+			continue;
+		const int state = f.state.load(std::memory_order_acquire);
+		if (state == 1)
+		{
+			if (f.font.load(f.blob))
+			{
+				f.ref.font = &f.font;
+				f.ref.texture = display::interfaceRenderer().create_font_texture(f.font);
+				f.state = f.ref.texture != 0 ? 2 : -1;
+				diag::mark("themes: font %s ready (%u by %u atlas)", path.substr(path.rfind('/') + 1).c_str(),
+						(unsigned)f.font.atlas_width(), (unsigned)f.font.atlas_height());
+			}
+			else
+			{
+				diag::mark("themes: font %s: %s", path.c_str(), f.font.error().c_str());
+				f.state = -1;
+			}
+			std::string().swap(f.blob);
+		}
+		return f.state.load() == 2 ? (int)i : -1;
+	}
+	auto fresh = std::make_unique<FileFace>();
+	fresh->path = path;
+	FileFace *f = fresh.get();
+	fileFaces.push_back(std::move(fresh));
+	std::thread([f] {
+		std::vector<uint8_t> file;
+		bool ok = readFile(f->path, file) && fontbake::bake(file, f->blob, f->why);
+		if (!ok)
+			diag::mark("themes: font %s cannot be used: %s", f->path.c_str(),
+					f->why.empty() ? "it cannot be read" : f->why.c_str());
+		f->state.store(ok ? 1 : -1, std::memory_order_release);
+	}).detach();
+	return -1;
+}
+
+bool fontFilePending(const std::string& path)
+{
+	for (const auto& f : fileFaces)
+		if (f->path == path)
+			return f->state.load() == 0 || f->state.load() == 1;
+	return false;
+}
+
+float fontTextWidth(int font, const std::string& value, float em)
+{
+	if (!fontsReady || value.empty())
+		return 0;
+	return textWidth(value, fileFace(font, em, em));
+}
+
+float fontAscent(int font, float em)
+{
+	return fontsReady ? fileRef(font)->font->ascent(em) : em * 0.8f;
+}
+
+float fontDescent(int font, float em)
+{
+	return fontsReady ? fileRef(font)->font->descent(em) : em * 0.2f;
+}
+
+void fontText(int font, ImVec2 at, ImU32 colour, const std::string& value, float em, float lineHeight)
+{
+	if (!fontsReady || value.empty() || inScene)
+		return;
+	const Face face = fileFace(font, em, lineHeight);
+	const gfx::Font& f = *face.ref->font;
+	// Set on the middle of its line, as tall as the line is.
+	const float top = at.y + (face.pixels - (f.ascent(em) + f.descent(em))) * 0.5f;
+	drawLine(frontList, at.x, top, colour, value, face);
+}
+
+std::vector<std::string> fontWrap(int font, const std::string& value, float em, float width)
+{
+	if (!fontsReady)
+		return { value };
+	return wrapLines(value, width, fileFace(font, em, em));
+}
+
+std::string fontFit(int font, const std::string& value, float em, float width)
+{
+	if (!fontsReady)
+		return value;
+	const Face face = fileFace(font, em, em);
+	if (textWidth(value, face) <= width)
+		return value;
+	static const std::string dots = "\xe2\x80\xa6";
+	std::string cut = value.substr(0, fitLength(value, std::max(width - textWidth(dots, face), 0.f), face));
+	while (!cut.empty() && cut.back() == ' ')
+		cut.pop_back();
+	return cut + dots;
+}
+
+} // namespace fe::ui

@@ -467,7 +467,7 @@ void readLayouts()
 	int read = 0;
 	for (const std::string& name : files)
 	{
-		if (lowercase(extension(name)) != ".cfljson" || layouts.size() >= 60)
+		if (lowercase(extension(name)) != ".cfljson" || layouts.size() >= 55)
 			continue;
 		Layout layout;
 		if (layoutFromFile(folder + "/" + name, layout))
@@ -775,6 +775,9 @@ std::vector<std::string> libraryViewNames()
 {
 	std::vector<std::string> names = { "Shelves", "Covers", "List" };
 	for (const std::string& name : flowNames())
+		names.push_back(name);
+	// Then the ES-DE themes (ui_esde.cpp).
+	for (const std::string& name : esdeViewNames())
 		names.push_back(name);
 	return names;
 }

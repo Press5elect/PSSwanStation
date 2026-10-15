@@ -876,6 +876,10 @@ std::string status();
 // Choosing a cover. The three kinds of picture the collection has for a
 // game: its box, its title screen, a moment of play.
 enum Kind { BoxArt, TitleScreen, InGame, KindCount };
+// A title screen or a moment of play (media/titlescreens, media/screenshots:
+// ES-DE's folders) for an ES-DE theme, or empty; asks for a download from
+// the same collection when there is none and downloads are on.
+std::string findMedia(const library::Game& game, int kind);
 enum ChooseState { ChooseIdle, ChooseWorking, ChooseDone, ChooseNotFound, ChooseFailed };
 // Fetches that picture for the game and makes it its cover (on a thread).
 void choose(const library::Game& game, int kind);

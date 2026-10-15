@@ -1796,16 +1796,75 @@ void libraryPage(bool active)
 	// 0 the shelves, 1 the grid, 2 the list, 3 and up a view in space
 	// (ui_flow.cpp); one that is no longer there (its file was taken away) is
 	// the shelves.
+	// EsdeView: the ES-DE theme chosen (ui_esde.cpp), when it is there.
 	const int viewMode = options::frontend().view;
-	const bool flow = viewMode >= 3 && viewMode - 3 < (int)flowNames().size();
-	const bool shelves = viewMode == 0 || (viewMode >= 3 && !flow);
+	const bool esde = viewMode == EsdeView && esdeChosen();
+	const bool flow = viewMode >= 3 && viewMode < EsdeView && viewMode - 3 < (int)flowNames().size();
+	const bool shelves = viewMode == 0 || (viewMode >= 3 && !flow && !esde);
 	const bool grid = viewMode == 1;
 	const float top = 128, bottom = H - 64;
 	coverLookups = 0;
 	focusedAt = ImVec2(0, 0);
 	int focus = -1;		// the game under the cursor
 
-	if (count == 0 && !view.all.empty())
+	std::vector<Hint> hints;
+	if (count > 0)
+	{
+		hints.push_back({ confirmButton, "Play" });
+		hints.push_back({ Triangle, "Details" });
+		hints.push_back({ L2 | R2, "Letter" });
+		hints.push_back({ TouchLeft | TouchRight, "Search" });
+	}
+	hints.push_back({ Square, "Sort and filter" });
+	hints.push_back({ Options, "Menu" });
+	hints.push_back({ cancelButton, "Close" });
+
+	// An ES-DE theme draws the whole screen: the library's games in its list.
+	bool esdeDrawn = false;
+	if (esde && count > 0)
+	{
+		view.inShelf = false;
+		if (active && (nav(R2) || nav(L2)))
+		{
+			view.cursor = letterJump(view.games, view.cursor, nav(R2));
+			letterShownAt = clock();
+		}
+		EsdeGames games;
+		games.count = count;
+		games.game = [&view](int i) -> const library::Game& { return view.games[(size_t)i]; };
+		games.info = [&view](int i) -> const gamedb::Info * {
+			const Meta& meta = metaOf(view, i);
+			return meta.known ? &meta.info : nullptr;
+		};
+		esdeDrawn = esdeView(games, view.cursor, active, view.fresh, hints);
+		if (esdeDrawn)
+		{
+			view.fresh = false;
+			focus = view.cursor;
+			// Which games are on the screen: said for a moment when it changes.
+			static double sourceShownAt = -10;
+			static int sourceSeenHere = -1;
+			if (sourceSeenHere != source)
+			{
+				if (sourceSeenHere >= 0)
+					sourceShownAt = clock();
+				sourceSeenHere = source;
+			}
+			const float since = (float)(clock() - sourceShownAt);
+			if (since < 1.6f && shownSources() > 1)
+			{
+				const float alpha = std::clamp((1.6f - since) / 0.4f, 0.f, 1.f);
+				const std::string label = library::sourceName(source) + format("   %d", count);
+				const float w = toUnits(measure(label, Bold, 30).x) + 64;
+				panel(at(W * 0.5f - w * 0.5f, 40), at(W * 0.5f + w * 0.5f, 104), withAlpha(IM_COL32(10, 12, 20, 230), alpha), 32);
+				textCentred(at(W * 0.5f, 55), withAlpha(IM_COL32(255, 255, 255, 255), alpha), label, Bold, 30);
+			}
+		}
+	}
+
+	if (esdeDrawn)
+		;
+	else if (count == 0 && !view.all.empty())
 	{
 		// Games, but none that the filters let through.
 		libraryWash("");
@@ -2105,27 +2164,14 @@ void libraryPage(bool active)
 		if (meta.known)
 			left += "     " + factsLine(meta.info, true);
 	}
-	std::vector<Hint> hints;
-	if (count > 0)
-	{
-		hints.push_back({ confirmButton, "Play" });
-		hints.push_back({ Triangle, "Details" });
-	}
-	if (count > 0)
-	{
-		hints.push_back({ L2 | R2, "Letter" });
-		hints.push_back({ TouchLeft | TouchRight, "Search" });
-	}
-	hints.push_back({ Square, "Sort and filter" });
-	hints.push_back({ Options, "Menu" });
-	hints.push_back({ cancelButton, "Close" });
-	if (!libraryBehind)
+	if (!libraryBehind && !esdeDrawn)
 	{
 		hintBar(hints, left);
 		if (focus >= 0)
 			letterRail(view.games, focus);
 	}
-	drawHeader();
+	if (!esdeDrawn)
+		drawHeader();
 
 	if (!active)
 		return;
@@ -2245,17 +2291,20 @@ void frontendItems(int kind, std::vector<Item>& items)
 		{
 			// The same list as the library's own (Square, View).
 			const std::vector<std::string> names = libraryViewNames();
-			items.push_back(choice("Library view", std::min(f.view, (int)names.size() - 1), names,
+			items.push_back(choice("Library view", libraryViewChoice(), names,
 					"How the library shows your games. Shelves: the game under the cursor large at the top, and "
 					"shelves under it of what was played lately, your favourites and every game. Covers: a grid, with "
 					"what was played lately on a shelf above it. List: names, with the cover and the description beside "
 					"them. Flow, Row, Wall, Cascade and Wheel stand the covers in space as cases, in the manner of "
 					"Aurora on the Xbox 360: a flow that leans towards the one under the cursor, a flat row, three rows "
 					"across the screen, a line going away to the right, a wheel at the right. Aurora layout files "
-					"(.cfljson) put in " + shownRoot() + "layouts are in the list too, after those. The same choice is "
-					"in the library itself, under Square.",
-					[](int i) { options::frontend().view = i; }));
+					"(.cfljson) put in " + shownRoot() + "layouts are in the list too, after those, and then the ES-DE "
+					"themes in " + shownRoot() + "themes (\"ES-DE: \" and the theme's name), which draw the whole "
+					"library as the theme does in ES-DE. The same choice is in the library itself, under Square.",
+					[](int i) { chooseLibraryView(i); }));
 		}
+		items.push_back(action(icon::Paint, "ES-DE themes", "Which ES-DE theme the library is drawn in, its variant, "
+				"colours and font size, and themes to fetch.", [] { push(Page::Themes); }));
 		items.push_back(toggle("Download covers", &f.covers,
 				"Box art for games that have none in the covers folder is fetched from the libretro thumbnails "
 				"collection, by the game's file name. Your own pictures (covers/<file name>.png or .jpg) are never "
@@ -2539,6 +2588,11 @@ void aboutItems(std::vector<Item>& items)
 			"network for the PS5 (github.com/mihawk-99/PS5_MihawkGen), with its weights."));
 	items.push_back(fact("mbedTLS", "Apache-2.0", "HTTPS after the sandbox elevator (RetroAchievements, covers, the "
 			"updater) goes through mbedTLS 3.6 by The Mbed TLS Contributors."));
+	items.push_back(fact("ES-DE themes", "pugixml, nanosvg, stb_truetype", "ES-DE themes are read with pugixml 1.16 "
+			"(Arseny Kapoulkine, MIT), their SVG pictures drawn by nanosvg (Mikko Mononen, zlib licence) and their "
+			"fonts made into the interface's by stb_truetype (Sean Barrett, MIT or public domain). The themes "
+			"themselves are their authors', under their own licences, and are not part of PSSwanStation; ES-DE is "
+			"es-de.org's."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));
@@ -4895,7 +4949,7 @@ void frame()
 		if (game)
 			drawGame(0.72f);
 		else if (page == Page::Details || page == Page::Launch || page == Page::Loading || page == Page::LibraryOptions
-				|| page == Page::Cover || page == Page::DiscDrive)
+				|| page == Page::Cover || page == Page::DiscDrive || page == Page::Themes)
 		{
 			libraryBehind = true;
 			libraryPage(false);
@@ -4936,6 +4990,8 @@ void frame()
 		case Page::Shaders: shadersPage(f); break;
 		case Page::WhatsNew: whatsNewPage(f); break;
 		case Page::DiscDrive: discDrivePage(f); break;
+		case Page::Themes: themesPage(f); break;
+		case Page::ThemeDownload: themeDownloadPage(f); break;
 		}
 		if (game)
 			drawMessages();

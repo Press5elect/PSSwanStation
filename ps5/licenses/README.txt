@@ -49,8 +49,12 @@ libchdr, with LZMA and zstd  BSD-3-Clause     libchdr-LICENSE.txt      github.co
 miniz                        MIT              MIT.txt                  github.com/richgel999/miniz
 xxHash                       BSD-2-Clause     BSD-2-Clause.txt         github.com/Cyan4973/xxHash
 Xbyak                        BSD-3-Clause     BSD-3-Clause.txt         github.com/herumi/xbyak
-stb_image, stb_image_resize  MIT / public     MIT.txt                  github.com/nothings/stb
-                             domain
+stb_image, stb_image_resize, MIT / public     MIT.txt                  github.com/nothings/stb (stb_truetype as
+stb_truetype                 domain                                    the interface kit carries it)
+pugixml 1.16 (ES-DE themes'  MIT              pugixml-LICENSE.md       github.com/zeux/pugixml
+XML)
+nanosvg (ES-DE themes' SVG   zlib             nanosvg-LICENSE.txt      github.com/memononen/nanosvg
+pictures)
 libretro-common              MIT              MIT.txt                  github.com/libretro/libretro-common
 Vulkan headers               Apache-2.0       Apache-2.0.txt           github.com/KhronosGroup/Vulkan-Headers
                                                                        v1.4.360 (dep/vulkan-loader/include)

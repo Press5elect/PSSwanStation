@@ -37,6 +37,16 @@ struct Image
 // The picture in a file. Decoded on a thread of its own: empty until it is
 // ready, and for a file that is no picture.
 Image image(const std::string& path);
+// The same at `side` pixels on its longest side at most (an SVG drawing is
+// drawn at that size): a theme's pictures, drawn larger than covers.
+Image image(const std::string& path, int side);
+// The same with a clear border of PictureBorder pixels round it (counted in
+// its width and height): for a picture drawn turned (AddImageRotated over a
+// box larger than the picture), so its edges are not smeared outwards.
+constexpr int PictureBorder = 2;
+Image imagePadded(const std::string& path, int side);
+// The file was read and is no picture (or could not be read).
+bool imageFailed(const std::string& path);
 // From memory, decoded at once (the logo).
 Image imageFromMemory(const uint8_t *data, size_t size);
 // From pixels the caller has (0xAABBGGRR each), kept under `key` while it is
@@ -166,6 +176,22 @@ float textWrapped(ImVec2 at, float wrapWidth, ImU32 colour, const std::string& t
 float wrappedHeight(const std::string& text, float wrapWidth, Font font = Body, float size = 26);
 std::vector<std::string> wrapText(const std::string& text, float wrapWidth, Font font = Body, float size = 26);
 
+// A theme's font file (.ttf, .otf), baked into the interface's kind of font
+// on a thread: -1 until it is ready, and for a file that is no font. Text in
+// it is measured and drawn in pixels: `em` is the font's size (an ES-DE
+// theme's fontSize times the screen's height), a line `lineHeight` tall with
+// the text on its middle. A handle under 0 draws with the interface's own
+// regular face.
+int fontFile(const std::string& path);
+bool fontFilePending(const std::string& path);
+float fontTextWidth(int font, const std::string& text, float em);
+float fontAscent(int font, float em);
+float fontDescent(int font, float em);
+void fontText(int font, ImVec2 at, ImU32 colour, const std::string& text, float em, float lineHeight);
+std::vector<std::string> fontWrap(int font, const std::string& text, float em, float width);
+// The text, or its start and an ellipsis, in `width` pixels.
+std::string fontFit(int font, const std::string& text, float em, float width);
+
 void panel(ImVec2 a, ImVec2 b, ImU32 colour, float rounding = 14);
 void outline(ImVec2 a, ImVec2 b, ImU32 colour, float rounding = 14, float thickness = 3);
 // The theme's focus indicator round a box, at an opacity.
@@ -235,6 +261,8 @@ float pill(ImVec2 at, const std::string& label, bool on, bool enabled = true, fl
 void glowAt(ImVec2 centre, float radius, ImU32 colour);
 // A controller button's symbol, `size` units across, centred on `centre`.
 void buttonGlyph(ImVec2 centre, float size, uint32_t button);
+// How wide that symbol is, in pixels (a key with a label is wider than it is tall).
+float glyphWidth(float size, uint32_t button);
 // "(x) Start" hints, right-aligned on the bottom bar.
 struct Hint
 {

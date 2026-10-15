@@ -100,6 +100,9 @@ public:
 	// the rounding at half the size, a square picture turns inside its circle.
 	void AddImageRotated(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0, ImVec2 uv1, ImU32 col, float rounding,
 			float angle);
+	// The picture with a tint that blends from `top` to `bottom`.
+	void AddImageGradient(ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0, ImVec2 uv1, ImU32 top, ImU32 bottom,
+			float rounding = 0.f);
 	void PushClipRect(ImVec2 a, ImVec2 b, bool intersect = true);
 	void PopClipRect();
 	void PathLineTo(ImVec2 point);

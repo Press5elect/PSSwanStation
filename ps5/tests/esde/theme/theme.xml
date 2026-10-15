@@ -1,0 +1,55 @@
+<!-- PSSwanStation's ES-DE theme reader test: a theme written for the test (GPL-3.0-or-later, Press5elect). -->
+<theme>
+   <variables>
+      <font>./art/font.ttf</font>
+      <accent>${base}</accent>
+      <title>${system.fullName} games</title>
+   </variables>
+   <include>./inc/colours.xml</include>
+   <include>./inc/${system.theme}.xml</include>
+   <include>./inc/${system.theme}-not-there.xml</include>
+   <view name="system, gamelist">
+      <image name="background">
+         <pos>0 0</pos>
+         <size>1 1</size>
+         <path>./art/bg.png</path>
+         <color>${background}</color>
+      </image>
+   </view>
+   <view name="gamelist">
+      <text name="title,subtitle">
+         <text>${title}</text>
+         <fontPath>${font}</fontPath>
+         <color>${accent}</color>
+         <fontSize>${size}</fontSize>
+      </text>
+      <text name="subtitle">
+         <pos>0.5 0.1</pos>
+         <text>${unknown}left</text>
+      </text>
+      <badges name="badges">
+         <customBadgeIcon badge="favorite">./art/heart.svg</customBadgeIcon>
+      </badges>
+   </view>
+   <variant name="list">
+      <view name="gamelist">
+         <textlist name="games"><pos>0.1 0.2</pos></textlist>
+      </view>
+   </variant>
+   <variant name="plain">
+      <view name="gamelist">
+         <textlist name="games"><pos>0.3 0.2</pos></textlist>
+      </view>
+   </variant>
+   <variant name="grid">
+      <view name="gamelist">
+         <grid name="games"><pos>0.0 0.2</pos></grid>
+      </view>
+   </variant>
+   <fontSize name="small"><variables><size>0.03</size></variables></fontSize>
+   <fontSize name="medium"><variables><size>0.045</size></variables></fontSize>
+   <language name="de_DE"><variables><title>Spiele</title></variables></language>
+   <aspectRatio name="4:3">
+      <include>./inc/four-three.xml</include>
+   </aspectRatio>
+</theme>

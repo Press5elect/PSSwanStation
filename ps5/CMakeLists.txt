@@ -213,6 +213,7 @@ set(frontend_sources
 	src/web.cpp
 	src/slangimport.cpp
 	third_party/qrcodegen/qrcodegen.cpp
+	third_party/pugixml/pugixml.cpp
 	third_party/ps5-framegen/src/ps5_framegen.cpp
 	third_party/mihawkgen/src/fg_common.cpp
 	third_party/mihawkgen/src/fg_vulkan.cpp
@@ -227,6 +228,9 @@ set(frontend_sources
 	src/update.cpp
 	src/ui_more.cpp
 	src/ui_flow.cpp
+	src/ui_esde.cpp
+	src/esde.cpp
+	src/fontbake.cpp
 	src/display.cpp
 	src/chain.cpp
 	src/host.cpp
@@ -303,7 +307,9 @@ target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5-framegen/src
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/mihawkgen/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mihawkgen/src
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/mihawkgen/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mihawkgen/src
-	${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5sx2-usbpad)
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5sx2-usbpad
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanosvg
+	${HUI_DIR}/third_party/stb)
 # Vulkan is reached through the core's function table (dep/vulkan-loader),
 # which is filled from the RADV linked into the title.
 target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES
@@ -325,6 +331,8 @@ set_source_files_properties(${mihawkgen_sources} PROPERTIES COMPILE_OPTIONS
 set_source_files_properties(src/mihawkgen_model.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20"
 	COMPILE_DEFINITIONS "MIHAWKGEN_MODEL_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/third_party/mihawkgen/model/network.fgw\""
 	OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/mihawkgen/model/network.fgw")
+# pugixml (ES-DE themes' XML) and stb_truetype (their fonts), as they are.
+set_source_files_properties(third_party/pugixml/pugixml.cpp src/fontbake.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20;-w")
 # The two decoders in it are other people's C, compiled as they are.
 set_source_files_properties(src/music.cpp PROPERTIES COMPILE_OPTIONS "-std=c++20;-w")
 # The clock is C (C11 atomics), from Crux2.

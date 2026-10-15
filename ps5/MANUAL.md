@@ -197,6 +197,18 @@ The library shows your games from four places, each a tab once it has games: Int
 
 Covers are looked for in `covers/` by the game's file name. With "Download covers" on, missing ones are fetched from the libretro thumbnails collection.
 
+### ES-DE themes
+
+Themes made for [ES-DE](https://es-de.org) (EmulationStation Desktop Edition) can draw the whole library: the theme's gamelist view for the PlayStation, with your games in its list (a text list, a grid or a carousel), their pictures and details where the theme puts them, its fonts, colours and help line. The library's buttons stay the same (Cross plays, Triangle opens the details, Square sorts and filters, L1 and R1 change tab, L2 and R2 jump by letter).
+
+- **Getting themes.** Settings, Interface, "ES-DE themes", "Get themes" lists the themes ES-DE's own theme downloader offers (the list ES-DE keeps on GitLab) and fetches the one you choose from its author's repository into `themes/`. Or copy a theme's folder (the one with `capabilities.xml` and `theme.xml` in it) into `themes/`, or into `PSSwanStation/themes` on a USB drive. Themes are large, some hundreds of megabytes; videos and sounds in them are left out when fetched.
+- **Choosing one.** Square, View (each theme is "ES-DE: " and its name, after the other views), or Settings, Interface, "Library view". "ES-DE themes" (also under Square, "Theme options") chooses the theme's variant, colour scheme, font size, aspect ratio (automatic: the display's) and language, as ES-DE's own menu does. A variant that shows pictures your games do not have gives way to the one the theme names for that, as in ES-DE.
+- **Pictures.** A theme shows the kinds of picture ES-DE scrapes. They are looked for in `media/<kind>/<file name>.png` or `.jpg`, with ES-DE's folder names: `covers`, `screenshots`, `titlescreens`, `marquees`, `miximages`, `3dboxes`, `backcovers`, `physicalmedia`, `fanart`. ES-DE's `downloaded_media/psx` folder can be copied as it is to `media/psx` (or `media`). A game without a cover there shows its library cover; with "Download covers" on, title screens and screenshots are fetched from the libretro thumbnails collection too.
+- **What is shown.** Pictures (PNG, JPEG and SVG), texts, the game's name, developer, publisher, genre, players, description (scrolling as in ES-DE) and release date from the game database, when it was last played, the number of games, the favourite badge, a clock, and the help line with the library's buttons. Videos and animations are not played: a video shows its picture. Ratings are not shown (the game database has none). The system view (ES-DE's carousel of systems) is not used: the library opens on the PlayStation's games.
+- **If a theme cannot be used** (a theme for an older EmulationStation, without `capabilities.xml`, or one that cannot be read), "ES-DE themes" says why, and the library uses its own view. The boot log's `themes:` lines say what was read.
+
+Each theme is its author's work, under its own licence (many are for non-commercial use only). Themes are not part of PSSwanStation and are never in its releases.
+
 ## Playing
 
 The DualSense works as a PlayStation controller, button for button; the touch pad stands in for SELECT and START, and OPTIONS opens PSSwanStation's menu.

@@ -1,0 +1,4 @@
+<theme>
+   <colorScheme name="dark"><variables><background>101010</background><base>ffffff</base></variables></colorScheme>
+   <colorScheme name="light"><variables><background>f0f0f0</background><base>000000</base></variables></colorScheme>
+</theme>
