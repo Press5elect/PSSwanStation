@@ -43,12 +43,9 @@ namespace fe::ui
 
 using namespace platform;
 
-namespace
-{
-
 // A list in a panel in the middle of the screen, over whatever is behind.
 const Item *panelList(Frame& f, const std::string& title, std::vector<Item>& items, float panelW, float rowsHigh,
-		const std::string& note = "")
+		const std::string& note)
 {
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
@@ -67,6 +64,9 @@ const Item *panelList(Frame& f, const std::string& title, std::vector<Item>& ite
 		textWrapped(at(x0 + 40, y0 + 96 + rowsHigh), px(panelW - 80), t.faint, note, Body, 21);
 	return focused;
 }
+
+namespace
+{
 
 std::vector<std::string> filesIn(const std::string& folder)
 {
@@ -314,20 +314,23 @@ void libraryOptionsPage(Frame& f)
 		// any Aurora layout files in the layouts folder.
 		if (f.fresh)
 			flowRescan();
+		if (f.fresh)
+			esdeRescan();
 		const std::vector<std::string> names = libraryViewNames();
-		Item item = choice("View", std::min(o.view, (int)names.size() - 1), names, "",
-				[](int i) { options::frontend().view = i; });
+		Item item = choice("View", libraryViewChoice(), names, "", [](int i) { chooseLibraryView(i); });
 		items.push_back(item);
 	}
+	if (o.view == EsdeView)
+		items.push_back(action(icon::Paint, "Theme options", "", [] { push(Page::Themes); }));
 	items.push_back(action(icon::Sync, "Scan for games", "", [] {
 		scanEverything();
 		pop();
 	}));
-	const Item *focused = panelList(f, "Sort and filter", items, 760, 5 * 60 + 10,
+	const Item *focused = panelList(f, "Sort and filter", items, 760, (float)std::min((int)items.size(), 6) * 60 + 10,
 			"A game becomes a favourite, or is hidden, in its details (Triangle), under More. Hidden games are out of "
 			"the library and the search until \"Hidden games\" is shown here. The views after the list stand the "
 			"covers in space, as the Xbox 360's Aurora does; an Aurora layout file (.cfljson) put in " + shownRoot()
-			+ "layouts is offered here too.");
+			+ "layouts is offered here too, and the ES-DE themes in " + shownRoot() + "themes after them.");
 	standardHints(focused);
 }
 

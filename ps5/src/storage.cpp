@@ -41,7 +41,7 @@ namespace
 
 // What a user keeps, of the title folder's own folders and files.
 const char *const userFolders[] = { "bios", "covers", "cheats", "data", "textures", "music", "borders", "layouts",
-		"memcards", "mods" };
+		"memcards", "mods", "themes", "media" };
 const char *const userFiles[] = { "network.cfg" };
 
 bool copyFile(const std::string& from, const std::string& to)
@@ -153,7 +153,7 @@ void makeFolders(const std::string& root)
 {
 	for (const char *sub : { "", "bios", "games", "covers", "cheats", "data", "logs", "data/saves", "data/states",
 			"data/game-options", "data/cheats", "data/cache", "textures", "music", "borders", "layouts", "memcards",
-			"memcards/import", "memcards/export", "mods" })
+			"memcards/import", "memcards/export", "mods", "themes", "media" })
 		makeDir(root + sub);
 }
 

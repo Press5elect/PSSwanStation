@@ -1,0 +1,1 @@
+pugixml 1.16 (github.com/zeux/pugixml, tag v1.16), src/ unchanged. MIT.

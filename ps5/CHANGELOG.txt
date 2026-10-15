@@ -41,6 +41,26 @@ Build 23 (not released yet)
     is kept (data/achievements-unsent.txt) if the title closes first, and
     sent after the next sign-in.
   - PRIVACY.md: what leaves the console, where to, and what is kept.
+  ES-DE themes
+  - Themes made for ES-DE (es-de.org) can draw the whole library: the
+    theme's gamelist view for the PlayStation, with the library's games in
+    its text list, grid or carousel, its pictures (PNG, JPEG, SVG), fonts
+    (TrueType and OpenType), texts, the game's details, the favourite badge,
+    a clock and the help line. Square, View (or Settings, Interface,
+    "Library view"): each theme found is "ES-DE: <name>".
+  - Settings, Interface, "ES-DE themes": the theme, its variant, colour
+    scheme, font size, aspect ratio and language, as ES-DE's menu has them;
+    a variant's fallback when the games lack its pictures.
+  - "Get themes" fetches a theme from the list ES-DE's own downloader reads,
+    from its author's repository, into themes/ (videos and sounds left out).
+    Themes can also be copied into themes/ or PSSwanStation/themes on a USB
+    drive. Themes are their authors' and are not in releases.
+  - Pictures in ES-DE's folders (media/covers, media/screenshots,
+    media/marquees, media/miximages...; ES-DE's downloaded_media/psx copies in
+    as it is). Title screens and screenshots are fetched from the libretro
+    thumbnails collection with "Download covers" on.
+  - Videos are shown as their pictures, ratings are not shown, and the
+    system view is not used.
 
 Build 22
   Added

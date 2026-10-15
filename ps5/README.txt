@@ -33,6 +33,9 @@ Where things go (all inside /data/homebrew/PPSA99248/)
   cheats/       your own cheat files, <serial>.cht (SLUS-12345.cht)
   textures/     texture packs, one folder for each game: textures/<serial>/
   layouts/      Aurora cover layouts (.cfljson), offered as library views
+  themes/       ES-DE themes, a folder each, offered as library views
+  media/        pictures for ES-DE themes, in ES-DE's folders: covers/,
+                screenshots/, marquees/, miximages/... (<file name>.png)
   borders/      pictures for the sides of a 4:3 picture: <serial>.png or
                 default.png
   music/        your own menu music: menu.ogg, menu.mp3 or menu.wav
@@ -131,6 +134,15 @@ them) to layouts/ and it is in the list of views by its name. Aurora's code
 is not public, so I worked out what a layout's numbers mean from the layouts
 themselves: one may look somewhat different here, and a layout made for the
 Xbox's tall cases stands PlayStation covers a little smaller.
+
+ES-DE themes (es-de.org) draw the whole library as they do in ES-DE: the
+theme's list of games, pictures, fonts and details. Settings, Interface,
+"ES-DE themes", "Get themes" fetches one from the list ES-DE's own theme
+downloader offers; or copy a theme's folder to themes/. There the theme's
+variant, colours, font size and aspect ratio are chosen too. Pictures ES-DE
+has scraped go in media/ (its downloaded_media/psx folder copies in as it
+is). Videos show as their pictures. Each theme is its author's, under its
+own licence, and is not part of PSSwanStation.
 
 Finding a game: L2 and R2 jump to the letter before and the letter after
 (the letters stand down the right edge for a moment). Pressing the touch pad

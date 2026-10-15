@@ -1,0 +1,9 @@
+<theme>
+   <variables><systemColour>3355aa</systemColour></variables>
+   <view name="gamelist">
+      <image name="logo">
+         <path>./logo.svg</path>
+         <color>${systemColour}</color>
+      </image>
+   </view>
+</theme>

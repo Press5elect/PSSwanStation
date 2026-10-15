@@ -1,5 +1,6 @@
 /*
-	PSSwanStation - pictures for the interface: covers, the logo.
+	PSSwanStation - pictures for the interface: covers, the logo, a theme's
+	pictures.
 
 	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
@@ -9,12 +10,26 @@
 	decodes them and the frame only uploads the pixels (two pictures a frame at
 	most). A picture is kept while it is shown and for a while after; the ones
 	longest unused go when there are many.
+
+	A cover is made no larger than it is drawn (512 pixels); a picture asked
+	for at a size of its own (an ES-DE theme's background, as wide as the
+	screen) is kept at that size, under its own name. An SVG file (the
+	drawings ES-DE themes are made of) is drawn into pixels at the size asked
+	for, by nanosvg.
 */
 #include "ui.h"
 #include "display.h"
 
 #include <stb_image.h>
 #include <stb_image_resize.h>
+
+#define NANOSVG_IMPLEMENTATION
+#define NANOSVGRAST_IMPLEMENTATION
+#include <cstdio>
+#include <cstring>
+#include <cmath>
+#include <nanosvg.h>
+#include <nanosvgrast.h>
 
 #include <algorithm>
 #include <condition_variable>
@@ -30,6 +45,8 @@ namespace
 
 // Covers are drawn about 460 pixels across on a 2160-line display.
 constexpr int MaxSide = 512;
+// A theme's picture: never larger than this.
+constexpr int LargestSide = 4096;
 constexpr size_t MaxKept = 220;
 
 constexpr int SoftSide = 24;
@@ -43,9 +60,16 @@ struct Entry
 	bool pending = false;
 };
 
+struct Request
+{
+	std::string key, path;
+	int side = MaxSide;
+	bool padded = false;	// a clear border round it (pictures turned on the screen)
+};
+
 struct Decoded
 {
-	std::string path;
+	std::string path;	// the entry's key
 	int width = 0, height = 0;
 	std::vector<uint8_t> pixels;
 	std::vector<uint8_t> soft;		// SoftSide x SoftSide
@@ -80,13 +104,23 @@ void soften(Decoded& out)
 std::map<std::string, Entry> entries;
 std::mutex mutex;
 std::condition_variable wake;
-std::deque<std::string> wanted;
+std::deque<Request> wanted;
 std::deque<Decoded> ready;
 std::thread worker;
 bool workerStarted;
 
-// Decodes to RGBA and makes it no larger than a cover is drawn.
-bool decode(const uint8_t *data, size_t size, Decoded& out)
+bool isSvg(const std::string& path)
+{
+	if (path.size() < 4)
+		return false;
+	std::string ext = path.substr(path.size() - 4);
+	for (char& c : ext)
+		c = (char)std::tolower((unsigned char)c);
+	return ext == ".svg";
+}
+
+// Decodes to RGBA and makes it no larger than `side` on its longest side.
+bool decode(const uint8_t *data, size_t size, Decoded& out, int side = MaxSide)
 {
 	int w = 0, h = 0, channels = 0;
 	stbi_uc *pixels = stbi_load_from_memory(data, (int)size, &w, &h, &channels, 4);
@@ -103,9 +137,9 @@ bool decode(const uint8_t *data, size_t size, Decoded& out)
 #else
 	const bool whole = false;
 #endif
-	if (longest > MaxSide && !whole)
+	if (longest > side && !whole)
 	{
-		const int nw = std::max(1, w * MaxSide / longest), nh = std::max(1, h * MaxSide / longest);
+		const int nw = std::max(1, (int)((int64_t)w * side / longest)), nh = std::max(1, (int)((int64_t)h * side / longest));
 		out.pixels.resize((size_t)nw * nh * 4);
 		stbir_resize_uint8(pixels, w, h, 0, out.pixels.data(), nw, nh, 0, 4);
 		out.width = nw;
@@ -121,35 +155,84 @@ bool decode(const uint8_t *data, size_t size, Decoded& out)
 	return true;
 }
 
+// An SVG drawing in pixels, `side` pixels on its longest side.
+bool decodeSvg(std::vector<uint8_t>& file, Decoded& out, int side)
+{
+	file.push_back(0);
+	NSVGimage *svg = nsvgParse(reinterpret_cast<char *>(file.data()), "px", 96.f);
+	if (svg == nullptr)
+		return false;
+	bool ok = false;
+	if (svg->width > 0 && svg->height > 0)
+	{
+		const float scale = (float)side / std::max(svg->width, svg->height);
+		const int w = std::max(1, (int)std::lround(svg->width * scale));
+		const int h = std::max(1, (int)std::lround(svg->height * scale));
+		if (NSVGrasterizer *rast = nsvgCreateRasterizer())
+		{
+			out.pixels.assign((size_t)w * h * 4, 0);
+			nsvgRasterize(rast, svg, 0, 0, scale, out.pixels.data(), w, h, w * 4);
+			nsvgDeleteRasterizer(rast);
+			out.width = w;
+			out.height = h;
+			ok = true;
+		}
+	}
+	nsvgDelete(svg);
+	return ok;
+}
+
+// A clear border of PictureBorder pixels round the picture: drawn turned
+// inside a larger box, what lies past its edges samples the border (the
+// display clamps to the edge), so nothing of the picture is smeared outwards.
+void pad(Decoded& d)
+{
+	const int b = PictureBorder;
+	const int w = d.width + b * 2, h = d.height + b * 2;
+	std::vector<uint8_t> out((size_t)w * h * 4, 0);
+	for (int y = 0; y < d.height; y++)
+		memcpy(&out[((size_t)(y + b) * w + b) * 4], &d.pixels[(size_t)y * d.width * 4], (size_t)d.width * 4);
+	d.pixels.swap(out);
+	d.width = w;
+	d.height = h;
+}
+
 void work()
 {
 	for (;;)
 	{
-		std::string path;
+		Request request;
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			wake.wait(lock, [] { return !wanted.empty(); });
 			// The newest request first: it is what the screen shows now.
-			path = wanted.back();
+			request = wanted.back();
 			wanted.pop_back();
 		}
 		Decoded decoded;
-		decoded.path = path;
+		decoded.path = request.key;
 		std::vector<uint8_t> file;
-		if (readFile(path, file) && !file.empty() && decode(file.data(), file.size(), decoded))
-			soften(decoded);
+		if (readFile(request.path, file) && !file.empty())
+		{
+			const bool done = isSvg(request.path) ? decodeSvg(file, decoded, request.side)
+					: decode(file.data(), file.size(), decoded, request.side);
+			if (done)
+			{
+				soften(decoded);
+				if (request.padded)
+					pad(decoded);
+			}
+			else
+				decoded.pixels.clear();
+		}
 		std::lock_guard<std::mutex> lock(mutex);
 		ready.push_back(std::move(decoded));
 	}
 }
 
-}
-
-Image image(const std::string& path)
+Image lookup(const std::string& key, const std::string& path, int side, bool padded = false)
 {
-	if (path.empty())
-		return {};
-	Entry& entry = entries[path];
+	Entry& entry = entries[key];
 	entry.used = display::frameCount();
 	if (entry.texture != nullptr)
 		return { display::textureId(entry.texture), entry.width, entry.height,
@@ -165,21 +248,69 @@ Image image(const std::string& path)
 		}
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			wanted.push_back(path);
+			wanted.push_back({ key, path, side, padded });
 		}
 		wake.notify_one();
 	}
 	return {};
 }
 
+}
+
+Image image(const std::string& path)
+{
+	if (path.empty())
+		return {};
+	return lookup(path, path, MaxSide);
+}
+
+Image image(const std::string& path, int side)
+{
+	if (path.empty())
+		return {};
+	// Sizes in steps, so a picture drawn a little larger or smaller is not read again.
+	int step = 64;
+	while (step < side && step < LargestSide)
+		step *= 2;
+	side = std::clamp(step, 32, LargestSide);
+	if (side == MaxSide && !isSvg(path))
+		return lookup(path, path, MaxSide);
+	return lookup(path + "@" + std::to_string(side), path, side);
+}
+
+Image imagePadded(const std::string& path, int side)
+{
+	if (path.empty())
+		return {};
+	int step = 64;
+	while (step < side && step < LargestSide)
+		step *= 2;
+	side = std::clamp(step, 32, LargestSide);
+	return lookup(path + "@" + std::to_string(side) + "+border", path, side, true);
+}
+
+bool imageFailed(const std::string& path)
+{
+	for (auto it = entries.lower_bound(path); it != entries.end() && it->first.compare(0, path.size(), path) == 0; ++it)
+		if ((it->first.size() == path.size() || it->first[path.size()] == '@') && it->second.width < 0)
+			return true;
+	return false;
+}
+
 void forgetImage(const std::string& path)
 {
-	const auto it = entries.find(path);
-	if (it == entries.end())
-		return;
-	display::destroyTexture(it->second.texture);
-	display::destroyTexture(it->second.soft);
-	entries.erase(it);
+	for (auto it = entries.begin(); it != entries.end();)
+	{
+		if (it->first == path || (it->first.size() > path.size() && it->first.compare(0, path.size(), path) == 0
+				&& it->first[path.size()] == '@'))
+		{
+			display::destroyTexture(it->second.texture);
+			display::destroyTexture(it->second.soft);
+			it = entries.erase(it);
+		}
+		else
+			++it;
+	}
 }
 
 Image imageFromPixels(const std::string& key, const uint32_t *pixels, int width, int height, int enlarge)

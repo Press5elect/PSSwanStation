@@ -18,6 +18,11 @@
 	(thumbnails.libretro.com), which is tried when the first does not answer.
 	One worker thread, one request at a time, through the platform's HTTP
 	client (the console's libSceHttp2).
+
+	An ES-DE theme also shows title screens and moments of play: the same
+	collection has those (Named_Titles, Named_Snaps), fetched the same way
+	into media/titlescreens and media/screenshots, the folders ES-DE keeps
+	them in, when a theme asks for them and downloads are on.
 */
 #include "fe.h"
 
@@ -48,9 +53,16 @@ constexpr Source Sources[] = {
 };
 constexpr int SourceCount = 2;
 
+// What the worker fetches: a picture of a kind (Kind) for a file name.
+struct Job
+{
+	std::string base;
+	int kind = 0;
+};
+
 std::mutex mutex;
 std::condition_variable wake;
-std::deque<std::string> queue;
+std::deque<Job> queue;
 std::set<std::string> asked;
 std::set<std::string> notFound;
 bool notFoundLoaded;
@@ -148,13 +160,39 @@ std::vector<std::string> namesFor(const std::string& base)
 	return names;
 }
 
+const char *const collectionFolders[KindCount] = { "Named_Boxarts", "Named_Titles", "Named_Snaps" };
+const char *const mediaFolders[KindCount] = { "", "titlescreens", "screenshots" };
+
+// Where a kind of picture is kept: covers/, or the ES-DE media folders.
+std::string folderFor(int kind)
+{
+	return kind == BoxArt ? coversDir() : rootDir + "media/" + mediaFolders[kind] + "/";
+}
+
+// The name not-found.txt remembers a game by, for each kind.
+std::string notFoundKey(const std::string& base, int kind)
+{
+	return kind == BoxArt ? base : std::string(collectionFolders[kind]) + "/" + base;
+}
+
+// The source's address for a kind of picture.
+std::string baseUrlFor(const Source& source, int kind)
+{
+	std::string root = source.baseUrl;
+	const size_t folder = root.find("Named_Boxarts");
+	if (folder != std::string::npos)
+		root.replace(folder, strlen("Named_Boxarts"), collectionFolders[kind]);
+	return root;
+}
+
 // 1 saved, 0 not in the collection, -1 could not ask (offline, time-out).
-int fetch(const Source& source, const std::string& base)
+int fetch(const Source& source, const std::string& base, int kind)
 {
 	std::vector<uint8_t> data;
+	const std::string root = baseUrlFor(source, kind);
 	for (const std::string& name : namesFor(base))
 	{
-		std::string url = std::string(source.baseUrl) + urlEncode(thumbnailName(name)) + ".png";
+		std::string url = root + urlEncode(thumbnailName(name)) + ".png";
 		int status = platform::httpGet(url, data, 20);
 		// A regional duplicate is a link in the collection: its body is the
 		// name of the picture it stands for.
@@ -163,13 +201,16 @@ int fetch(const Source& source, const std::string& base)
 			std::string target = trim(std::string(data.begin(), data.end()));
 			if (target.size() > 4 && target.find('/') == std::string::npos)
 			{
-				url = std::string(source.baseUrl) + urlEncode(target);
+				url = root + urlEncode(target);
 				status = platform::httpGet(url, data, 20);
 			}
 		}
 		if (status == 200 && isImage(data))
 		{
-			const std::string file = coversDir() + base + ".png";
+			const std::string folder = folderFor(kind);
+			if (kind != BoxArt)
+				makeDir(folder);
+			const std::string file = folder + base + ".png";
 			const std::string temporary = file + ".part";
 			if (!writeFile(temporary, data.data(), data.size()) || rename(temporary.c_str(), file.c_str()) != 0)
 			{
@@ -180,7 +221,7 @@ int fetch(const Source& source, const std::string& base)
 			if (first)
 			{
 				first = false;
-				diag::mark("covers: downloads work, from %s (%s)", source.name, base.c_str());
+				diag::mark("covers: downloads work, from %s (%s, %s)", source.name, base.c_str(), collectionFolders[kind]);
 			}
 			return 1;
 		}
@@ -200,19 +241,19 @@ void worker()
 	int source = 0;
 	for (;;)
 	{
-		std::string base;
+		Job job;
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			wake.wait(lock, [] { return !queue.empty(); });
-			base = queue.front();
+			job = queue.front();
 			queue.pop_front();
 		}
-		int result = offline ? -1 : fetch(Sources[source], base);
+		int result = offline ? -1 : fetch(Sources[source], job.base, job.kind);
 		if (result < 0 && !offline && platform::httpAvailable() && source + 1 < SourceCount)
 		{
 			diag::mark("covers: %s does not answer; trying %s", Sources[source].name, Sources[source + 1].name);
 			source++;
-			result = fetch(Sources[source], base);
+			result = fetch(Sources[source], job.base, job.kind);
 		}
 		if (result == 1)
 		{
@@ -221,7 +262,7 @@ void worker()
 		}
 		else if (result == 0)
 		{
-			rememberNotFound(base);
+			rememberNotFound(notFoundKey(job.base, job.kind));
 			failures = 0;
 		}
 		else if (++failures >= 3 && !offline)
@@ -234,15 +275,20 @@ void worker()
 	}
 }
 
-void request(const std::string& base)
+void request(const std::string& base, int kind = BoxArt)
 {
 	if (!options::frontend().covers || base.empty() || offline)
 		return;
 	std::lock_guard<std::mutex> lock(mutex);
 	loadNotFound();
-	if (!asked.insert(base).second || notFound.count(base) != 0)
+	const std::string key = notFoundKey(base, kind);
+	if (!asked.insert(key).second || notFound.count(key) != 0)
 		return;
-	queue.push_back(base);
+	// A cover before the pictures themes add: the library shows covers first.
+	if (kind == BoxArt)
+		queue.push_front({ base, kind });
+	else
+		queue.push_back({ base, kind });
 	pending++;
 	if (!started)
 	{
@@ -262,7 +308,7 @@ namespace
 {
 std::atomic<int> chooseNow{ChooseIdle};
 
-const char *const kindFolders[KindCount] = { "Named_Boxarts", "Named_Titles", "Named_Snaps" };
+const char *const *const kindFolders = collectionFolders;
 
 // The collection's picture of one kind for a game, as bytes. 1 found, 0 the
 // collection has none, -1 it could not be asked.
@@ -346,6 +392,23 @@ void remove(const library::Game& game)
 		asked.erase(game.fileTitle);
 	}
 	currentGeneration++;
+}
+
+std::string findMedia(const library::Game& game, int kind)
+{
+	if (kind == BoxArt)
+		return find(game);
+	if (kind < 0 || kind >= KindCount)
+		return "";
+	const std::string folder = folderFor(kind);
+	for (const char *ext : { ".png", ".jpg", ".jpeg" })
+	{
+		const std::string file = folder + game.fileTitle + ext;
+		if (fileExists(file))
+			return file;
+	}
+	request(game.fileTitle, kind);
+	return "";
 }
 
 std::string find(const library::Game& game)
