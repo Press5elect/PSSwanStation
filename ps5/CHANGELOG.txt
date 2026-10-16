@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Build 23 (not released yet)
+Build 23
   Changed
   - A LibCrypt-protected game whose disc image has no .sbi file beside it
     no longer ends with "The game did not start" alone: PSSwanStation says
@@ -60,7 +60,7 @@ Build 23 (not released yet)
     theme's gamelist view for the PlayStation, with the library's games in
     its text list, grid or carousel, its pictures (PNG, JPEG, SVG), fonts
     (TrueType and OpenType), texts, the game's details, the favourite badge,
-    a clock and the help line. Square, View (or Settings, Interface,
+    a clock and the help line. Square, View (or Settings, Library,
     "Library view"): each theme found is "ES-DE: <name>".
   - Settings, Library, "ES-DE themes": the theme, its variant, colour
     scheme, font size, aspect ratio and language, as ES-DE's menu has them;
@@ -79,8 +79,8 @@ Build 23 (not released yet)
     a homebrew title its own video player, so PSSwanStation decodes them
     itself with FFmpeg 9.0.2's MP4 demuxer and H.264, AAC and MP3 decoders
     (LGPL-2.1-or-later; their source is published with each release).
-    "ES-DE themes" switches videos and their sound on and off; the boot
-    log's "video:" lines say what each video was and why one did not play.
+    Settings, Library, Videos switches them and their sound; the boot log's
+    "video:" lines say what each video was and why one did not play.
   - Ratings are not shown, and the system view is not used.
   - Pictures and videos are found in ES-DE's media folders wherever they
     are: the title's folder, a USB drive, and every games folder (the
@@ -88,8 +88,7 @@ Build 23 (not released yet)
     videos/, covers/... folders (roms/psx/videos), media/ or
     downloaded_media/psx/ inside it or beside it, and Batocera's images/
     (<game>-thumb.png) and videos/<game>-video.mp4; read straight from a
-    share. The
-    folders are listed in the background, not asked for picture by picture.
+    share. The folders are listed in the background, not asked for picture by picture.
     The library's covers come from there too when covers/ has none.
 
 Build 22

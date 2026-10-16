@@ -14,6 +14,7 @@ it keeps stays on the console, in its title folder (or in
 | --- | --- | --- |
 | RetroAchievements: the user name, then the token the server hands back; the hash that identifies the game; unlocks, leaderboard entries and the rich presence line | retroachievements.org | only while signed in to RetroAchievements |
 | Cover pictures | GitHub (raw.githubusercontent.com, libretro-thumbnails) and thumbnails.libretro.com: the request names the game's title | when a cover is downloaded |
+| ES-DE themes | GitLab (ES-DE's list of themes) and the theme's own repository on GitHub or GitLab | only when "Get themes" is used |
 | The cheat database | GitHub (DuckStation's chtdb release) | when it is downloaded |
 | The update check | the GitHub API, this repository's latest release | when the check runs |
 | Netplay | the other console's address that I type in, directly | only during netplay |
