@@ -18,6 +18,7 @@
 	for, by nanosvg.
 */
 #include "ui.h"
+#include "fe.h"
 #include "display.h"
 
 #include <stb_image.h>
@@ -212,7 +213,10 @@ void work()
 		Decoded decoded;
 		decoded.path = request.key;
 		std::vector<uint8_t> file;
-		if (readFile(request.path, file) && !file.empty())
+		// A theme's picture may be on a network share (media.cpp).
+		const bool read = smb::isNetworkPath(request.path) ? smb::readWhole(request.path, file)
+				: readFile(request.path, file);
+		if (read && !file.empty())
 		{
 			const bool done = isSvg(request.path) ? decodeSvg(file, decoded, request.side)
 					: decode(file.data(), file.size(), decoded, request.side);

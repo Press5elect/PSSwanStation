@@ -2305,6 +2305,8 @@ void frontendItems(int kind, std::vector<Item>& items)
 		}
 		items.push_back(action(icon::Paint, "ES-DE themes", "Which ES-DE theme the library is drawn in, its variant, "
 				"colours and font size, and themes to fetch.", [] { push(Page::Themes); }));
+		items.push_back(action(icon::Picture, "ScreenScraper", "Covers, screenshots, logos and videos from "
+				"screenscraper.fr with your own account, for the library and ES-DE themes.", [] { push(Page::Scraper); }));
 		items.push_back(toggle("Download covers", &f.covers,
 				"Box art for games that have none in the covers folder is fetched from the libretro thumbnails "
 				"collection, by the game's file name. Your own pictures (covers/<file name>.png or .jpg) are never "
@@ -4993,6 +4995,7 @@ void frame()
 		case Page::DiscDrive: discDrivePage(f); break;
 		case Page::Themes: themesPage(f); break;
 		case Page::ThemeDownload: themeDownloadPage(f); break;
+		case Page::Scraper: scraperPage(f); break;
 		}
 		if (game)
 			drawMessages();

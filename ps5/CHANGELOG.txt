@@ -67,6 +67,19 @@ Build 23 (not released yet)
     yet tried on a console: the boot log's "video:" lines say what the
     player did.
   - Ratings are not shown, and the system view is not used.
+  - Pictures and videos are found in ES-DE's media folders wherever they
+    are: the title's folder, a USB drive, and every games folder (the
+    console's, USB drives', and SMB, NFS and FTP shares'), inside it or
+    beside it as ES-DE lays them out; read straight from a share. The
+    folders are listed in the background, not asked for picture by picture.
+    The library's covers come from there too when covers/ has none.
+  ScreenScraper
+  - Settings, Games and network, "ScreenScraper": covers, screenshots,
+    title screens, marquees, mix images, 3D boxes, back covers, discs, fan
+    art and videos from screenscraper.fr with your own account, by itself
+    for the games the library or a theme shows, or for every game at once.
+    Saved in ES-DE's folders (media/<kind>/). Needs a build with
+    ScreenScraper's developer key for PSSwanStation.
 
 Build 22
   Added

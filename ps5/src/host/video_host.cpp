@@ -77,6 +77,11 @@ bool load(std::string& why)
 bool open(const std::string& path, bool loop, std::string& why)
 {
 	close();
+	if (smb::isNetworkPath(path))
+	{
+		why = "the PC's test player reads local files only";
+		return false;
+	}
 	const std::string probe = "ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate "
 			"-of csv=p=0 " + quoted(path) + " 2>/dev/null";
 	FILE *p = popen(probe.c_str(), "r");

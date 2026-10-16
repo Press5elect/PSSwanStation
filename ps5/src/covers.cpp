@@ -419,8 +419,21 @@ std::string find(const library::Game& game)
 		if (fileExists(file))
 			return file;
 	}
+	// A box in an ES-DE covers folder (the console's, a USB drive's, a share's).
+	const std::string kept = media::find(game, "covers");
+	if (!kept.empty())
+		return kept;
+	// ScreenScraper first when it is on and asks by itself, the collection meanwhile.
+	const scraper::Settings& scraping = scraper::settings();
+	if (media::ready() && scraping.automatic && scraping.kinds.covers && scraper::usable())
+		scraper::request(game);
 	request(game.fileTitle);
 	return "";
+}
+
+void changed()
+{
+	currentGeneration++;
 }
 
 unsigned generation()

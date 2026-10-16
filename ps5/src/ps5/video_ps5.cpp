@@ -219,15 +219,32 @@ size_t bytesFrom(const uint8_t *p)
 
 // ---- files, when the player is to read through the title
 
+// A local file, or one on a network share (SMB, NFS, FTP) through the
+// title's own readers: the player cannot reach a share by itself.
 struct FileState
 {
+	std::mutex lock;
 	FILE *file = nullptr;
+	smb::File *remote = nullptr;
 	uint64_t size = 0;
 };
 FileState fileState;
 
 int openFile(void *, const char *path)
 {
+	std::lock_guard<std::mutex> guard(fileState.lock);
+	if (smb::isNetworkPath(path))
+	{
+		fileState.remote = smb::open(path);
+		if (fileState.remote == nullptr || fileState.remote->failed())
+		{
+			delete fileState.remote;
+			fileState.remote = nullptr;
+			return -1;
+		}
+		fileState.size = (uint64_t)std::max<int64_t>(fileState.remote->size(), 0);
+		return 0;
+	}
 	fileState.file = fopen(path, "rb");
 	if (fileState.file == nullptr)
 		return -1;
@@ -238,14 +255,24 @@ int openFile(void *, const char *path)
 
 int closeFile(void *)
 {
+	std::lock_guard<std::mutex> guard(fileState.lock);
 	if (fileState.file != nullptr)
 		fclose(fileState.file);
+	delete fileState.remote;
 	fileState.file = nullptr;
+	fileState.remote = nullptr;
 	return 0;
 }
 
 int readFileAt(void *, uint8_t *buffer, uint64_t position, uint32_t length)
 {
+	std::lock_guard<std::mutex> guard(fileState.lock);
+	if (fileState.remote != nullptr)
+	{
+		if (fileState.remote->seek((int64_t)position, SEEK_SET) < 0)
+			return -1;
+		return (int)fileState.remote->read(buffer, length);
+	}
 	if (fileState.file == nullptr || fseek(fileState.file, (long)position, SEEK_SET) != 0)
 		return -1;
 	return (int)fread(buffer, 1, length, fileState.file);
@@ -432,7 +459,13 @@ bool open(const std::string& path, bool loop, std::string& why)
 	// Until a first picture shows it works, a crash in the player is remembered.
 	if (!player.proven)
 		writeMarker("started");
-	for (const bool throughTitle : { player.throughTitle, !player.throughTitle })
+	// A file on a share is read through the title; a local one as the player
+	// last managed, then the other way.
+	const bool remote = smb::isNetworkPath(path);
+	std::vector<bool> ways = { player.throughTitle, !player.throughTitle };
+	if (remote)
+		ways = { true };
+	for (const bool throughTitle : ways)
 	{
 		player.handle = makePlayer(throughTitle);
 		if (player.handle == nullptr)
@@ -445,7 +478,8 @@ bool open(const std::string& path, bool loop, std::string& why)
 		const int added = api.AddSource(player.handle, path.c_str());
 		if (added >= 0)
 		{
-			player.throughTitle = throughTitle;
+			if (!remote)
+				player.throughTitle = throughTitle;
 			break;
 		}
 		diag::mark("video: AddSource %s %#x", throughTitle ? "(files read by the title)" : "(the player's own files)",

@@ -14,6 +14,7 @@ it keeps stays on the console, in its title folder (or in
 | --- | --- | --- |
 | RetroAchievements: the user name, then the token the server hands back; the hash that identifies the game; unlocks, leaderboard entries and the rich presence line | retroachievements.org | only while signed in to RetroAchievements |
 | Cover pictures | GitHub (raw.githubusercontent.com, libretro-thumbnails) and thumbnails.libretro.com: the request names the game's title | when a cover is downloaded |
+| ScreenScraper: your screenscraper.fr account's name and password, this program's developer key, and for each game asked about its disc image's file name, size and serial number; then the pictures and videos chosen are downloaded | screenscraper.fr | only with ScreenScraper switched on and an account given (Settings, Games and network) |
 | The cheat database | GitHub (DuckStation's chtdb release) | when it is downloaded |
 | The update check | the GitHub API, this repository's latest release | when the check runs |
 | Netplay | the other console's address that I type in, directly | only during netplay |
@@ -22,7 +23,7 @@ it keeps stays on the console, in its title folder (or in
 Each request says it comes from PSSwanStation and its build number (its
 User-Agent, for example `PSSwanStation/23 (PS5) rcheevos/<its version>`). Nothing else
 about the console is sent. What those services do with a request is under
-their own policies (RetroAchievements, GitHub, libretro).
+their own policies (RetroAchievements, GitHub, libretro, ScreenScraper).
 
 ## What is kept on the console
 
@@ -32,6 +33,10 @@ their own policies (RetroAchievements, GitHub, libretro).
   the server could not be reached, kept until they are sent after the next
   sign-in. The requests in it carry the token, so the file is readable by the
   title alone.
+- `data/screenscraper.cfg`: the ScreenScraper account's name and password, as
+  you typed them, readable by the title alone and never served by the web
+  panel; `data/screenscraper-notfound.txt` and `data/screenscraper-done.txt`:
+  the games ScreenScraper did not know, and those already asked about.
 - `logs/`: the boot log. Addresses, passwords, tokens and request URLs are not
   written to it.
 - Saves, save states, options, covers, the cache and the other folders the
