@@ -75,6 +75,7 @@ enum class Page
 	// ui_esde.cpp
 	Themes,			// the ES-DE theme: which, its variant, colours, sizes
 	ThemeDownload,	// ES-DE themes to fetch
+	Scraper,		// ScreenScraper: the account, what to fetch
 };
 
 struct Frame
@@ -245,6 +246,7 @@ int libraryViewChoice();
 void chooseLibraryView(int index);
 void themesPage(Frame& f);
 void themeDownloadPage(Frame& f);
+void scraperPage(Frame& f);
 
 // ----------------------------------------------------------- ui_more.cpp
 

@@ -189,28 +189,35 @@ const std::pair<const char *, const char *> mediaKinds[] = {
 	{ "3dbox", "3dboxes" }, { "physicalmedia", "physicalmedia" }, { "fanart", "fanart" },
 };
 
-std::vector<std::string> mediaRoots()
-{
-	std::vector<std::string> roots = { rootDir + "media/", rootDir + "media/psx/" };
-	for (const std::string& drive : usbDrives())
-	{
-		roots.push_back(drive + "/" + storage::UsbFolder + "/media/");
-		roots.push_back(drive + "/" + storage::UsbFolder + "/media/psx/");
-	}
-	return roots;
-}
-
 struct MediaCache
 {
-	unsigned generation = 0;
-	double rootsAt = -100;
-	std::vector<std::string> roots;
+	unsigned coversSeen = 0, mediaSeen = 0;
 	std::map<std::string, std::string> found;	// game path + kind -> file ("" none)
 };
 MediaCache mediaCache;
 
-// The picture of one kind for a game, or empty. `fetch`: a title screen or a
-// moment of play is asked for from the collection when there is none.
+void mediaCacheCheck()
+{
+	MediaCache& c = mediaCache;
+	if (c.coversSeen != covers::generation() || c.mediaSeen != media::generation())
+	{
+		c.coversSeen = covers::generation();
+		c.mediaSeen = media::generation();
+		c.found.clear();
+	}
+}
+
+// What is missing is asked of ScreenScraper, when it is on and asks by itself.
+void askScraper(const library::Game& game)
+{
+	if (media::ready() && scraper::settings().automatic && scraper::usable())
+		scraper::request(game);
+}
+
+// The picture of one kind for a game, or empty: ES-DE's media folders
+// wherever they are (media.cpp), else the library's cover. `fetch`: a title
+// screen or a moment of play is asked for from the libretro collection when
+// there is none.
 std::string mediaOf(const library::Game& game, const std::string& kind, bool fetch)
 {
 	if (kind == "image")
@@ -224,37 +231,15 @@ std::string mediaOf(const library::Game& game, const std::string& kind, bool fet
 			folder = dir;
 	if (folder == nullptr)
 		return "";
+	mediaCacheCheck();
 	MediaCache& c = mediaCache;
-	if (c.generation != covers::generation())
-	{
-		c.generation = covers::generation();
-		c.found.clear();
-	}
-	if (clock() - c.rootsAt > 10)
-	{
-		c.rootsAt = clock();
-		c.roots = mediaRoots();
-		c.found.clear();
-	}
 	const std::string key = game.path + '\x01' + kind + (fetch ? "+" : "");
 	const auto it = c.found.find(key);
 	if (it != c.found.end())
 		return it->second;
-	std::string file;
-	for (const std::string& root : c.roots)
-	{
-		for (const char *ext : { ".png", ".jpg", ".jpeg" })
-		{
-			const std::string candidate = root + folder + "/" + game.fileTitle + ext;
-			if (fileExists(candidate))
-			{
-				file = candidate;
-				break;
-			}
-		}
-		if (!file.empty())
-			break;
-	}
+	std::string file = media::find(game, folder);
+	if (file.empty())
+		askScraper(game);
 	if (file.empty() && kind == "cover")
 		file = covers::find(game);
 	if (file.empty() && fetch && kind == "titlescreen")
@@ -265,35 +250,18 @@ std::string mediaOf(const library::Game& game, const std::string& kind, bool fet
 	return file;
 }
 
-// A game's video (media/videos/<file name>.mp4, ES-DE's folder), or empty.
+// A game's video (ES-DE's videos folder, wherever it is), or empty.
 std::string videoOf(const library::Game& game)
 {
+	mediaCacheCheck();
 	MediaCache& c = mediaCache;
-	if (clock() - c.rootsAt > 10)
-	{
-		c.rootsAt = clock();
-		c.roots = mediaRoots();
-		c.found.clear();
-	}
 	const std::string key = game.path + "\x01video";
 	const auto it = c.found.find(key);
 	if (it != c.found.end())
 		return it->second;
-	std::string file;
-	for (const std::string& root : c.roots)
-	{
-		for (const char *ext : { ".mp4", ".MP4", ".m4v" })
-		{
-			const std::string candidate = root + "videos/" + game.fileTitle + ext;
-			if (fileExists(candidate))
-			{
-				file = candidate;
-				break;
-			}
-		}
-		if (!file.empty())
-			break;
-	}
+	const std::string file = media::find(game, "videos");
+	if (file.empty() && scraper::settings().kinds.videos)
+		askScraper(game);
 	c.found[key] = file;
 	return file;
 }
@@ -345,9 +313,11 @@ struct Active
 	const esde::Element *primary = nullptr;	// its list of games
 	const esde::Element *help = nullptr;
 	int generation = 0;
+	unsigned mediaKey = 0;		// the media there were when a variant's fallback was decided
 };
 Active state;
 int wantReload = 1;
+double lastMediaReload = -10;
 
 // Whether a theme's files are there, asked once a reading of the theme.
 std::map<std::string, bool> existing;
@@ -417,6 +387,18 @@ bool ensureLoaded(const std::function<bool(const std::string&)>& hasMedia)
 	const bool same = state.id == theme->id && sel.variant == state.selection.variant
 			&& sel.colorScheme == state.selection.colorScheme && sel.fontSize == state.selection.fontSize
 			&& sel.aspectRatio == state.selection.aspectRatio && sel.language == state.selection.language;
+	// A variant that gives way when the games lack its pictures is decided
+	// again when pictures come (fetched, or the media folders listed).
+	const unsigned mediaKey = media::generation() * 7919u + covers::generation();
+	bool overrides = false;
+	for (const esde::Variant& v : theme->variants)
+		if (!v.overrides.empty() && (v.name == sel.variant || (sel.variant.empty() && &v == &theme->variants.front())))
+			overrides = true;
+	if (same && overrides && mediaKey != state.mediaKey && now() - lastMediaReload > 2.0)
+	{
+		lastMediaReload = now();
+		wantReload = 1;
+	}
 	if (same && !wantReload)
 		return state.ok;
 	wantReload = 0;
@@ -424,6 +406,7 @@ bool ensureLoaded(const std::function<bool(const std::string&)>& hasMedia)
 	wrapped.clear();
 	const double started = now();
 	state = Active();
+	state.mediaKey = mediaKey;
 	state.id = theme->id;
 	state.selection = sel;
 	state.ok = esde::load(*theme, sel, esde::System(), hasMedia, state.loaded);
@@ -2400,6 +2383,7 @@ void themesPage(Frame& f)
 		Item get = action(icon::Download, "Get themes", "", [] { push(Page::ThemeDownload); });
 		items.push_back(get);
 	}
+	items.push_back(action(icon::Picture, "Pictures and videos: ScreenScraper", "", [] { push(Page::Scraper); }));
 	items.push_back(action(icon::Sync, "Look in the themes folders again", "", [] { esdeRescan(); }));
 	std::string problems;
 	for (const esde::Theme& t : themes)
@@ -2507,6 +2491,66 @@ void themeDownloadPage(Frame& f)
 	if (items.empty())
 		items.push_back(fact("Themes", fetcher.listState == 1 ? "Reading the list\xe2\x80\xa6" : "None"));
 	const Item *focused = panelList(f, "Get ES-DE themes", items, 900, 7 * 60 + 10, note);
+	standardHints(focused);
+}
+
+// --------------------------------------------------------------- ScreenScraper
+
+void scraperPage(Frame& f)
+{
+	scraper::Settings& st = scraper::settings();
+	if (f.fresh && st.enabled && !st.user.empty())
+		scraper::checkAccount();
+	std::vector<Item> items;
+	std::string why;
+	const bool usable = scraper::usable(&why);
+	items.push_back(toggle("Use ScreenScraper", &st.enabled, "", [] { scraper::saveSettings(); }));
+	{
+		Item user = action(icon::User, "Account", "", [] {
+			askText("ScreenScraper user name", scraper::settings().user, false, false, [](const std::string& text) {
+				scraper::settings().user = trim(text);
+				scraper::saveSettings();
+				// The password straight after the name.
+				deferred = [] {
+					askText("ScreenScraper password", "", true, false, [](const std::string& password) {
+						scraper::settings().password = password;
+						scraper::saveSettings();
+						scraper::checkAccount();
+					});
+				};
+			});
+		});
+		user.value = st.user.empty() ? "Not given" : st.user;
+		items.push_back(user);
+	}
+	items.push_back(fact("ScreenScraper says", scraper::accountStatus().empty() ? "-" : scraper::accountStatus()));
+	items.push_back(toggle("Ask by itself", &st.automatic, "", [] { scraper::saveSettings(); }));
+	items.push_back(header("What to fetch"));
+	scraper::Kinds& k = st.kinds;
+	const std::pair<const char *, bool *> kinds[] = { { "Covers", &k.covers }, { "Screenshots", &k.screenshots },
+		{ "Title screens", &k.titlescreens }, { "Marquees (logos)", &k.marquees }, { "Mix images", &k.miximages },
+		{ "3D boxes", &k.boxes3d }, { "Back covers", &k.backcovers }, { "Discs", &k.physicalmedia },
+		{ "Fan art", &k.fanart }, { "Videos", &k.videos } };
+	for (const auto& [label, value] : kinds)
+		items.push_back(toggle(label, value, "", [] { scraper::saveSettings(); }));
+	{
+		Item all = action(icon::Download, "Fetch for every game now", "", [] { scraper::requestAll(); }, usable);
+		items.push_back(all);
+		if (scraper::pending() > 0)
+			items.push_back(action(icon::Cross, "Stop", "", [] { scraper::stop(); }));
+	}
+	items.push_back(fact("Media found", media::status()));
+	items.push_back(action(icon::Sync, "Look through the media folders again", "", [] { media::rescan(); }));
+	std::string note = scraper::status();
+	if (!usable)
+		note = why + ". " + note;
+	note += (note.empty() ? "" : "\n") + std::string("ScreenScraper (screenscraper.fr) is a community database of games "
+			"and their pictures and videos. Make an account there (free) and give it here: it sets how many games a "
+			"day can be asked about. A game is looked for by its file name, size and serial number. What is fetched "
+			"goes in ") + shownRoot() + "media (ES-DE's folders), and the box in covers when the game has none. "
+			"Videos are a few megabytes each. Pictures and videos already in media folders on the console, a USB "
+			"drive or the network shares are used as they are.";
+	const Item *focused = panelList(f, "ScreenScraper", items, 900, 8 * 60 + 10, note);
 	standardHints(focused);
 }
 
