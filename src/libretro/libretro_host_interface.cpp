@@ -1,5 +1,6 @@
 #include "core/host_interface.h"
 #include "common/byte_stream.h"
+#include "common/cd_image.h"
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/make_array.h"
@@ -16,6 +17,7 @@
 #include "core/negcon_rumble.h"
 #include "core/pad.h"
 #include "core/playstation_mouse.h"
+#include "core/save_state_version.h"
 #include "core/system.h"
 #include "libretro_audio_stream.h"
 #include "libretro_game_settings.h"
@@ -35,6 +37,49 @@
 #include <vfs/vfs_hybrid.h>
 
 Log_SetChannel(HostInterface);
+
+namespace {
+constexpr uint64_t DISK_STATE_MAGIC = UINT64_C(0x435349444e415753);
+constexpr uint32_t DISK_STATE_VERSION = 1;
+constexpr uint32_t DISK_STATE_EJECTED = 1;
+constexpr uint32_t DISK_STATE_NO_DISC = 2;
+constexpr uint32_t DISK_STATE_CONTAINER = 4;
+
+struct DiskStateHeader
+{
+  uint64_t magic;
+  uint32_t version;
+  uint32_t flags;
+  uint32_t index;
+  uint32_t path_length;
+};
+
+std::optional<uint32_t> FindDiskImage(const HostInterface::DiskControlInfo& info, const std::string& path,
+                                      uint32_t preferred_index)
+{
+  if (preferred_index < info.image_count && info.image_paths[preferred_index] == path)
+    return preferred_index;
+
+  for (uint32_t i = 0; i < info.image_count; i++)
+  {
+    if (info.image_paths[i] == path)
+      return i;
+  }
+
+  std::optional<uint32_t> match;
+  const std::string filename = FileSystem::GetDisplayNameFromPath(path);
+  for (uint32_t i = 0; i < info.image_count; i++)
+  {
+    if (!info.image_paths[i].empty() && FileSystem::GetDisplayNameFromPath(info.image_paths[i]) == filename)
+    {
+      if (match.has_value())
+        return std::nullopt;
+      match = i;
+    }
+  }
+  return match;
+}
+} // namespace
 
 #ifdef WIN32
 #include "core/gpu_hw_d3d11.h"
@@ -222,7 +267,6 @@ bool g_retro_skip_video_this_frame = false;
 bool g_retro_skip_audio_this_frame = false;
 
 static retro_log_callback s_libretro_log_callback = {};
-static bool s_libretro_log_callback_valid = false;
 static bool s_libretro_log_callback_registered = false;
 static bool libretro_supports_option_categories = false;
 static bool analog_pressed = false;
@@ -236,9 +280,22 @@ static void LibretroLogCallback(void* pUserParam, const char* channelName, const
   static constexpr std::array<retro_log_level, static_cast<std::size_t>(LogLevel::Count)> levels = {
     {RETRO_LOG_ERROR, RETRO_LOG_ERROR, RETRO_LOG_WARN, RETRO_LOG_INFO, RETRO_LOG_INFO, RETRO_LOG_INFO, RETRO_LOG_INFO,
      RETRO_LOG_DEBUG, RETRO_LOG_DEBUG, RETRO_LOG_DEBUG}};
+  const retro_log_printf_t log = s_libretro_log_callback.log;
 
-  s_libretro_log_callback.log(levels[static_cast<std::size_t>(level)], "[%s] %s\n",
-                              (level <= LogLevel::Perf) ? functionName : channelName, message);
+  /* A logger still inside ExecuteCallbacks may arrive after the reset. */
+  if (!log)
+    return;
+
+  log(levels[static_cast<std::size_t>(level)], "[%s] %s\n", (level <= LogLevel::Perf) ? functionName : channelName,
+      message);
+}
+
+static void ResetLibretroLogging()
+{
+  if (s_libretro_log_callback_registered)
+    Log::UnregisterCallback(LibretroLogCallback, nullptr);
+  s_libretro_log_callback = {};
+  s_libretro_log_callback_registered = false;
 }
 
 HostInterface::HostInterface()
@@ -337,13 +394,12 @@ void HostInterface::InitInterfaces()
 
 void HostInterface::InitLogging()
 {
-  if (s_libretro_log_callback_registered)
-    return;
+  ResetLibretroLogging();
 
-  s_libretro_log_callback_valid =
-    g_retro_environment_callback(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &s_libretro_log_callback);
+  if (!g_retro_environment_callback(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &s_libretro_log_callback))
+    s_libretro_log_callback.log = nullptr;
 
-  if (s_libretro_log_callback_valid)
+  if (s_libretro_log_callback.log)
   {
     Log::RegisterCallback(LibretroLogCallback, nullptr);
     s_libretro_log_callback_registered = true;
@@ -361,6 +417,7 @@ bool HostInterface::Initialize()
   P_THIS->m_disk_control_info.image_paths.clear();
   P_THIS->m_disk_control_info.image_labels.clear();
 
+  InitLogging();
   InitInterfaces();
   LoadSettings();
   FixIncompatibleSettings(true);
@@ -386,6 +443,8 @@ void HostInterface::Shutdown()
   P_THIS->m_disk_control_info.sub_images_parent_path.clear();
   P_THIS->m_disk_control_info.image_paths.clear();
   P_THIS->m_disk_control_info.image_labels.clear();
+
+  ResetLibretroLogging();
 }
 
 void HostInterface::ReportError(const char* message)
@@ -410,6 +469,11 @@ void HostInterface::GetGameInfo(const char* path, CDImage* image, std::string* c
 {
   // Just use the filename for now... we don't have the game list. Unless we can pull this from the frontend somehow?
   *title = FileSystem::GetFileTitleFromPath(path);
+  if (g_settings.memory_card_use_playlist_title && !m_disk_control_info.has_sub_images &&
+      !m_disk_control_info.sub_images_parent_path.empty())
+  {
+    *title = FileSystem::GetFileTitleFromPath(m_disk_control_info.sub_images_parent_path);
+  }
 
   if (image)
     *code = System::GetGameCodeForImage(image, true);
@@ -704,6 +768,7 @@ bool HostInterface::retro_load_game(const struct retro_game_info* game)
   if (game && game->path)
     bp->filename = game->path;
   bp->media_playlist_index = P_THIS->m_disk_control_info.initial_image_index;
+  m_disk_control_info = {};
   bp->force_software_renderer = !m_hw_render_callback_valid;
 
   struct retro_input_descriptor desc[] = {
@@ -759,7 +824,8 @@ bool HostInterface::retro_load_game(const struct retro_game_info* game)
         return false;
       }
 
-      P_THIS->m_disk_control_info.has_sub_images         = true;
+      const char* extension = std::strrchr(parent_path.c_str(), '.');
+      P_THIS->m_disk_control_info.has_sub_images = !extension || StringUtil::Strcasecmp(extension, ".m3u") != 0;
       P_THIS->m_disk_control_info.image_index            = System::GetMediaSubImageIndex();
       P_THIS->m_disk_control_info.image_count            = System::GetMediaSubImageCount();
       P_THIS->m_disk_control_info.sub_images_parent_path = parent_path;
@@ -950,12 +1016,119 @@ size_t HostInterface::retro_serialize_size()
 
 bool HostInterface::retro_serialize(void* data, size_t size)
 {
+  if (!data || size > UINT32_MAX)
+    return false;
   std::unique_ptr<ByteStream> stream = ByteStream_CreateMemoryStream(data, static_cast<uint32_t>(size));
-  return System::SaveState(stream.get());
+  if (!System::SaveState(stream.get()))
+    return false;
+
+  const DiskControlInfo& info = m_disk_control_info;
+  const bool no_disc = info.image_index >= info.image_count;
+  const std::string path = no_disc ? std::string() : info.image_paths[info.image_index];
+  const DiskStateHeader header{DISK_STATE_MAGIC, DISK_STATE_VERSION,
+                               (System::IsMediaTrayOpen() ? DISK_STATE_EJECTED : 0u) | (no_disc ? DISK_STATE_NO_DISC : 0u) |
+                                 (info.has_sub_images ? DISK_STATE_CONTAINER : 0u),
+                               info.image_index, static_cast<uint32_t>(path.size())};
+  return stream->Write2(&header, sizeof(header)) && stream->Write2(path.data(), header.path_length);
 }
 
 bool HostInterface::retro_unserialize(const void* data, size_t size)
 {
+  if (!data || size < sizeof(SAVE_STATE_HEADER) || size > UINT32_MAX)
+    return false;
+
+  SAVE_STATE_HEADER state_header;
+  std::memcpy(&state_header, data, sizeof(state_header));
+  if (state_header.magic != SAVE_STATE_MAGIC || state_header.data_compression_type != 0)
+    return false;
+
+  const uint64_t data_end = static_cast<uint64_t>(state_header.offset_to_data) + state_header.data_uncompressed_size;
+  if (data_end > size)
+    return false;
+
+  DiskControlInfo& info = m_disk_control_info;
+  uint32_t selected_index = info.image_index;
+  std::string media_path;
+  const char* media_override = nullptr;
+  uint32_t media_subimage_index = 0;
+  uint64_t trailer_magic = 0;
+  if (size - data_end >= sizeof(trailer_magic))
+    std::memcpy(&trailer_magic, static_cast<const uint8_t*>(data) + data_end, sizeof(trailer_magic));
+
+  // Older cores stop at the machine payload and ignore this optional trailer.
+  if (trailer_magic == DISK_STATE_MAGIC)
+  {
+    if (size - data_end < sizeof(DiskStateHeader))
+      return false;
+    DiskStateHeader header;
+    std::memcpy(&header, static_cast<const uint8_t*>(data) + data_end, sizeof(header));
+    if (header.version != DISK_STATE_VERSION || (header.flags & ~7u) != 0 ||
+        header.path_length > size - data_end - sizeof(header))
+      return false;
+
+    std::string path(reinterpret_cast<const char*>(data) + data_end + sizeof(header), header.path_length);
+    const bool no_disc = (header.flags & DISK_STATE_NO_DISC) != 0;
+    const bool ejected = (header.flags & DISK_STATE_EJECTED) != 0;
+    if (path.find('\0') != std::string::npos || no_disc != path.empty() ||
+        (state_header.media_filename_length != 0) != (!no_disc && !ejected))
+      return false;
+
+    if (no_disc)
+      selected_index = info.image_count;
+    else
+    {
+      if (((header.flags & DISK_STATE_CONTAINER) != 0) != info.has_sub_images)
+        return false;
+      const std::optional<uint32_t> index = FindDiskImage(info, path, header.index);
+      if (!index.has_value())
+        return false;
+      selected_index = index.value();
+      if (!ejected)
+      {
+        media_path = info.has_sub_images ? info.sub_images_parent_path : info.image_paths[selected_index];
+        media_subimage_index = info.has_sub_images ? selected_index : 0;
+      }
+    }
+    media_override = media_path.c_str();
+  }
+  else if (state_header.media_filename_length != 0)
+  {
+    if (static_cast<uint64_t>(state_header.offset_to_media_filename) + state_header.media_filename_length > size)
+      return false;
+    std::string path(static_cast<const char*>(data) + state_header.offset_to_media_filename,
+                     state_header.media_filename_length);
+    if (path.find('\0') != std::string::npos)
+      return false;
+
+    if (!info.sub_images_parent_path.empty() &&
+        FileSystem::GetDisplayNameFromPath(path) == FileSystem::GetDisplayNameFromPath(info.sub_images_parent_path))
+    {
+      if (info.has_sub_images)
+      {
+        if (state_header.media_subimage_index >= info.image_count)
+          return false;
+        path = info.image_paths[state_header.media_subimage_index];
+      }
+      else
+      {
+        std::unique_ptr<CDImage> playlist =
+          CDImage::Open(info.sub_images_parent_path.c_str(), CDImage::OpenFlags::None, nullptr);
+        if (!playlist || !playlist->HasSubImages() || state_header.media_subimage_index >= playlist->GetSubImageCount())
+          return false;
+        path = playlist->GetSubImageMetadata(state_header.media_subimage_index, "file_path");
+      }
+    }
+    else if (state_header.media_subimage_index != 0 || info.has_sub_images)
+      return false;
+
+    const std::optional<uint32_t> index = FindDiskImage(info, path, state_header.media_subimage_index);
+    if (!index.has_value())
+      return false;
+    selected_index = index.value();
+    media_path = info.has_sub_images ? info.sub_images_parent_path : info.image_paths[selected_index];
+    media_subimage_index = info.has_sub_images ? selected_index : 0;
+    media_override = media_path.c_str();
+  }
   // Ask the frontend whether this load is for runahead / rewind / netplay
   // rollback or a normal disk load. The runahead flavours guarantee the
   // state was produced by the same binary in the same address space, so
@@ -972,12 +1145,16 @@ bool HostInterface::retro_unserialize(const void* data, size_t size)
                        ctx == RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_BINARY);
   }
 
-  /* Runahead and netplay states come from this core; only a state from elsewhere (a file, normal context)
-   * can be rejected part way through, so only those pay for a copy of the running state to fall back to. */
+  /* Normal state loads preserve the running state on failure. Runahead and netplay skip the per-load backup
+   * because they can happen every frame; LoadState resets the system if one of those states is rejected. */
   const bool restore_on_failure = !is_memory_state && ctx != RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY;
 
   std::unique_ptr<ByteStream> stream = ByteStream_CreateReadOnlyMemoryStream(data, static_cast<uint32_t>(size));
-  return System::LoadState(stream.get(), is_memory_state, restore_on_failure);
+  if (!System::LoadState(stream.get(), is_memory_state, restore_on_failure, media_override, media_subimage_index))
+    return false;
+
+  info.image_index = selected_index;
+  return true;
 }
 
 void* HostInterface::retro_get_memory_data(unsigned id)
@@ -2229,54 +2406,52 @@ bool HostInterface::DiskControlSetEjectState(bool ejected)
   if (System::IsShutdown())
     return false;
 
+  DiskControlInfo& info = P_THIS->m_disk_control_info;
+  if (System::IsMediaTrayOpen() == ejected)
+    return true;
+
   if (ejected)
   {
-    if (!System::HasMedia())
-      return false;
-
     System::RemoveMedia();
   }
-  else
+  else if (info.image_index < info.image_count)
   {
-    if (System::HasMedia())
-      return false;
-
-    if (P_THIS->m_disk_control_info.has_sub_images)
+    if (info.has_sub_images)
     {
-      if (!System::InsertMedia(P_THIS->m_disk_control_info.sub_images_parent_path.c_str()))
+      if (!System::InsertMedia(info.sub_images_parent_path.c_str()))
         return false;
-
-      if (!System::SwitchMediaSubImage(P_THIS->m_disk_control_info.image_index))
+      if (!System::SwitchMediaSubImage(info.image_index))
+      {
+        System::RemoveMedia();
         return false;
+      }
     }
-    else if (!System::InsertMedia(P_THIS->m_disk_control_info.image_paths[P_THIS->m_disk_control_info.image_index].c_str()))
+    else if (info.image_paths[info.image_index].empty() ||
+             !System::InsertMedia(info.image_paths[info.image_index].c_str()))
       return false;
   }
 
+  System::SetMediaTrayOpen(ejected);
   return true;
 }
 
 bool HostInterface::DiskControlGetEjectState()
 {
-  if (System::IsShutdown())
-    return false;
-
-  return !System::HasMedia();
+  return !System::IsShutdown() && System::IsMediaTrayOpen();
 }
 
 unsigned HostInterface::DiskControlGetImageIndex()
 {
-  return (unsigned)P_THIS->m_disk_control_info.image_index;
+  return P_THIS->m_disk_control_info.image_index;
 }
 
 bool HostInterface::DiskControlSetImageIndex(unsigned index)
 {
-  if (System::IsShutdown() ||
-      System::HasMedia() ||
-      (index >= P_THIS->m_disk_control_info.image_count))
+  DiskControlInfo& info = P_THIS->m_disk_control_info;
+  if (System::IsShutdown() || !System::IsMediaTrayOpen() || (index < info.image_count && info.image_paths[index].empty()))
     return false;
 
-  P_THIS->m_disk_control_info.image_index = (uint32_t)index;
+  info.image_index = std::min(index, info.image_count);
   return true;
 }
 
@@ -2293,8 +2468,7 @@ bool HostInterface::DiskControlReplaceImageIndex(unsigned index, const retro_gam
 #define CASE_COMPARE strcasecmp
 #endif
 
-  if (System::IsShutdown() ||
-      System::HasMedia() ||
+  if (System::IsShutdown() || !System::IsMediaTrayOpen() ||
       (index >= P_THIS->m_disk_control_info.image_count))
     return false;
 
@@ -2307,7 +2481,9 @@ bool HostInterface::DiskControlReplaceImageIndex(unsigned index, const retro_gam
     /* Remove specified image */
     P_THIS->m_disk_control_info.image_count--;
 
-    if (index < P_THIS->m_disk_control_info.image_index)
+    if (index == P_THIS->m_disk_control_info.image_index)
+      P_THIS->m_disk_control_info.image_index = P_THIS->m_disk_control_info.image_count;
+    else if (index < P_THIS->m_disk_control_info.image_index)
       P_THIS->m_disk_control_info.image_index--;
 
     P_THIS->m_disk_control_info.image_paths.erase(
@@ -2347,6 +2523,8 @@ bool HostInterface::DiskControlAddImageIndex()
   if (P_THIS->m_disk_control_info.has_sub_images)
     return false;
 
+  if (P_THIS->m_disk_control_info.image_index == P_THIS->m_disk_control_info.image_count)
+    P_THIS->m_disk_control_info.image_index++;
   P_THIS->m_disk_control_info.image_count++;
   P_THIS->m_disk_control_info.image_paths.push_back("");
   P_THIS->m_disk_control_info.image_labels.push_back("");
@@ -2369,7 +2547,8 @@ bool HostInterface::IsKnownMediaPath(const std::string& path) const
   size_t i;
   if (path.empty())
     return false;
-  if (m_disk_control_info.has_sub_images && path == m_disk_control_info.sub_images_parent_path)
+  /* An M3U opened as separate images still names itself in states saved before a swap. */
+  if (path == m_disk_control_info.sub_images_parent_path)
     return true;
   for (i = 0; i < m_disk_control_info.image_paths.size(); i++)
   {
@@ -2381,9 +2560,11 @@ bool HostInterface::IsKnownMediaPath(const std::string& path) const
 
 bool HostInterface::DiskControlGetImagePath(unsigned index, char* path, size_t len)
 {
-  if ((index >= P_THIS->m_disk_control_info.image_count) ||
+  /* A truncated path names a different file, so a short buffer fails. */
+  if (!path || len == 0 || (index >= P_THIS->m_disk_control_info.image_count) ||
       (index >= P_THIS->m_disk_control_info.image_paths.size()) ||
-      P_THIS->m_disk_control_info.image_paths[index].empty())
+      P_THIS->m_disk_control_info.image_paths[index].empty() ||
+      P_THIS->m_disk_control_info.image_paths[index].size() >= len)
     return false;
 
   strlcpy(path, P_THIS->m_disk_control_info.image_paths[index].c_str(), len);
@@ -2392,7 +2573,7 @@ bool HostInterface::DiskControlGetImagePath(unsigned index, char* path, size_t l
 
 bool HostInterface::DiskControlGetImageLabel(unsigned index, char* label, size_t len)
 {
-  if ((index >= P_THIS->m_disk_control_info.image_count) ||
+  if (!label || len == 0 || (index >= P_THIS->m_disk_control_info.image_count) ||
       (index >= P_THIS->m_disk_control_info.image_labels.size()) ||
       P_THIS->m_disk_control_info.image_labels[index].empty())
     return false;

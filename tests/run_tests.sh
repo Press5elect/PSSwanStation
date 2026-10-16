@@ -6,6 +6,19 @@
 #   polyline                          long GPU poly-lines, compared with tests/gpu_polyline.expected
 #   regfuzz [first] [last] [frames]   register fuzzer, one run per seed (default 1 20 120)
 #   statefuzz [first] [last] [iters]  corrupted save states loaded into a fuzzed system (default 1 3 150)
+#   rollback                          every byte of the CPU section head set to 0xFF in turn and
+#                                     loaded as a netplay rollback (no fallback copy); frames still run
+#                                     after each rejected load
+#   pad                               both ports polled continuously (DualShock, NeGcon Rumble); a
+#                                     save/load/save round trip leaves the Pad section unchanged, and
+#                                     a loaded state runs its next frame as the original run did; then
+#                                     each byte of the DualShock's state is corrupted and loaded in turn
+#   disk                              M3U entries swapped, removed and re-added through disk control,
+#                                     an empty drive closed and that state loaded,
+#                                     with a save state from before the swap loaded after it, and
+#                                     path/label queries with missing, empty and short buffers
+#   reload                            the core re-initialized under a new environment, with a
+#                                     second logger and then none; no call reaches a replaced logger
 #
 # UPDATE_EXPECTED=1 rewrites an expected file from the core under test.
 # Needs clang, ld.lld and llvm-objcopy for the MIPS test ROMs, python3, and a
@@ -128,6 +141,57 @@ case "$SUITE" in
       seed=$((seed + 1))
     done
     echo "statefuzz: seeds $first-$last passed"
+    ;;
+
+  rollback)
+    build_rom regfuzz
+    python3 "$TESTS/make_disc.py" "$WORK"
+    if ! FE_STATE_CONTEXT=rollback STATEFUZZ=1 STATEFUZZ_SWEEP=CPU:400 \
+      run_rom regfuzz 1 0xFFFFFFFF 120 "$WORK/disc.cue"; then
+      echo "rollback: failed"
+      exit 1
+    fi
+    grep "state fuzz:" "$WORK/run.log"
+    ;;
+
+  pad)
+    build_rom pad_poll
+    python3 "$TESTS/make_disc.py" "$WORK"
+    # Interpreter only: the recompiler does not yet replay a frame identically after a state load.
+    if ! FE_CPU=Interpreter PADTEST=1 run_rom pad_poll 1 0 30 "$WORK/disc.cue"; then
+      echo "pad: failed"
+      exit 1
+    fi
+    grep "pad test:" "$WORK/run.log"
+    # Every byte of the DualShock's state set to 0xFF in turn, loaded as a rollback with frames run after each.
+    if ! FE_CPU=Interpreter FE_PADS=1 FE_STATE_CONTEXT=rollback STATEFUZZ=1 STATEFUZZ_SWEEP=Controller:96 \
+      run_rom pad_poll 1 0 30 "$WORK/disc.cue"; then
+      echo "pad: controller sweep failed"
+      exit 1
+    fi
+    grep "state fuzz:" "$WORK/run.log"
+    ;;
+
+  disk)
+    build_rom gpu_polyline
+    python3 "$TESTS/make_disc.py" "$WORK" disc1
+    python3 "$TESTS/make_disc.py" "$WORK" disc2
+    printf 'disc1.cue\ndisc2.cue\n' > "$WORK/discs.m3u"
+    if ! DISKTEST="$WORK/disc2.cue" run_rom gpu_polyline 1 0 120 "$WORK/discs.m3u"; then
+      echo "disk: failed"
+      exit 1
+    fi
+    grep "disk test:" "$WORK/run.log"
+    ;;
+
+  reload)
+    build_rom gpu_polyline
+    python3 "$TESTS/make_disc.py" "$WORK"
+    if ! RELOADTEST=1 run_rom gpu_polyline 1 0 30 "$WORK/disc.cue"; then
+      echo "reload: failed"
+      exit 1
+    fi
+    grep "reload test:" "$WORK/run.log"
     ;;
 
   *)
