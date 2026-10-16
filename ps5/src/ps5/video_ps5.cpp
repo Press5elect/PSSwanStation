@@ -41,6 +41,7 @@
 #include <vector>
 
 extern "C" {
+int sceSysmoduleLoadModule(uint16_t id);
 int sceKernelLoadStartModule(const char *path, size_t args, const void *argp, uint32_t flags, void *opt, int *res);
 int sceKernelDlsym(int handle, const char *symbol, void **addrp);
 }
@@ -49,6 +50,9 @@ namespace fe::video::backend
 {
 namespace
 {
+
+// SCE_SYSMODULE_AV_PLAYER, as the PS4 SDK numbers the system's modules.
+constexpr uint16_t SysmoduleAvPlayer = 0x00A5;
 
 // ---- sceAvPlayer, as the PS4 SDK declares it
 
@@ -417,19 +421,37 @@ bool load(std::string& why)
 			return false;
 		}
 	}
-	int module = -1;
-	for (const char *dir : { "/system/common/lib/", "/system/priv/lib/", "/system_ex/common_ex/lib/" })
+	// Loaded by path, the library was refused (0x80020008, "not a module this
+	// process may run") on the console: the system's own loader is asked
+	// first (sceSysmoduleLoadModule, AvPlayer's module number in the public
+	// SDK), then the path again (it gives the module now loaded), then with
+	// the decoders it uses loaded before it.
+	writeMarker("started load");
+	const int sys = sceSysmoduleLoadModule(SysmoduleAvPlayer);
+	diag::mark("video: sceSysmoduleLoadModule(AvPlayer %#x): %#x", SysmoduleAvPlayer, (unsigned)sys);
+	const auto byPath = [](const char *name) {
+		int handle = -1;
+		for (const char *dir : { "/system/common/lib/", "/system/priv/lib/", "/system_ex/common_ex/lib/" })
+		{
+			const std::string path = std::string(dir) + name;
+			struct stat st;
+			if (stat(path.c_str(), &st) != 0)
+				continue;
+			int result = 0;
+			handle = sceKernelLoadStartModule(path.c_str(), 0, nullptr, 0, nullptr, &result);
+			diag::mark("video: %s: load %#x (start %d)", path.c_str(), (unsigned)handle, result);
+			if (handle >= 0)
+				break;
+		}
+		return handle;
+	};
+	int module = byPath("libSceAvPlayer.sprx");
+	if (module < 0)
 	{
-		const std::string path = std::string(dir) + "libSceAvPlayer.sprx";
-		struct stat st;
-		if (stat(path.c_str(), &st) != 0)
-			continue;
-		int result = 0;
-		writeMarker("started load");
-		module = sceKernelLoadStartModule(path.c_str(), 0, nullptr, 0, nullptr, &result);
-		diag::mark("video: libSceAvPlayer: %s: load %#x (start %d)", path.c_str(), (unsigned)module, result);
-		if (module >= 0)
-			break;
+		for (const char *dependency : { "libSceAjm.sprx", "libSceAudiodec.sprx", "libSceVideodec2.sprx",
+				"libSceVideoCoreInterface.sprx" })
+			byPath(dependency);
+		module = byPath("libSceAvPlayer.sprx");
 	}
 	if (module < 0)
 	{
