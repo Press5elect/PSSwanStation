@@ -22,7 +22,9 @@
 	ES-DE's downloaded_media/psx folders are laid out, so a folder scraped for
 	ES-DE can be copied in), else the cover, and title screens and moments of
 	play from the libretro thumbnails collection when downloads are on.
-	Videos and animations are not played: a video element shows its picture.
+	A video element plays the game's video (media/videos/<file name>.mp4, as
+	ES-DE keeps them) after its delay, with the console's own player
+	(video.cpp), its picture until then; animations are not played.
 
 	Themes are not part of the title. Each is its author's, under its own
 	licence; they go in <root>themes (or PSSwanStation/themes on a USB drive),
@@ -65,6 +67,7 @@ struct Settings
 {
 	bool read = false;
 	std::string theme;
+	bool videos = true, videoSound = true;
 	std::map<std::string, esde::Selection> chosen;
 };
 Settings settings;
@@ -97,6 +100,11 @@ void readSettings()
 			settings.theme = value;
 			continue;
 		}
+		if (key == "videos" || key == "video_sound")
+		{
+			(key == "videos" ? settings.videos : settings.videoSound) = value != "0";
+			continue;
+		}
 		const size_t dot = key.rfind('.');
 		if (dot == std::string::npos)
 			continue;
@@ -120,6 +128,7 @@ void saveSettings()
 {
 	std::string text = "# PSSwanStation - the ES-DE theme the library is drawn in (Settings, Interface).\n";
 	text += "theme = " + settings.theme + "\n";
+	text += format("videos = %d\nvideo_sound = %d\n", settings.videos ? 1 : 0, settings.videoSound ? 1 : 0);
 	for (const auto& [id, s] : settings.chosen)
 	{
 		const std::pair<const char *, const std::string *> fields[] = { { "variant", &s.variant },
@@ -252,6 +261,39 @@ std::string mediaOf(const library::Game& game, const std::string& kind, bool fet
 		file = covers::findMedia(game, covers::TitleScreen);
 	if (file.empty() && fetch && kind == "screenshot")
 		file = covers::findMedia(game, covers::InGame);
+	c.found[key] = file;
+	return file;
+}
+
+// A game's video (media/videos/<file name>.mp4, ES-DE's folder), or empty.
+std::string videoOf(const library::Game& game)
+{
+	MediaCache& c = mediaCache;
+	if (clock() - c.rootsAt > 10)
+	{
+		c.rootsAt = clock();
+		c.roots = mediaRoots();
+		c.found.clear();
+	}
+	const std::string key = game.path + "\x01video";
+	const auto it = c.found.find(key);
+	if (it != c.found.end())
+		return it->second;
+	std::string file;
+	for (const std::string& root : c.roots)
+	{
+		for (const char *ext : { ".mp4", ".MP4", ".m4v" })
+		{
+			const std::string candidate = root + "videos/" + game.fileTitle + ext;
+			if (fileExists(candidate))
+			{
+				file = candidate;
+				break;
+			}
+		}
+		if (!file.empty())
+			break;
+	}
 	c.found[key] = file;
 	return file;
 }
@@ -581,6 +623,8 @@ struct Shown
 	int cursor = 0;
 	const library::Game *game = nullptr;
 	const gamedb::Info *info = nullptr;
+	double since = 0;			// seconds the cursor has been on this game
+	bool videoTaken = false;	// one video element plays at a time
 };
 
 std::string lowerText(std::string s)
@@ -909,6 +953,57 @@ std::string pictureFile(const esde::Element& e, const Shown& s)
 	if (!path.empty() && exists(path))
 		return path;
 	return e.get("default");
+}
+
+void imageElement(const esde::Element& e, const Shown& s);
+
+// A video element: the game's video (or the element's own) once the cursor
+// has stayed on the game for its delay, its picture until then (and after
+// its end, when the theme says so).
+void videoElement(const esde::Element& e, Shown& s)
+{
+	std::string file;
+	if (!e.get("path").empty() && exists(e.get("path")))
+		file = e.get("path");
+	else if (s.game != nullptr)
+		file = videoOf(*s.game);
+	if (file.empty() && !e.get("default").empty() && exists(e.get("default")))
+		file = e.get("default");
+	const bool wanted = !file.empty() && !s.videoTaken && settings.videos && motion() != MotionOff
+			&& s.since >= e.number("delay", 1.5f) && video::available();
+	if (wanted)
+	{
+		s.videoTaken = true;
+		const int iterations = (int)e.number("iterationCount", 0);
+		video::play(file, iterations <= 0, settings.videoSound && e.flag("audio", true));
+		int vw = 0, vh = 0;
+		void *pic = video::picture(vw, vh);
+		const bool showImageAfter = video::ended() && e.get("onIterationsDone", "nothing") == "image";
+		if (pic != nullptr && vw > 0 && vh > 0 && !showImageAfter)
+		{
+			float w = 0, h = 0;
+			ImVec2 uv0, uv1;
+			if (fitPicture(e, (float)vw, (float)vh, w, h, uv0, uv1))
+			{
+				const Box box = place(e, w, h);
+				const float opacity = e.number("opacity", 1.f);
+				const ImU32 colour = fade(e.colour("color", White), opacity);
+				const float rounding = e.number("imageCornerRadius", 0) * W();
+				// Black bars where the theme's box is wider or taller than the video.
+				float bw = 0, bh = 0;
+				if (e.flag("pillarboxes", true) && !e.has("cropSize") && sizeOf(e, "maxSize", bw, bh) && bw > 0 && bh > 0)
+				{
+					float ox = 0, oy = 0;
+					e.pair("origin", ox, oy);
+					const ImVec2 a(box.x - (bw - w) * ox, box.y - (bh - h) * oy);
+					draw()->AddRectFilled(a, ImVec2(a.x + bw, a.y + bh), fade(IM_COL32(0, 0, 0, 255), opacity), rounding);
+				}
+				draw()->AddImageRounded((ImTextureID)pic, box.a(), box.b(), uv0, uv1, colour, rounding);
+				return;
+			}
+		}
+	}
+	imageElement(e, s);
 }
 
 void imageElement(const esde::Element& e, const Shown& s)
@@ -1724,10 +1819,19 @@ bool esdeView(const EsdeGames& games, int& cursor, bool active, bool fresh, cons
 	const esde::Element &primary = state.primary != nullptr ? *state.primary : fallbackList();
 	Shown shownGame;
 	shownGame.games = &games;
+	// How long the cursor has stayed on the game (a video waits for it).
+	static std::string focusedPath;
+	static double focusedSince = 0;
 	const auto focus = [&] {
 		shownGame.cursor = cursor;
 		shownGame.game = &games.game(cursor);
 		shownGame.info = games.info ? games.info(cursor) : nullptr;
+		if (shownGame.game->path != focusedPath)
+		{
+			focusedPath = shownGame.game->path;
+			focusedSince = clock();
+		}
+		shownGame.since = clock() - focusedSince;
 	};
 	focus();
 	bool listDrawn = false;
@@ -1753,8 +1857,10 @@ bool esdeView(const EsdeGames& games, int& cursor, bool active, bool fresh, cons
 			continue;
 		}
 		const std::string& type = e->type;
-		if (type == "image" || type == "video")
+		if (type == "image")
 			imageElement(*e, shownGame);
+		else if (type == "video")
+			videoElement(*e, shownGame);
 		else if (type == "text")
 		{
 			std::string value;
@@ -2280,6 +2386,17 @@ void themesPage(Frame& f)
 		(void)sel;
 	}
 	{
+		Item videos = toggle("Videos", &settings.videos, "", [] {
+			saveSettings();
+			if (!settings.videos)
+				video::stop();
+		});
+		items.push_back(videos);
+		Item sound = toggle("Video sound", &settings.videoSound, "", [] { saveSettings(); });
+		sound.enabled = settings.videos;
+		items.push_back(sound);
+	}
+	{
 		Item get = action(icon::Download, "Get themes", "", [] { push(Page::ThemeDownload); });
 		items.push_back(get);
 	}
@@ -2294,7 +2411,7 @@ void themesPage(Frame& f)
 			"their pictures and details where the theme puts them. Themes go in " + shownRoot() + "themes (or "
 			"PSSwanStation/themes on a USB drive), each in its own folder. Pictures ES-DE has scraped go in "
 			+ shownRoot() + "media (its downloaded_media/psx folders as they are: covers, screenshots, marquees, "
-			"miximages...). Videos are shown as their pictures. Each theme is its author's work, under its own "
+			"miximages..., and videos/<file name>.mp4 for the videos the console's own player plays). Each theme is its author's work, under its own "
 			"licence, and is not part of PSSwanStation." + problems;
 	const Item *focused = panelList(f, "ES-DE themes", items, 900, (float)std::min((int)items.size(), 7) * 60 + 10, note);
 	standardHints(focused);

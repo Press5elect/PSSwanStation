@@ -229,6 +229,7 @@ set(frontend_sources
 	src/ui_more.cpp
 	src/ui_flow.cpp
 	src/ui_esde.cpp
+	src/video.cpp
 	src/esde.cpp
 	src/fontbake.cpp
 	src/display.cpp
@@ -258,6 +259,7 @@ if(SWANSTATION_PS5)
 	list(APPEND frontend_sources
 		src/ps5/pad_ps5.cpp
 		src/ps5/usbpad_ps5.cpp
+		src/ps5/video_ps5.cpp
 		src/ps5/audio_ps5.cpp
 		src/ps5/http_ps5.cpp
 		src/ps5/libc_ps5.cpp
@@ -269,7 +271,7 @@ if(SWANSTATION_PS5)
 		src/ps5/usbdrive_ps5.cpp
 		src/ps5/elevation/elevation.cpp)
 else()
-	list(APPEND frontend_sources src/host/platform_host.cpp)
+	list(APPEND frontend_sources src/host/platform_host.cpp src/host/video_host.cpp)
 endif()
 
 # With the core's C++17: its disc header does not compile as C++20.
