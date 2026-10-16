@@ -167,7 +167,7 @@ void adapt(Option& option)
 	}
 	else if (key == "swanstation_Logging_LogLevel")
 	{
-		// "Verbose logging" (Settings, Debug) sets it.
+		// "Verbose logging" (Settings, System) sets it.
 		option.hidden = true;
 	}
 	else if (key == "swanstation_Display_AspectRatio")
@@ -183,7 +183,7 @@ void adapt(Option& option)
 	{
 		option.info = "Loads the disc image into memory before the game starts, so the game never waits for the "
 				"storage while it runs, at the cost of a longer start. Games on the network share are loaded into memory "
-				"by the title itself (Settings, Games and network).";
+				"by the title itself (Settings, Games and saving).";
 	}
 	else if (key == "swanstation_Display_ShowOSDMessages")
 	{
@@ -333,6 +333,9 @@ std::vector<Field> fields()
 		{ "region_filter", &c.regionFilter, nullptr, 0, 3 },
 		{ "idle_minutes", &c.idleMinutes, nullptr, 0, 60 },
 		{ "clock", nullptr, &c.clock, 0, 1 },
+		{ "videos", nullptr, &c.videos, 0, 1 },
+		{ "video_volume", &c.videoVolume, nullptr, 0, 100 },
+		{ "video_delay", &c.videoDelay, nullptr, 0, 3 },
 		{ "files_at", &c.filesAt, nullptr, 0, 3 },
 		{ "seen_build", &c.seenBuild, nullptr, 0, 1000000 },
 		{ "cards_on_share", nullptr, &c.cardsOnShare, 0, 1 },

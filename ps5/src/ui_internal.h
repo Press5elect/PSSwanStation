@@ -151,6 +151,9 @@ Item header(const std::string& label);
 Item action(const char *icon, const std::string& label, const std::string& info, std::function<void()> activate,
 		bool enabled = true);
 Item fact(const std::string& label, const std::string& value, const std::string& info = "");
+// The games' videos: the switch, their sound and (withDelay) how long the
+// cursor stays on a game before its video starts in the library's own views.
+void videoSettingItems(std::vector<Item>& items, bool withDelay);
 // A switch of the frontend's settings (saved when it is changed).
 Item toggle(const std::string& label, bool *value, const std::string& info, std::function<void()> changed = {});
 Item choice(const std::string& label, int current, std::vector<std::string> names, const std::string& info,

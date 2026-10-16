@@ -567,7 +567,7 @@ void logCallback(retro_log_level level, const char *format, ...)
 	if (length == 0 || text[length - 1] != '\n')
 		fputc('\n', stderr);
 	// The emulator's warnings and errors go to the boot log; with verbose
-	// logging (Settings, Debug), everything it says.
+	// logging (Settings, System), everything it says.
 	if (level >= RETRO_LOG_WARN || options::frontend().verboseLog)
 	{
 		while (length > 0 && (text[length - 1] == '\n' || text[length - 1] == '\r'))
@@ -2678,7 +2678,7 @@ bool recordStart()
 	}
 	rewindOn = false;
 	diag::mark("recording: began %s", path.c_str());
-	addMessage("Recording what you press. Stop it in Settings, Debug.", 4.0);
+	addMessage("Recording what you press. Stop it in Settings, System.", 4.0);
 	return true;
 }
 

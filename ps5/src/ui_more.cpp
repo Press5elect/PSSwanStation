@@ -322,15 +322,18 @@ void libraryOptionsPage(Frame& f)
 	}
 	if (o.view == EsdeView)
 		items.push_back(action(icon::Paint, "Theme options", "", [] { push(Page::Themes); }));
+	items.push_back(toggle("Game videos", &o.videos, "", [] {
+		if (!options::frontend().videos)
+			video::stop();
+	}));
 	items.push_back(action(icon::Sync, "Scan for games", "", [] {
 		scanEverything();
 		pop();
 	}));
-	const Item *focused = panelList(f, "Sort and filter", items, 760, (float)std::min((int)items.size(), 6) * 60 + 10,
-			"A game becomes a favourite, or is hidden, in its details (Triangle), under More. Hidden games are out of "
-			"the library and the search until \"Hidden games\" is shown here. The views after the list stand the "
-			"covers in space, as the Xbox 360's Aurora does; an Aurora layout file (.cfljson) put in " + shownRoot()
-			+ "layouts is offered here too, and the ES-DE themes in " + shownRoot() + "themes after them.");
+	items.push_back(action(icon::Gear, "More library settings", "", [] { push(Page::Settings, 0); }));
+	const Item *focused = panelList(f, "Sort and filter", items, 760, (float)std::min((int)items.size(), 8) * 60 + 10,
+			"Favourite or hide a game in its details (Triangle, More); hidden games come back with Show, Hidden "
+			"games. Aurora layouts (.cfljson) go in the layouts folder, ES-DE themes in the themes folder.");
 	standardHints(focused);
 }
 
@@ -612,7 +615,7 @@ void cardPage(Frame& f)
 			}
 			else
 				push(Page::Confirm, 0, 0, "Delete this save?", title + " is removed from the card. A copy of the card as it "
-						"is now is kept first (Settings, Games and network, Card backups).", [path, block] {
+						"is now is kept first (Settings, Games and saving, Card backups).", [path, block] {
 					OpenCard& card = openCard(path);
 					if (!card.ok)
 						return;
@@ -1420,8 +1423,8 @@ void safeStartPage(Frame& f)
 				options::saveFrontend();
 				inform("Done", "From the next start PSSwanStation stays in its sandbox and uses the files in its own folder.");
 			}));
-	items.push_back(action(icon::Paint, "The interface's settings back to the usual", "Everything under Interface, Picture, "
-			"Sound, Controllers and Shortcuts as it was at first: sizes, colours, the button map, the picture's "
+	items.push_back(action(icon::Paint, "The interface's settings back to the usual", "Everything under Library, Look, Picture, "
+			"Sound and Controls as it was at first: sizes, colours, the button map, the picture's "
 			"filters. The emulator's settings and your games' own are kept.", [] {
 				const options::Frontend before = options::frontend();
 				options::resetFrontend();
@@ -1828,7 +1831,7 @@ void shadersPage(Frame& f)
 	if (found.empty())
 		items.push_back(fact("None found", "", std::string("Put libretro slang presets (.slangp, with the .slang files and pictures "
 				"they use, as the collection has them) in ") + storage::UsbFolder + "/shaders on a USB drive, or in "
-				+ shownRoot() + "shaders. USB drives need \"USB drives\" on (Games and network)."));
+				+ shownRoot() + "shaders. USB drives need \"USB drives\" on (Games and saving)."));
 	for (const slangimport::Found& preset : found)
 	{
 		Item item = action(icon::Download, preset.name, "Compiles this preset on the console and adds it to the picture "
@@ -1866,9 +1869,9 @@ void shortcutsPage(Frame& f)
 		items.push_back(item);
 	};
 	row(icon::Forward, "R2", "Fast forward", "While both are held the game runs faster, without sound. How fast is set "
-			"under Settings, Shortcuts and rewind.");
+			"under Settings, Controls.");
 	row(icon::Backward, "L2", "Rewind", "While both are held the game goes backwards through the last while of play. It "
-			"must be switched on first (Settings, Shortcuts and rewind): the states it steps through are kept in "
+			"must be switched on first (Settings, Controls): the states it steps through are kept in "
 			"memory only while it is on.");
 	row(icon::Save, "R1", "Save a state", "To the slot the shortcuts use: the one saved to last, or chosen with OPTIONS and "
 			"Left or Right.");
@@ -1923,7 +1926,7 @@ bool gameShortcuts()
 	if (forward || back)
 		usedAsKey = true;
 	if (back && !host::rewinding() && !settings.rewind && hit(L2))
-		host::addMessage("Rewind is off: it is switched on under Settings, Shortcuts and rewind.", 4.0);
+		host::addMessage("Rewind is off: it is switched on under Settings, Controls.", 4.0);
 	host::setRewinding(back);
 	host::setFastForward(forward && !back);
 	if (hit(R1))
@@ -2757,7 +2760,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"stutter in that place. Between the game's pictures, the game answers the pad a refresh or two "
 				"later; ahead of them, it does not. With frame pacing by the clock, the screen shows where the game "
 				"is at each of its refreshes, at any rate (best with a variable refresh rate). Not while fast "
-				"forwarding or rewinding. The frame rate counter (Settings, Interface) shows the game's pictures "
+				"forwarding or rewinding. The frame rate counter (Settings, Picture) shows the game's pictures "
 				"and the screen's side by side." + running,
 				[] { display::forgetGenerated(); }));
 	}
@@ -2856,7 +2859,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 		{
 			Item item = action(icon::Camera, "Record what I press",
 					"A recording keeps what you press in a game, frame by frame, from the moment it starts; played back, "
-					"the game runs the same way again. Start a game, then come back here (Menu, Settings, Debug).", {},
+					"the game runs the same way again. Start a game, then come back here (Menu, Settings, System).", {},
 					false);
 			item.value = "Start a game first";
 			items.push_back(item);

@@ -472,10 +472,57 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 			step(1, hit(Down));
 		if (nav(Up))
 			step(-1, hit(Up));
+		// L2 and R2: the part before and the next part of a list in parts
+		// (under headers), else eight rows.
+		const bool parts = std::any_of(items.begin(), items.end(), [](const Item& i) { return i.header; });
+		const auto firstAfter = [&](int header) {
+			int i = header + 1;
+			while (i < count && !selectable(i))
+				i++;
+			return i < count ? i : -1;
+		};
 		if (nav(R2))
-			for (int n = 0; n < 8 && step(1, false); n++) {}
+		{
+			if (!parts)
+				for (int n = 0; n < 8 && step(1, false); n++) {}
+			else
+			{
+				int next = -1;
+				for (int i = f.cursor + 1; i < count && next < 0; i++)
+					if (items[i].header)
+						next = firstAfter(i);
+				if (next >= 0)
+					f.cursor = next;
+				else
+					while (step(1, false)) {}
+			}
+		}
 		if (nav(L2))
-			for (int n = 0; n < 8 && step(-1, false); n++) {}
+		{
+			if (!parts)
+				for (int n = 0; n < 8 && step(-1, false); n++) {}
+			else
+			{
+				int here = -1;
+				for (int i = f.cursor - 1; i >= 0 && here < 0; i--)
+					if (items[i].header)
+						here = i;
+				const int top = here >= 0 ? firstAfter(here) : -1;
+				if (top >= 0 && top < f.cursor)
+					f.cursor = top;
+				else
+				{
+					int before = -1;
+					for (int i = here - 1; i >= 0 && before < 0; i--)
+						if (items[i].header)
+							before = i;
+					if (before >= 0 && firstAfter(before) >= 0)
+						f.cursor = firstAfter(before);
+					else
+						while (step(-1, false)) {}
+				}
+			}
+		}
 
 		const Item& item = items[f.cursor];
 		const int direction = nav(Right) ? 1 : nav(Left) ? -1 : 0;
@@ -1079,7 +1126,7 @@ std::string factsLine(const gamedb::Info& info, bool makers)
 std::string usbHint()
 {
 	if (!options::frontend().usb)
-		return "USB drives are off. Turn them on in Settings, Games and network, then restart PSSwanStation.";
+		return "USB drives are off. Turn them on in Settings, Games and saving, then restart PSSwanStation.";
 	return library::sourceHint(library::Usb);
 }
 
@@ -1223,7 +1270,101 @@ void emptyLibrary(const std::string& hint, bool busy)
 }
 
 // The focused game's cover as the screen's light, one fading into the next.
-void libraryWash(const std::string& coverPath)
+// ------------------------------------------------------------ video previews
+
+// The library's own views play the game under the cursor's video once the
+// cursor has stayed on it a moment (Settings, Library): Shelves and List in
+// the cover's place, Covers and the views in space behind everything, as the
+// page's backdrop. The game is the one the last frame had under the cursor;
+// a frame late is not seen.
+struct Preview
+{
+	void *id = nullptr;		// the picture, or none
+	int width = 0, height = 0;
+	float alpha = 0;		// how far it has come in over the cover
+};
+Preview preview;
+
+namespace
+{
+std::string previewGame;		// the path of the game the cursor is on
+double previewSince = 0;
+std::string previewFile;
+double previewShownAt = -1;
+unsigned previewMedia = 0;
+
+double previewDelay()
+{
+	static const double seconds[4] = { 1, 2, 3, 5 };
+	return seconds[std::clamp(options::frontend().videoDelay, 0, 3)];
+}
+}
+
+// Called once a frame by the library with the game under the cursor (null:
+// none, or the library is not in front).
+void previewFrame(const library::Game *game)
+{
+	const options::Frontend& f = options::frontend();
+	const std::string path = game != nullptr ? game->path : std::string();
+	// Not asked for a moment (a game was played, a page was over the
+	// library): the wait starts again.
+	static double lastAsked = -1;
+	const bool gap = clock() - lastAsked > 0.25;
+	lastAsked = clock();
+	if (path != previewGame || media::generation() != previewMedia || gap)
+	{
+		if (path != previewGame || gap)
+			previewSince = clock();
+		previewGame = path;
+		previewMedia = media::generation();
+		previewFile = game != nullptr ? media::find(*game, "videos") : std::string();
+		previewShownAt = -1;
+	}
+	preview = Preview{};
+	if (game == nullptr || !f.videos || previewFile.empty() || motion() == MotionOff || clock() - previewSince < previewDelay()
+			|| !video::available())
+		return;
+	audio::setStreamVolume(f.videoVolume);
+	video::play(previewFile, true, f.videoVolume > 0);
+	int w = 0, h = 0;
+	void *id = video::picture(w, h);
+	if (id == nullptr || w <= 0 || h <= 0 || video::ended())
+		return;
+	if (previewShownAt < 0)
+		previewShownAt = clock();
+	preview.id = id;
+	preview.width = w;
+	preview.height = h;
+	preview.alpha = std::clamp((float)(clock() - previewShownAt) / 0.45f, 0.f, 1.f);
+}
+
+// Whether the video playing is this game's.
+bool previewIsOf(const library::Game& game)
+{
+	return preview.id != nullptr && game.path == previewGame;
+}
+
+// The video, filling the box with its shape kept (bars of black at the
+// sides or above), rounded as the cover is.
+void previewInBox(ImVec2 a, ImVec2 b, float rounding, float alpha)
+{
+	if (preview.id == nullptr || alpha <= 0.01f)
+		return;
+	const float bw = b.x - a.x, bh = b.y - a.y;
+	draw()->AddRectFilled(a, b, withAlpha(IM_COL32(0, 0, 0, 255), alpha), px(rounding));
+	const float aspect = (float)preview.width / preview.height;
+	float w = bw, h = bw / aspect;
+	if (h > bh)
+	{
+		h = bh;
+		w = bh * aspect;
+	}
+	const ImVec2 p0((a.x + b.x - w) * 0.5f, (a.y + b.y - h) * 0.5f), p1(p0.x + w, p0.y + h);
+	draw()->AddImageRounded(preview.id, p0, p1, ImVec2(0, 0), ImVec2(1, 1), withAlpha(IM_COL32_WHITE, alpha),
+			std::abs(w - bw) < 1 && std::abs(h - bh) < 1 ? px(rounding) : 0.f);
+}
+
+void libraryWash(const std::string& coverPath, bool videoBehind = false)
 {
 	static std::string current, previous;
 	static float fade = 1;
@@ -1239,6 +1380,19 @@ void libraryWash(const std::string& coverPath)
 		wash(image(previous), strength * (1.f - fade));
 	if (!current.empty())
 		wash(image(current), strength * fade);
+	// The game's video, over the whole page, the cover's way (cut to fill).
+	if (videoBehind && preview.id != nullptr)
+	{
+		const float sw = width(), sh = height();
+		const float aspect = (float)preview.width / preview.height;
+		float u = 0, v = 0;
+		if (sw / sh > aspect)
+			v = (1.f - aspect * sh / sw) * 0.5f;
+		else
+			u = (1.f - sw / sh / aspect) * 0.5f;
+		background()->AddImage(preview.id, ImVec2(0, 0), ImVec2(sw, sh), ImVec2(u, v), ImVec2(1 - u, 1 - v),
+				withAlpha(IM_COL32_WHITE, 0.4f * preview.alpha));
+	}
 	// Darker (in a light theme, lighter) towards the bottom, in the page's own
 	// colour.
 	const ImU32 page = theme().background;
@@ -1514,13 +1668,24 @@ void heroBlock(LibraryView& view, int index, const std::string& shelfTitle, floa
 	const Meta& meta = metaOf(view, index);
 
 	// The cover, floating, lit in the accent's colour.
+	// Once the game's video plays, the cover gives way to it, the box widening
+	// to the video's shape.
 	const float bob = motion() == MotionFull ? (float)std::sin(clock() * 0.8) * 6.f : 0.f;
-	const float side = 420, ax = W - ShelfMargin - side + slide * 1.6f, ay = 132 + bob;
-	glowAt(at(ax + side * 0.5f, ay + side * 0.5f), px(side * 0.62f), withAlpha(t.accent, 0.22f * alpha));
-	draw()->AddRectFilled(at(ax + 14, ay + 22), at(ax + side - 14, ay + side + 12), withAlpha(IM_COL32(0, 0, 0, 255), 0.22f * alpha),
+	const float side = 420;
+	const float video = previewIsOf(game) ? preview.alpha : 0.f;
+	const float boxW = video > 0 ? side + (std::clamp(side * preview.width / preview.height, side, 640.f) - side) * video : side;
+	const float ax = W - ShelfMargin - boxW + slide * 1.6f, ay = 132 + bob;
+	glowAt(at(ax + boxW * 0.5f, ay + side * 0.5f), px(boxW * 0.62f), withAlpha(t.accent, 0.22f * alpha));
+	draw()->AddRectFilled(at(ax + 14, ay + 22), at(ax + boxW - 14, ay + side + 12), withAlpha(IM_COL32(0, 0, 0, 255), 0.22f * alpha),
 			px(40));
-	shelfCard(view, index, at(ax, ay), at(ax + side, ay + side), 34, alpha);
-	outline(at(ax, ay), at(ax + side, ay + side), withAlpha(IM_COL32_WHITE, 0.16f * alpha), 34, 2);
+	if (video < 0.99f)
+	{
+		const float cx = ax + (boxW - side) * 0.5f;
+		shelfCard(view, index, at(cx, ay), at(cx + side, ay + side), 34, alpha * (1.f - video));
+	}
+	if (video > 0)
+		previewInBox(at(ax, ay), at(ax + boxW, ay + side), 34, alpha * video);
+	outline(at(ax, ay), at(ax + boxW, ay + side), withAlpha(IM_COL32_WHITE, 0.16f * alpha), 34, 2);
 
 	const float x = ShelfMargin + slide, wide = ax - x - 70;
 	text(at(x, 168), withAlpha(t.accent, alpha), shelfTitle, Bold, 20);
@@ -1803,6 +1968,14 @@ void libraryPage(bool active)
 	const bool shelves = viewMode == 0 || (viewMode >= 3 && !flow && !esde);
 	const bool grid = viewMode == 1;
 	const float top = 128, bottom = H - 64;
+	// The video of the game the cursor was on (an ES-DE theme plays its own).
+	static library::Game previewFocus;
+	static bool previewFocusKnown = false;
+	if (active)
+		previewFrame(!esde && previewFocusKnown ? &previewFocus : nullptr);
+	else
+		preview = Preview{};
+	previewFocusKnown = false;
 	coverLookups = 0;
 	focusedAt = ImVec2(0, 0);
 	int focus = -1;		// the game under the cursor
@@ -1928,7 +2101,7 @@ void libraryPage(bool active)
 		flowView(viewMode - 3, games, view.cursor, active, view.fresh, top, bottom);
 		view.fresh = false;
 		focus = view.cursor;
-		libraryWash(view.cover[focus]);
+		libraryWash(view.cover[focus], true);
 	}
 	else if (shelves)
 	{
@@ -1994,7 +2167,7 @@ void libraryPage(bool active)
 			}
 		}
 		focus = view.inShelf ? view.recent[view.shelfCursor] : view.cursor;
-		libraryWash(view.cover[focus]);
+		libraryWash(view.cover[focus], true);
 
 		// Where things are, from the top of what scrolls.
 		const float gridTop = shelf > 0 ? labelH + shelfRowH + labelH : 0;
@@ -2121,12 +2294,15 @@ void libraryPage(bool active)
 		const float px0 = x1 + 40, px1 = W - 64;
 		const float side = std::min(px1 - px0, 420.f);
 		const Image cover = coverOf(view, view.cursor);
-		if (driveArt(at(px0, top), at(px0 + side, top + side), game.path, game.name, cover))
+		if (preview.alpha >= 0.99f)
+			;
+		else if (driveArt(at(px0, top), at(px0 + side, top + side), game.path, game.name, cover))
 			;
 		else if (cover.id != nullptr)
 			imageFit(cover, at(px0, top), at(px0 + side, top + side), 12);
 		else
 			coverPlaceholder(at(px0, top), at(px0 + side, top + side), game.name, game.region);
+		previewInBox(at(px0, top), at(px0 + side, top + side), 12, preview.alpha);
 		float y = top + side + 22;
 		y += toUnits(textWrapped(at(px0, y), px(px1 - px0), t.text, game.name, Bold, 28, px(76))) + 8;
 		std::string facts = game.region;
@@ -2136,6 +2312,12 @@ void libraryPage(bool active)
 		y += 38;
 		if (meta.known)
 			textWrapped(at(px0, y), px(px1 - px0), t.dim, meta.info.description, Body, 21, px(bottom - 24 - y));
+	}
+
+	if (focus >= 0 && focus < count)
+	{
+		previewFocus = view.games[(size_t)focus];
+		previewFocusKnown = true;
 	}
 
 	// The swan in the header follows the cursor: it turns to the game, and
@@ -2203,45 +2385,34 @@ struct SettingsCategory
 {
 	std::string name, key;
 	const char *icon;
-	int kind;	// 0..4 the frontend's pages, 10 a category of the core, 11 its uncategorised, 20 about
+	// 0 library, 1 picture, 2 sound, 3 controls, 4 games and saving, 7 system,
+	// 8 look (frontendItems; ui_more.cpp's moreSettings for the rest), 12 the
+	// emulator (every category of the core's options), 20 about
+	int kind;
 	std::string info;
 };
 
+// Nine sections: what is set most often first, the emulator's own options
+// together in one, About last.
 std::vector<SettingsCategory> settingsCategories(bool forGame)
 {
 	std::vector<SettingsCategory> list;
 	if (!forGame)
 	{
-		list.push_back({ "Interface", "", icon::Paint, 0, "" });
-		list.push_back({ "Picture", "", icon::Screen, 1, "" });
+		list.push_back({ "Library", "", icon::Grid, 0, "" });
+		list.push_back({ "Look", "", icon::Paint, 8, "" });
 		list.push_back({ "Sound", "", icon::Volume, 2, "" });
-		list.push_back({ "Controllers", "", icon::Gamepad, 3, "" });
-		list.push_back({ "Shortcuts and rewind", "", icon::Forward, 5, "" });
-		list.push_back({ "Games and network", "", icon::Server, 4, "" });
-		list.push_back({ "RetroAchievements", "", icon::Trophy, 6, "" });
+		list.push_back({ "Picture", "", icon::Screen, 1, "" });
+		list.push_back({ "Controls", "", icon::Gamepad, 3, "" });
+		list.push_back({ "Games and saving", "", icon::Server, 4, "" });
 	}
 	else
 		list.push_back({ "Picture", "", icon::Screen, 1, "How this game is put on the screen: scaling, the picture "
 				"tube, what is beside the picture, pacing and frame generation, for this game alone." });
-	bool uncategorised = false;
-	for (const options::Option& option : options::all())
-		if (option.category.empty())
-			uncategorised = true;
-	if (uncategorised)
-		list.push_back({ "Emulator", "", icon::Chip, 11, "" });
-	for (const options::Category& category : options::categories())
-	{
-		std::string name = category.name;
-		const size_t tail = name.rfind(" Settings");
-		if (tail != std::string::npos && tail + 9 == name.size())
-			name.erase(tail);
-		const char *symbol = category.key == "console" ? icon::Chip : category.key == "enhancement" ? icon::Magic
-				: category.key == "display" ? icon::Picture : category.key == "port" ? icon::Card : icon::Wrench;
-		list.push_back({ name, category.key, symbol, 10, category.info });
-	}
+	list.push_back({ "Emulator", "", icon::Chip, 12, forGame ? "The emulator's options for this game alone." : "" });
 	if (!forGame)
 	{
-		list.push_back({ "Debug", "", icon::Wrench, 7, "" });
+		list.push_back({ "System", "", icon::Wrench, 7, "" });
 		list.push_back({ "About", "", icon::Info, 20, "" });
 	}
 	return list;
@@ -2281,46 +2452,71 @@ Item choice(const std::string& label, int current, std::vector<std::string> name
 	return item;
 }
 
+void videoSettingItems(std::vector<Item>& items, bool withDelay)
+{
+	options::Frontend& f = options::frontend();
+	items.push_back(toggle("Game videos", &f.videos,
+			"Plays the game's video (ES-DE's videos folder: videos/<file name>.mp4 in the games folder, media/videos or "
+			"downloaded_media/psx/videos, on the console, a USB drive or a network share). Shelves and List play it in "
+			"the cover's place, Covers and the views in space behind the covers, ES-DE themes where the theme puts it. "
+			"MP4 with H.264 pictures.",
+			[] {
+				if (!options::frontend().videos)
+					video::stop();
+			}));
+	{
+		Item item = choice("Video sound", f.videoVolume / 20, { "Off", "20%", "40%", "60%", "80%", "100%" },
+				"How loud the videos are. The menu music is lowered while one plays.",
+				[](int i) { options::frontend().videoVolume = i * 20; });
+		item.enabled = f.videos;
+		items.push_back(std::move(item));
+	}
+	if (withDelay)
+	{
+		Item item = choice("Video starts after", f.videoDelay, { "1 second", "2 seconds", "3 seconds", "5 seconds" },
+				"How long the cursor stays on a game before its video starts, in the library's own views. An ES-DE "
+				"theme sets its own.",
+				[](int i) { options::frontend().videoDelay = i; });
+		item.enabled = f.videos;
+		items.push_back(std::move(item));
+	}
+}
+
 void frontendItems(int kind, std::vector<Item>& items)
 {
 	options::Frontend& f = options::frontend();
 	switch (kind)
 	{
 	case 0:
-		items.push_back(header("Library"));
+		items.push_back(header("View"));
 		{
 			// The same list as the library's own (Square, View).
 			const std::vector<std::string> names = libraryViewNames();
 			items.push_back(choice("Library view", libraryViewChoice(), names,
-					"How the library shows your games. Shelves: the game under the cursor large at the top, and "
-					"shelves under it of what was played lately, your favourites and every game. Covers: a grid, with "
-					"what was played lately on a shelf above it. List: names, with the cover and the description beside "
-					"them. Flow, Row, Wall, Cascade and Wheel stand the covers in space as cases, in the manner of "
-					"Aurora on the Xbox 360: a flow that leans towards the one under the cursor, a flat row, three rows "
-					"across the screen, a line going away to the right, a wheel at the right. Aurora layout files "
-					"(.cfljson) put in " + shownRoot() + "layouts are in the list too, after those, and then the ES-DE "
-					"themes in " + shownRoot() + "themes (\"ES-DE: \" and the theme's name), which draw the whole "
-					"library as the theme does in ES-DE. The same choice is in the library itself, under Square.",
+					"Shelves: the game large at the top, shelves of recent, favourite and all games under it. Covers: "
+					"a grid. List: names, the cover beside them. Flow, Row, Wall, Cascade and Wheel: the covers stand in "
+					"space, as in Aurora on the Xbox 360. Then your Aurora layouts (layouts folder) and ES-DE themes "
+					"(themes folder). Also under Square in the library.",
 					[](int i) { chooseLibraryView(i); }));
 		}
-		items.push_back(action(icon::Paint, "ES-DE themes", "Which ES-DE theme the library is drawn in, its variant, "
-				"colours and font size, and themes to fetch.", [] { push(Page::Themes); }));
+		items.push_back(action(icon::Paint, "ES-DE themes", "The ES-DE theme, its variant, colours and font size, and "
+				"themes to download.", [] { push(Page::Themes); }));
+		items.push_back(header("Videos"));
+		videoSettingItems(items, true);
+		items.push_back(header("Covers and header"));
 		items.push_back(toggle("Download covers", &f.covers,
-				"Box art for games that have none in the covers folder is fetched from the libretro thumbnails "
-				"collection, by the game's file name. Your own pictures (covers/<file name>.png or .jpg) are never "
-				"replaced."));
-		items.push_back(toggle("Clock", &f.clock, "The time, in the library's header. It is the console's clock; a console "
-				"whose clock was never set shows none."));
-		items.push_back(toggle("Ask for updates at start", &f.updateCheck, "Asks the releases page, when PSSwanStation "
-				"starts, whether a newer build is out, and says so in the library's header. Nothing is fetched until "
-				"you say so (Menu, Update)."));
-
-		items.push_back(header("Look"));
+				"Fetches box art from the libretro thumbnails collection for games that have none. Your own pictures "
+				"(covers/<file name>.png or .jpg) are never replaced."));
+		items.push_back(toggle("Clock", &f.clock, "The console's time in the library's header."));
+		items.push_back(toggle("Check for updates", &f.updateCheck, "Asks at start whether a newer build is out and "
+				"says so in the header. Nothing is downloaded until you choose Update in the menu."));
+		break;
+	case 8:
+		items.push_back(header("Interface"));
 		items.push_back(choice("Theme", std::clamp(f.theme, 0, (int)themeNames().size() - 1), themeNames(),
-				"How the whole interface looks: its colours, its panels (frosted glass, soft shadows, hard "
-				"outlines, bevels, pixels, a pen), its type, how things move and which sounds it makes. "
-				"PSSwanStation is the title's own; the others are the thirty of the interface kit "
-				"(BlackBearReloaded's ps5-homebrew-ui). Now: " + themeAbout(f.theme),
+				"The colours, panels, type, motion and sounds of the whole interface. PSSwanStation is the title's own; "
+				"the others are the interface kit's thirty (BlackBearReloaded's ps5-homebrew-ui). Now: "
+				+ themeAbout(f.theme),
 				[](int i) { options::frontend().theme = i; }));
 		{
 			Item item = choice("Accent colour", f.accent,
@@ -2330,60 +2526,47 @@ void frontendItems(int kind, std::vector<Item>& items)
 							names.push_back(accentName(i));
 						return names;
 					}(),
-					"The colour of the cursor and the highlights, in the PSSwanStation theme.",
+					"The cursor's and the highlights' colour, in the PSSwanStation theme.",
 					[](int i) { options::frontend().accent = i; });
 			if (f.theme != 0)
 			{
 				item.enabled = false;
 				item.value = "The theme's own";
-				item.info += " The other themes bring their own.";
 			}
 			items.push_back(std::move(item));
 		}
-		items.push_back(choice("Interface size", std::clamp((f.uiScale - 80) / 10, 0, 6),
+		items.push_back(choice("Size", std::clamp((f.uiScale - 80) / 10, 0, 6),
 				{ "80%", "90%", "100%", "110%", "120%", "130%", "140%" },
-				"Makes the text and everything else of the interface larger or smaller. At the largest sizes long "
-				"names are cut short.", [](int i) { options::frontend().uiScale = 80 + i * 10; }));
-		items.push_back(toggle("High contrast", &f.highContrast,
-				"Black (or, in a light theme, white) behind the menus, the text at its strongest and the cursor's row "
-				"stronger, whatever the theme: easier to read from the sofa or with weaker sight."));
-		items.push_back(toggle("Colour-blind safe colours", &f.colourBlind,
-				"What is good and what is bad (ahead or behind in the speedrun timer, an achievement earned, a check "
-				"that passed) in blue and orange, which are told apart with every common colour blindness, instead "
-				"of green and red."));
+				"Makes the text and everything else larger or smaller.",
+				[](int i) { options::frontend().uiScale = 80 + i * 10; }));
 		items.push_back(choice("Animations", f.animations, { "Full", "Reduced", "Off" },
-				"Full: the swan flies from the start-up screen to its corner, lives while it sits there, "
-				"and flies at the screen when a game starts; lists and the themes' backdrops move. Reduced: the "
-				"swan stays still, the start-up screen only fades, and a game starts at once. Off: nothing moves "
-				"at all - no start-up screen, and lists and pictures jump to their places.",
+				"Full: everything moves. Reduced: the swan stays still, the start-up only fades and games start at "
+				"once. Off: nothing moves, and no videos play.",
 				[](int i) { options::frontend().animations = i; }));
-
+		items.push_back(header("Easier to see"));
+		items.push_back(toggle("High contrast", &f.highContrast,
+				"Solid panels behind the menus, the strongest text and a stronger cursor, whatever the theme."));
+		items.push_back(toggle("Colour-blind safe colours", &f.colourBlind,
+				"Good and bad (ahead or behind, earned, passed) in blue and orange instead of green and red."));
 		items.push_back(header("The swan"));
 		items.push_back(choice("Swan", f.swanMoves, swanMoveNames(),
-				"What the swan in the corner does. Lively: it looks about, feeds, preens, stretches its wings and "
-				"drifts on the water; it turns its head to the game under the cursor, starts when you scroll fast, "
-				"cheers when a game starts, and dozes off when nothing is pressed for a while. Calm: it only looks "
-				"about, now and then. Still: it sits as the mark does. With the animations reduced or off it is "
-				"always still.",
+				"Lively: it looks about, feeds, preens, follows the cursor and dozes when nothing is pressed. Calm: it "
+				"only looks about. Still: it sits as the mark does.",
 				[](int i) { options::frontend().swanMoves = i; }));
 		items.push_back(toggle("Swan dresses for the theme", &f.swanThemed,
-				"The swan takes the theme's look: an inked outline in Brutal, Sketch, Hazard and Contrast (and a "
-				"thin one on light pages), a wireframe in Blueprint, pastel feathers in Candy and Clay, and square "
-				"pixels in Pixel. Off: always the white swan of the mark.", nullptr));
+				"The swan takes the theme's look (an inked outline, a wireframe, pastel feathers, pixels). Off: always "
+				"the white swan.", nullptr));
 		items.push_back(choice("Seasonal touches", f.swanSeason, swanSeasonNames(),
-				"By the date, the swan wears a scarf in winter, a witch's hat at Halloween, a red hat through "
-				"December to Christmas and a party hat at New Year. Or choose one to wear now, or none.",
+				"A scarf in winter, a witch's hat at Halloween, a red hat at Christmas, a party hat at New Year: by the "
+				"date, or one chosen now, or none.",
 				[](int i) { options::frontend().swanSeason = i; }));
 		{
 			Item item = toggle("Start-up animation", &f.splash,
-					"How PSSwanStation opens: the swan paddles along the bottom of the screen, takes the lift up to "
-					"the middle, and flies to its corner as the library comes in. Any button skips it. Its sound is "
-					"under Sound.");
+					"The swan paddles in, takes the lift up and flies to its corner. Any button skips it.");
 			if (f.animations == 2)
 			{
 				item.enabled = false;
 				item.value = "Off";
-				item.info += " Not shown while Animations is Off.";
 			}
 			items.push_back(std::move(item));
 		}
@@ -2393,82 +2576,84 @@ void frontendItems(int kind, std::vector<Item>& items)
 			for (int i = 0; i < 5; i++)
 				if (minutes[i] == f.idleMinutes)
 					now_ = i;
-			items.push_back(choice("The swan takes the screen", now_, { "Never", "After 2 minutes", "After 5 minutes",
+			items.push_back(choice("Screen saver", now_, { "Never", "After 2 minutes", "After 5 minutes",
 					"After 10 minutes", "After 20 minutes" },
-					"When no button was pressed for this long in the library or a menu, the screen goes dark and the swan "
-					"swims across it, which spares a screen that keeps what it shows for long. Any button brings the "
-					"menus back. Not while a game is on the screen.",
+					"When nothing is pressed in the menus for this long, the screen goes dark and the swan swims across "
+					"it. Any button brings the menus back. Never while a game is on the screen.",
 					[](int i) { options::frontend().idleMinutes = minutes[i]; }));
 		}
-
-		items.push_back(header("Buttons and notices"));
-		items.push_back(choice("Confirm button", f.swapConfirm ? 1 : 0, { "Cross", "Circle" },
-				"Which button confirms in the menus; the other one goes back. Games are not affected.",
-				[](int i) { options::frontend().swapConfirm = i != 0; }));
-		items.push_back(toggle("Show frame rate", &f.showFps,
-				"Shows, in a corner of the game, how many frames a second the emulator runs and how that compares "
-				"with the game's own speed."));
-		items.push_back(toggle("Console notices", &f.notifications,
-				"Lets PSSwanStation use the console's pop-up notices for things that matter outside its own screen "
-				"(a start-up problem, for one).",
-				[] { diag::setNotifications(options::frontend().notifications); }));
 		break;
 	case 2:
-		items.push_back(header("The game"));
-		items.push_back(choice("Volume", f.volume / 5,
+		items.push_back(header("Volume"));
+		items.push_back(choice("Game", f.volume / 5,
 				[] {
 					std::vector<std::string> names;
 					for (int v = 0; v <= 100; v += 5)
 						names.push_back(format("%d%%", v));
 					return names;
 				}(),
-				"The loudness of the game's sound. The menus' sounds and music are under it.", [](int i) {
+				"How loud the game is. Everything below follows it.", [](int i) {
 					options::frontend().volume = i * 5;
 					audio::setVolume(i * 5);
 				}));
-
-		items.push_back(header("The menus"));
-		items.push_back(choice("Sound set", f.soundSet, sound::setNames(),
-				"What the menus sound like. As the theme has it: each theme brings its own. PSSwanStation: the "
-				"title's own drops of water, computed when it starts. Glass: soft chimes in one key. Paper: warm, "
-				"wooden, tactile. Glass and Paper are the interface kit's recordings (BlackBearReloaded's "
-				"ps5-homebrew-ui); a sound one of them has not recorded is the other's.",
-				[](int i) { options::frontend().soundSet = i; sound::play(sound::Toggle); }));
-		items.push_back(choice("Interface sounds", f.soundVolume / 10,
+		items.push_back(choice("Menu sounds", f.soundVolume / 10,
 				{ "Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
-				"How loud the small sounds of the menus are (the cursor moving, a choice, a step back, a letter "
-				"typed), under the Volume above.",
+				"The cursor moving, a choice, a step back.",
 				[](int i) { options::frontend().soundVolume = i * 10; sound::play(sound::Move); }));
+		items.push_back(choice("Music", f.musicVolume / 10,
+				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
+				"The menu music.",
+				[](int i) { options::frontend().musicVolume = i * 10; }));
 		{
-			Item item = toggle("Start-up sound", &f.splashSound,
-					"What the start-up animation sounds like: the water, the lift and its bell, the swan's wings. "
-					"It follows the Volume above.");
+			Item item = choice("Videos", f.videoVolume / 20, { "Off", "20%", "40%", "60%", "80%", "100%" },
+					"The games' videos in the library (Library, Videos).",
+					[](int i) { options::frontend().videoVolume = i * 20; });
+			item.enabled = f.videos;
+			items.push_back(std::move(item));
+		}
+		items.push_back(header("What plays"));
+		items.push_back(choice("Menu music", f.music, sound::musicNames(),
+				"The title's own: a quiet piece made when it starts. My music folder: every .ogg, .mp3 and .wav in "
+				+ shownRoot() + "music, shuffled. The interface kit's songs: its three.\n\n"
+				+ (f.music >= 2 ? sound::musicStatus() : std::string()),
+				[](int i) { options::frontend().music = i; }));
+		items.push_back(choice("Sound set", f.soundSet, sound::setNames(),
+				"What the menus sound like: as the theme has it, the title's own drops of water, or the interface "
+				"kit's Glass (soft chimes) or Paper (warm, wooden).",
+				[](int i) { options::frontend().soundSet = i; sound::play(sound::Toggle); }));
+		{
+			Item item = toggle("Start-up sound", &f.splashSound, "The water, the lift and its bell, the swan's wings.");
 			if (f.animations == 2 || !f.splash)
 			{
 				item.enabled = false;
 				item.value = "Off";
-				item.info += f.animations == 2 ? " Not heard while Animations is Off (Interface)."
-						: " Not heard while the start-up animation is off (Interface).";
 			}
 			items.push_back(std::move(item));
 		}
-
-		items.push_back(header("Music"));
-		items.push_back(choice("Menu music", f.music, sound::musicNames(),
-				"Music while the library or a menu has the screen. The title's own is a quiet piece computed when it "
-				"is first played, like its sounds. My music folder: every .ogg, .mp3 and .wav in " + shownRoot()
-				+ "music, one after another in an order shuffled at each start (the first six minutes of each). The "
-				"interface kit's songs: its three, First Light, Open Strings and Quiet Hours, the same way.\n\n"
-				+ (f.music >= 2 ? sound::musicStatus() : std::string()),
-				[](int i) { options::frontend().music = i; }));
-		items.push_back(choice("Music volume", f.musicVolume / 10,
-				{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
-				"How loud the menus' music is, under the Volume above.",
-				[](int i) { options::frontend().musicVolume = i * 10; }));
+		break;
+	case 3:
+		items.push_back(header("Menus"));
+		items.push_back(choice("Confirm button", f.swapConfirm ? 1 : 0, { "Cross", "Circle" },
+				"Which button confirms in the menus; the other goes back. Games are not affected.",
+				[](int i) { options::frontend().swapConfirm = i != 0; }));
+		moreSettings(3, items);
+		moreSettings(5, items);
+		break;
+	case 4:
+		moreSettings(4, items);
+		items.push_back(header("RetroAchievements"));
+		moreSettings(6, items);
+		break;
+	case 7:
+		items.push_back(header("Notices"));
+		items.push_back(toggle("Console notices", &f.notifications,
+				"Lets PSSwanStation use the console's pop-up notices for things that matter outside its screen (a "
+				"start-up problem).",
+				[] { diag::setNotifications(options::frontend().notifications); }));
+		items.push_back(header("Debug"));
+		moreSettings(7, items);
 		break;
 	default:
-		// Controllers, games and network, shortcuts, RetroAchievements and
-		// debug are in ui_more.cpp.
 		moreSettings(kind, items);
 		break;
 	}
@@ -2605,6 +2790,29 @@ void aboutItems(std::vector<Item>& items)
 			"of parts and licences is in the title folder's licenses folder."));
 }
 
+// Every category of the core's options in one list, each under its name.
+void emulatorItems(bool forGame, std::vector<Item>& items)
+{
+	bool uncategorised = false;
+	for (const options::Option& option : options::all())
+		if (option.category.empty())
+			uncategorised = true;
+	if (uncategorised)
+	{
+		items.push_back(header("General"));
+		optionItems("", true, forGame, items);
+	}
+	for (const options::Category& category : options::categories())
+	{
+		std::string name = category.name;
+		const size_t tail = name.rfind(" Settings");
+		if (tail != std::string::npos && tail + 9 == name.size())
+			name.erase(tail);
+		items.push_back(header(name));
+		optionItems(category.key, false, forGame, items);
+	}
+}
+
 void settingsPage(Frame& f)
 {
 	const Theme& t = theme();
@@ -2655,13 +2863,21 @@ void settingsPage(Frame& f)
 
 	std::vector<Item> items;
 	if (category.kind == 1)
+	{
 		pictureItems(forGame, items);
+		if (!forGame)
+		{
+			items.push_back(header("On the screen"));
+			items.push_back(toggle("Show frame rate", &options::frontend().showFps,
+					"Frames a second in a corner of the game, and how that compares with the game's own speed."));
+		}
+	}
 	else if (category.kind < 10)
 		frontendItems(category.kind, items);
 	else if (category.kind == 20)
 		aboutItems(items);
 	else
-		optionItems(category.key, category.kind == 11, forGame, items);
+		emulatorItems(forGame, items);
 
 	const float lx0 = 428, lx1 = W - 560;
 	panel(at(lx0, top), at(lx1, bottom), t.panel, 16);
@@ -2686,6 +2902,8 @@ void settingsPage(Frame& f)
 
 	std::vector<Hint> hints;
 	hints.push_back({ L1 | R1, "Section" });
+	if (std::count_if(items.begin(), items.end(), [](const Item& i) { return i.header; }) > 1)
+		hints.push_back({ L2 | R2, "Part" });
 	if (focused != nullptr && !focused->choices.empty())
 		hints.push_back({ Left | Right, "Change" });
 	if (focused != nullptr && focused->alt)
@@ -2743,30 +2961,29 @@ void resume()
 void mainMenuPage(Frame& f)
 {
 	std::vector<Item> items;
+	// Settings first: what this menu is opened for most.
+	items.push_back(action(icon::Gear, "Settings", "The library and its look, sound, picture, controls, games and "
+			"saving, and the emulator's own options.", [] { push(Page::Settings); }));
 	items.push_back(header("Games"));
-	items.push_back(action(icon::Search, "Search", "Finds a game by a part of its name, in the games folder, on the USB "
-			"drives and on the network together. From the library: press the touch pad.", [] {
+	items.push_back(action(icon::Search, "Search", "Finds a game by a part of its name, everywhere at once. In the "
+			"library: the touch pad.", [] {
 				pop();
 				openSearch();
 			}));
+	items.push_back(action(icon::Card, "Memory cards", "The saves on each card: copy, delete, bring in or put out "
+			"as files, or go back to an earlier copy of a card.", [] { push(Page::Cards); }));
 	items.push_back(action(icon::Sync, "Scan for games", "Looks through the games folder, the USB drives and the "
 			"network share again.", [] {
 				scanEverything();
 				pop();
 			}));
-	items.push_back(action(icon::Card, "Memory cards", "What is saved on each memory card: copy a save to another "
-			"card, delete it, take saves in from files and put them out as files, and go back to an earlier copy "
-			"of a card.", [] { push(Page::Cards); }));
-	items.push_back(action(icon::Chip, "Start the BIOS", "Starts the PlayStation without a disc: the memory card "
-			"manager and the CD player of an original BIOS, when one is in the bios folder.", [] { startBios(); }));
-
+	items.push_back(action(icon::Chip, "Start the BIOS", "The PlayStation without a disc: an original BIOS's memory "
+			"card manager and CD player, when one is in the bios folder.", [] { startBios(); }));
 	items.push_back(header("PSSwanStation"));
-	items.push_back(action(icon::Gear, "Settings", "The interface, the picture and the sound, controllers, where "
-			"games come from, and every setting of the emulator.", [] { push(Page::Settings); }));
 	{
 		const update::Status newer = update::status();
-		Item item = action(icon::Download, "Update", "Asks the releases page whether a newer build is out, and puts "
-				"it in place of this one. Your games, saves and settings are not touched.", [] { push(Page::Update); });
+		Item item = action(icon::Download, "Update", "Looks for a newer build and puts it in place of this one. Your "
+				"games, saves and settings are not touched.", [] { push(Page::Update); });
 		if (newer.state == update::State::Available || newer.state == update::State::Ready)
 			item.value = format("Build %d is out", newer.build);
 		items.push_back(item);
@@ -3293,12 +3510,20 @@ void detailsPage(Frame& f)
 	}
 	if (cover.id == nullptr)
 		cover = image(det.cover);
-	if (driveArt(at(cx, y + 48), at(cx + cs, y + 48 + cs), game.path, game.name, cover, 1.f, false))
+	// The game's video, in the cover's place (not over a saved state's picture).
+	const bool previewHere = f.a != TabStates && !stack.empty() && &stack.back() == &f;
+	if (previewHere)
+		previewFrame(&game);
+	const float videoIn = previewHere && previewIsOf(game) ? preview.alpha : 0.f;
+	if (videoIn >= 0.99f)
+		;
+	else if (driveArt(at(cx, y + 48), at(cx + cs, y + 48 + cs), game.path, game.name, cover, 1.f, false))
 		;
 	else if (cover.id != nullptr)
 		imageFit(cover, at(cx, y + 48), at(cx + cs, y + 48 + cs), 14);
 	else
 		coverPlaceholder(at(cx, y + 48), at(cx + cs, y + 48 + cs), game.name, game.region);
+	previewInBox(at(cx, y + 48), at(cx + cs, y + 48 + cs), 14, videoIn);
 	float ly = y + 48 + cs + 22;
 	textFit(at(cx, ly), px(cs), t.faint, baseName(detailsDiscPath()), Body, 18);
 	ly += 32;

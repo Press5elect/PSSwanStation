@@ -14,7 +14,7 @@
 	computer straight into the library, without FTP).
 
 	Everything but the page asks for the key, which the address in the QR code
-	carries (Settings, Games and network): another device on the network, or a
+	carries (Settings, Games and saving): another device on the network, or a
 	page in someone's browser, cannot use the panel without it. The key is
 	kept in data/web.cfg and a new one can be made. network.cfg (the share's
 	password) and RetroAchievements' key are never served.
@@ -551,7 +551,7 @@ void handle(int fd)
 			answer(fd, 403, "text/html; charset=utf-8", "<!doctype html><meta charset=utf-8><meta name=viewport "
 					"content='width=device-width'><title>PSSwanStation</title><body style='font-family:sans-serif;"
 					"background:#0e121e;color:#eef2fa;padding:24px'><h2>PSSwanStation</h2><p>Open this page from the QR "
-					"code PSSwanStation shows (Settings, Games and network, Phone and web control): its address "
+					"code PSSwanStation shows (Settings, Games and saving, Phone and web control): its address "
 					"carries the key.</p>");
 		else
 			answer(fd, 200, "text/html; charset=utf-8", PageHtml);
