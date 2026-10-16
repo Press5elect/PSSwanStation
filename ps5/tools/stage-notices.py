@@ -38,6 +38,7 @@ def main():
     slang = Path(sys.argv[11]) if len(sys.argv) > 11 else src.parent / "deps-src/slang-shaders"
     glslang = Path(sys.argv[12]) if len(sys.argv) > 12 else src.parent / "deps-src/glslang"
     mbedtls = Path(sys.argv[13]) if len(sys.argv) > 13 else src.parent / "deps-src/mbedtls-3.6.7"
+    ffmpeg = Path(sys.argv[14]) if len(sys.argv) > 14 else src.parent / "deps-src/ffmpeg-n9.0.2"
     parts = []
     title = at(src, "https://github.com/Press5elect/PSSwanStation")
     parts.append(dict(
@@ -95,6 +96,10 @@ def main():
     parts.append(dict(id="mbedtls", name="mbedTLS 3.6 (HTTPS once the sandbox elevator has run: RetroAchievements, "
                       "covers, the updater)", licence="Apache-2.0 (licenses/Apache-2.0.txt)", artifacts=["eboot.bin"],
                       source=at(mbedtls)))
+    parts.append(dict(id="ffmpeg", name="FFmpeg 9.0.2 (ES-DE themes' videos): libavformat with the MP4 demuxer, libavcodec "
+                      "with the H.264, AAC and MP3 decoders and their parsers, and libavutil, configured by "
+                      "ps5/tools/build-ffmpeg.sh", licence="LGPL-2.1-or-later (licenses/LGPL-2.1.txt)",
+                      artifacts=["eboot.bin"], source=at(ffmpeg, "https://github.com/FFmpeg/FFmpeg")))
     parts.append(dict(id="glslang", name="glslang (shader presets brought in from a USB drive are compiled with it)",
                       licence="BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache-2.0 and GPL-3.0-or-later with the "
                               "Bison exception (licenses/glslang-LICENSE.txt)", artifacts=["eboot.bin"], source=at(glslang)))

@@ -61,11 +61,12 @@ Build 23 (not released yet)
     thumbnails collection with "Download covers" on.
   - Videos: a theme's video element plays the game's video
     (media/videos/<file name>.mp4, as ES-DE keeps them) after the theme's
-    delay, with its sound under the lowered menu music, through the
-    console's own video player (AvPlayer): no video decoder is part of the
-    title. "ES-DE themes" switches videos and their sound on and off. Not
-    yet tried on a console: the boot log's "video:" lines say what the
-    player did.
+    delay, with its sound under the lowered menu music. The console refuses
+    a homebrew title its own video player, so PSSwanStation decodes them
+    itself with FFmpeg 9.0.2's MP4 demuxer and H.264, AAC and MP3 decoders
+    (LGPL-2.1-or-later; their source is published with each release).
+    "ES-DE themes" switches videos and their sound on and off; the boot
+    log's "video:" lines say what each video was and why one did not play.
   - Ratings are not shown, and the system view is not used.
   - Pictures and videos are found in ES-DE's media folders wherever they
     are: the title's folder, a USB drive, and every games folder (the

@@ -45,6 +45,14 @@ libsmb2                      LGPL-2.1         LGPL-2.1.txt             github.co
 libnfs                       LGPL-2.1;        LGPL-2.1.txt,            github.com/sahlberg/libnfs
                              protocol files   BSD-2-Clause.txt
                              BSD-2-Clause
+FFmpeg 9.0.2 (ES-DE themes' LGPL-2.1         LGPL-2.1.txt             github.com/FFmpeg/FFmpeg at n9.0.2: libavformat
+videos): libavformat,                                                  (the MP4 demuxer), libavcodec (the H.264, AAC
+libavcodec, libavutil                                                  and MP3 decoders and their parsers) and
+                                                                       libavutil, unmodified, configured by
+                                                                       ps5/tools/build-ffmpeg.sh (no --enable-gpl,
+                                                                       no --enable-nonfree); linked statically, the
+                                                                       title's whole source is published, so it can
+                                                                       be relinked with a changed FFmpeg
 libchdr, with LZMA and zstd  BSD-3-Clause     libchdr-LICENSE.txt      github.com/rtissera/libchdr
 miniz                        MIT              MIT.txt                  github.com/richgel999/miniz
 xxHash                       BSD-2-Clause     BSD-2-Clause.txt         github.com/Cyan4973/xxHash

@@ -255,12 +255,12 @@ set(frontend_sources
 	src/history.cpp
 	src/diag.cpp
 	src/texture.cpp
-	src/hui_platform.cpp)
+	src/hui_platform.cpp
+	src/video_ffmpeg.cpp)
 if(SWANSTATION_PS5)
 	list(APPEND frontend_sources
 		src/ps5/pad_ps5.cpp
 		src/ps5/usbpad_ps5.cpp
-		src/ps5/video_ps5.cpp
 		src/ps5/audio_ps5.cpp
 		src/ps5/http_ps5.cpp
 		src/ps5/libc_ps5.cpp
@@ -272,7 +272,7 @@ if(SWANSTATION_PS5)
 		src/ps5/usbdrive_ps5.cpp
 		src/ps5/elevation/elevation.cpp)
 else()
-	list(APPEND frontend_sources src/host/platform_host.cpp src/host/video_host.cpp)
+	list(APPEND frontend_sources src/host/platform_host.cpp)
 endif()
 
 # With the core's C++17: its disc header does not compile as C++20.
@@ -302,9 +302,27 @@ target_compile_options(hui PRIVATE -std=c++20 -w -fno-exceptions)
 set_source_files_properties(${HUI_DIR}/src/gfx/vk/vk_renderer.cpp PROPERTIES COMPILE_OPTIONS
 	"-include;${ROOT}/dep/vulkan-loader/include/vulkan_loader.h")
 
+# FFmpeg's MP4 demuxer and H.264, AAC and MP3 decoders (LGPL-2.1-or-later),
+# for ES-DE themes' videos: built by tools/build-ffmpeg.sh into the build
+# folder (once; again when its revision or the script changes).
+if(SWANSTATION_PS5)
+	set(FFMPEG_TARGET ps5)
+else()
+	set(FFMPEG_TARGET host)
+endif()
+set(FFMPEG_PREFIX "${CMAKE_BINARY_DIR}/ffmpeg")
+execute_process(COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-ffmpeg.sh" ${FFMPEG_TARGET} "${FFMPEG_PREFIX}"
+	RESULT_VARIABLE ffmpeg_result)
+if(NOT ffmpeg_result EQUAL 0)
+	message(FATAL_ERROR "FFmpeg did not build (tools/build-ffmpeg.sh)")
+endif()
+set(FFMPEG_LIBRARIES "${FFMPEG_PREFIX}/lib/libavformat.a" "${FFMPEG_PREFIX}/lib/libavcodec.a"
+	"${FFMPEG_PREFIX}/lib/libavutil.a")
+set_source_files_properties(src/video_ffmpeg.cpp PROPERTIES INCLUDE_DIRECTORIES "${FFMPEG_PREFIX}/include")
+
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources})
 target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos mbedtls_fe
-	glslang glslang-default-resource-limits)
+	glslang glslang-default-resource-limits ${FFMPEG_LIBRARIES})
 target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 	${ROOT}/dep/stb/include ${CMAKE_BINARY_DIR}/gen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nis
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ps5-framegen/src

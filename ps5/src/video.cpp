@@ -5,15 +5,12 @@
 	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
 
-	The decoding is not done here. On the console the console's own video
-	player does it (AvPlayer, ps5/video_ps5.cpp): Sony's licensed H.264 and
-	AAC decoders, on the console's video hardware, so no decoder of a
-	patented format is part of the title. On the PC, for the tests, the PC's
-	ffmpeg program does it (host/video_host.cpp). Either gives the newest
-	picture as NV12 (a plane of brightness, then one of colour at half the
-	size) and the sound as 16-bit samples; this file turns the picture into
-	the interface's colours (BT.601, as video of this size is) and hands the
-	sound to the output (audio::pushStream).
+	The decoding is not done here but in video_ffmpeg.cpp, with FFmpeg's
+	H.264, AAC and MP3 decoders (the console refuses a homebrew title its own
+	player). It gives the newest picture as NV12 (a plane of brightness, then
+	one of colour at half the size) and the sound as 16-bit samples; this
+	file turns the picture into the interface's colours (BT.601, as video of
+	this size is) and hands the sound to the output (audio::pushStream).
 
 	A video no one asked for in the last frames is stopped, so leaving the
 	library (a game starts) ends it.
@@ -180,8 +177,8 @@ void *picture(int& width, int& height)
 		});
 	else
 		backend::drainAudio({});
-	// Not playing any more: at its end, or (nothing shown after a while) it never started.
-	if (!backend::active() && (state.hasPicture || now() - state.openedAt > 8.0))
+	// Not playing any more: at its end, or it could not be played.
+	if (!backend::active())
 		state.finished = true;
 	width = state.width;
 	height = state.height;
