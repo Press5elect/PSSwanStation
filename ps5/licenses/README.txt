@@ -51,6 +51,9 @@ xxHash                       BSD-2-Clause     BSD-2-Clause.txt         github.co
 Xbyak                        BSD-3-Clause     BSD-3-Clause.txt         github.com/herumi/xbyak
 stb_image, stb_image_resize, MIT / public     MIT.txt                  github.com/nothings/stb (stb_truetype as
 stb_truetype                 domain                                    the interface kit carries it)
+Mozilla's root certificates MPL-2.0          MPL-2.0.txt,             certifi 2026.07.22 (github.com/certifi/
+(assets/cacert.pem), read                     certifi-LICENSE.txt      python-certifi), the file unchanged
+beside the console's list
 pugixml 1.16 (ES-DE themes'  MIT              pugixml-LICENSE.md       github.com/zeux/pugixml
 XML)
 nanosvg (ES-DE themes' SVG   zlib             nanosvg-LICENSE.txt      github.com/memononen/nanosvg

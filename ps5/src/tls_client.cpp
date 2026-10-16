@@ -89,6 +89,10 @@ using Clock = std::chrono::steady_clock;
 std::mutex mutex;
 void (*logger)(const char *) = nullptr;
 std::vector<std::string> certificateFiles;
+// Lists read as well as the first of those: the title's own copy of
+// Mozilla's (assets/cacert.pem), for servers whose root the console's list,
+// fixed with its firmware, does not have yet.
+std::vector<std::string> extraFiles;
 std::string agent = "PSSwanStation";
 
 void say(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -242,6 +246,15 @@ bool setUp()
 			used = file;
 			break;
 		}
+	}
+	for (const std::string& file : extraFiles)
+	{
+		std::vector<unsigned char> data;
+		if (!readWhole(file, data))
+			continue;
+		const int before = s.certificates;
+		s.certificates = std::max(parseCertificates(s.ca, data), s.certificates);
+		used += (used.empty() ? "" : " and ") + file + " (" + std::to_string(s.certificates - before) + " more)";
 	}
 	if (s.certificates == 0)
 	{
@@ -816,6 +829,13 @@ void setCertificateFiles(const std::vector<std::string>& files)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	certificateFiles = files;
+}
+
+void addCertificateFile(const std::string& file)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	if (std::find(extraFiles.begin(), extraFiles.end(), file) == extraFiles.end())
+		extraFiles.push_back(file);
 }
 
 void setUserAgent(const std::string& value)
