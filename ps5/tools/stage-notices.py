@@ -137,6 +137,12 @@ def main():
                 licence="none given: the entries belong to their authors (a release refuses this part)",
                 artifacts=["assets/" + name],
                 source=dict(kind="fixed", revision="the release named latest", url="https://github.com/duckstation/chtdb/releases")))
+    if (app / "assets/cacert.pem").exists():
+        parts.append(dict(
+            id="cacert", name="Mozilla's root certificates (assets/cacert.pem), as certifi 2026.07.22 carries them, "
+                              "unchanged: read beside the console's list by the title's own TLS",
+            licence="MPL-2.0 (licenses/MPL-2.0.txt, licenses/certifi-LICENSE.txt)", artifacts=["assets/cacert.pem"],
+            source=dict(kind="fixed", revision="2026.07.22", url="https://pypi.org/project/certifi/2026.7.22/")))
     (app / "licenses").mkdir(exist_ok=True)
     (app / "licenses/components.json").write_text(json.dumps(parts, indent=1, ensure_ascii=False) + "\n")
     dirty = [p["id"] for p in parts if p["source"].get("dirty")]

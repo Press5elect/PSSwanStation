@@ -310,6 +310,7 @@ std::string quoted(const std::string& text)
 void httpUseOwnTls(const char *why)
 {
 	ownTls = true;
+	fe::tls::addCertificateFile(appDir + "assets/cacert.pem");
 	diag::mark("http: the title's own TLS from now on (%s)", why);
 }
 

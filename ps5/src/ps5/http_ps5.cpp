@@ -72,6 +72,7 @@ void switchToOwnTls(const char *why)
 	ownTls = true;
 	fe::tls::setLog(tlsLog);
 	fe::tls::setUserAgent(userAgent());
+	fe::tls::addCertificateFile(appDir + "assets/cacert.pem");
 	diag::mark("http: the title's own TLS from now on (%s)", why);
 }
 

@@ -26,6 +26,8 @@ namespace fe::tls
 // Where the certificates are; the first readable one is used. On the console
 // the console's list; on a PC the system's bundle (SWANSTATION_CA_FILE first).
 void setCertificateFiles(const std::vector<std::string>& files);
+// A certificate list read as well (PEM or DER), whichever of the above is used.
+void addCertificateFile(const std::string& file);
 // What it says about itself (the certificates read, a failure's reason), for
 // the boot log. Called on the requesting thread.
 void setLog(void (*log)(const char *message));

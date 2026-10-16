@@ -172,6 +172,9 @@ else
 fi
 # The interface kit's sounds and songs (GPL-3.0-or-later): its two recorded
 # sets of the menus' sounds and its three songs. Its fonts are in eboot.bin.
+# Mozilla's root certificates (certifi 2026.07.22, MPL-2.0), read beside the
+# console's own list by the title's TLS (tls_client.cpp).
+cp -- "$ps5/assets/cacert.pem" "$app/assets/cacert.pem"
 mkdir -p "$app/assets/hui/sfx" "$app/assets/hui/music"
 cp -r -- "$hui/assets/audio/sfx/glass" "$hui/assets/audio/sfx/paper" "$app/assets/hui/sfx/"
 cp -- "$hui"/assets/audio/music/*.ogg "$app/assets/hui/music/"

@@ -2006,7 +2006,20 @@ void fetchList()
 	if (const char *test = getenv("SWANSTATION_THEMES_LIST"))
 		listUrl = test;
 #endif
-	const int status = httpGet(listUrl, answer, 30);
+	// GitLab's raw file, then the same file through GitLab's interface.
+	std::vector<std::string> urls = { listUrl,
+		"https://gitlab.com/api/v4/projects/es-de%2Fthemes%2Fthemes-list/repository/files/themes.json/raw?ref=master" };
+	int status = -1;
+	for (const std::string& url : urls)
+	{
+		status = httpGet(url, answer, 30);
+		diag::mark("themes: the list from %s: %s", url.substr(0, url.find('/', 8)).c_str(),
+				status == 200 ? format("%zu bytes", answer.size()).c_str()
+				: status < 0 ? "no answer (no network, or the server's certificate was refused: see the tls: lines)"
+				: format("the server answered %d", status).c_str());
+		if (status == 200)
+			break;
+	}
 	std::vector<Offer> offers;
 	std::string error;
 	if (status == 200)
@@ -2019,7 +2032,7 @@ void fetchList()
 			error = "ES-DE's list of themes was read, but no theme was found in it";
 	}
 	else
-		error = status < 0 ? "ES-DE's list of themes could not be reached" : format("ES-DE's list of themes: the server answered %d", status);
+		error = status < 0 ? "ES-DE's list of themes (on gitlab.com) could not be reached" : format("ES-DE's list of themes: gitlab.com answered %d", status);
 	std::sort(offers.begin(), offers.end(), [](const Offer& a, const Offer& b) { return lowerText(a.name) < lowerText(b.name); });
 	diag::mark("themes: the list: %s", error.empty() ? format("%d themes", (int)offers.size()).c_str() : error.c_str());
 	std::lock_guard<std::mutex> lock(fetcher.mutex);
@@ -2047,7 +2060,14 @@ std::vector<std::string> zipUrls(const std::string& gitUrl)
 	if (localTest(base))
 		return { base + ".zip" };
 	if (base.find("github.com/") != std::string::npos)
-		return { base + "/archive/HEAD.zip", base + "/archive/refs/heads/main.zip", base + "/archive/refs/heads/master.zip" };
+	{
+		// GitHub's archive (it sends the request on to codeload.github.com),
+		// and codeload itself, for the default branch and the usual names.
+		const std::string path = base.substr(base.find("github.com/") + 11);
+		return { base + "/archive/HEAD.zip", "https://codeload.github.com/" + path + "/zip/HEAD",
+			"https://codeload.github.com/" + path + "/zip/refs/heads/main",
+			"https://codeload.github.com/" + path + "/zip/refs/heads/master" };
+	}
 	if (base.find("gitlab.com/") != std::string::npos)
 		return { base + "/-/archive/main/" + repo + "-main.zip", base + "/-/archive/master/" + repo + "-master.zip" };
 	if (base.find("codeberg.org/") != std::string::npos)
@@ -2223,13 +2243,15 @@ void fetchTheme(Offer offer)
 			setStage("Downloading", done, total);
 			return !fetcher.stop.load();
 		});
+		diag::mark("themes: %s", status == 200 ? "downloaded" : status < 0 ? "no answer" : format("the server answered %d", status).c_str());
 		if (status == 200 || fetcher.stop)
 			break;
 	}
 	if (fetcher.stop)
 		error = "stopped";
 	else if (status != 200)
-		error = status < 0 ? "the theme's files could not be reached" : format("the server answered %d", status);
+		error = status < 0 ? "the theme's files could not be reached (the boot log's themes: and tls: lines say more)"
+				: format("the server answered %d", status);
 	size_t files = 0;
 	if (error.empty())
 	{
