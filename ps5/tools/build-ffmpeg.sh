@@ -78,6 +78,16 @@ esac
 
 (cd "$work" && "$ffmpeg/configure" "${common[@]}" "${flags[@]}" > configure.log 2>&1) \
     || { tail -40 "$work/ffbuild/config.log" >&2; exit 2; }
+# FFmpeg keeps its configure line in the library (avutil_configuration()):
+# the folders of this machine are taken out of it.
+for config in "$work/config.h" "$work/config_components.h"; do
+    [[ -f $config ]] || continue
+    sed -i -e "s|${PS5_PAYLOAD_SDK:-/nonexistent}/bin/||g" -e "s|$ffmpeg|<ffmpeg>|g" -e "s|$out|<out>|g" "$config"
+done
+if grep -q "$(dirname "$src")" "$work/config.h"; then
+    echo "build-ffmpeg.sh: a folder of this machine is still in FFmpeg's config.h" >&2
+    exit 2
+fi
 make -C "$work" -j"${JOBS:-$(nproc)}" > "$work/make.log" 2>&1 || { tail -40 "$work/make.log" >&2; exit 2; }
 make -C "$work" install > /dev/null
 echo "$want" > "$stamp"
