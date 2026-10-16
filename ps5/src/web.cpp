@@ -208,7 +208,7 @@ bool secret(const std::string& path)
 {
 	const std::string lower = lowercase(path);
 	return lower == "network.cfg" || lower == "data/retroachievements.cfg" || lower == "data/web.cfg"
-			|| lower == "data/achievements-unsent.txt" || lower == "data/screenscraper.cfg"
+			|| lower == "data/achievements-unsent.txt"
 			|| lower.find(".tmp") == lower.size() - 4;
 }
 

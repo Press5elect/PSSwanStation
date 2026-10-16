@@ -26,13 +26,6 @@
 #                     ../deps-src/lapy). It is what lets the title leave its
 #                     sandbox (USB drives, files kept outside the title folder)
 # and, optionally:
-#   SCREENSCRAPER_DEVID, SCREENSCRAPER_DEVPASSWORD
-#                     ScreenScraper's developer key for PSSwanStation (a
-#                     developer account screenscraper.fr gives a program on
-#                     request). Built into eboot.bin, never written to a file
-#                     of the repository; without it the title cannot ask
-#                     ScreenScraper (a user may put devid/devpassword in
-#                     data/screenscraper.cfg by hand)
 #   CHTDB_DIR         a folder holding cheats.zip and patches.zip from the
 #                     DuckStation chtdb release (default: ../deps-src); without
 #                     them the title is staged with no cheat database

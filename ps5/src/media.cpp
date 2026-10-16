@@ -22,14 +22,15 @@
 	Asking a share for every file of every game would take seconds a screen,
 	so the folders are listed once, on a thread of their own, into a table of
 	names; a lookup is then a search in memory. The table is made again when
-	the library's lists change, every few minutes, and when asked; a file the
-	title fetches itself (scraper.cpp) is added to it at once.
+	the library's lists change, every few minutes, and when asked; a file
+	fetched for a game is added to it at once.
 */
 #include "fe.h"
 
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <cstring>
 #include <dirent.h>
 #include <map>
 #include <mutex>
@@ -98,6 +99,34 @@ bool wantedFile(const std::string& folder, const std::string& name)
 	return ext == ".png" || ext == ".jpg" || ext == ".jpeg";
 }
 
+// The endings Batocera and EmulationStation give a game's pictures in one
+// images folder, and the ES-DE folder each stands for. "-image" is the
+// main picture: a mix image, or else a screenshot.
+const std::vector<std::pair<std::string, const char *>>& imageEndings()
+{
+	static const std::vector<std::pair<std::string, const char *>> endings = {
+		{ "-thumb", "covers" }, { "-boxart", "covers" }, { "-box", "covers" }, { "-marquee", "marquees" },
+		{ "-wheel", "marquees" }, { "-image", "miximages" }, { "-image", "screenshots" }, { "-mix", "miximages" },
+		{ "-screenshot", "screenshots" }, { "-titleshot", "titlescreens" }, { "-fanart", "fanart" },
+		{ "-boxback", "backcovers" }, { "-cartridge", "physicalmedia" }, { "-disc", "physicalmedia" },
+		{ "-box3d", "3dboxes" },
+	};
+	return endings;
+}
+
+// A file named with such an ending in its kind's own folder
+// (videos/<game>-video.mp4): the game's name without it.
+std::string stripEnding(const std::string& stem)
+{
+	for (const char *ending : { "-video", "-thumb", "-marquee", "-image", "-boxart", "-titleshot", "-fanart" })
+	{
+		const size_t n = strlen(ending);
+		if (stem.size() > n && stem.compare(stem.size() - n, n, ending) == 0)
+			return stem.substr(0, stem.size() - n);
+	}
+	return stem;
+}
+
 // The files of one folder (local or on a share), by name.
 std::vector<std::pair<std::string, std::string>> listFolder(const std::string& dir)
 {
@@ -159,6 +188,10 @@ std::vector<std::string> places()
 		gameFolders.push_back(dir);
 	for (const std::string& dir : gameFolders)
 	{
+		// The kinds' folders straight in the games folder (roms/psx/videos,
+		// roms/psx/covers), as ES-DE's "media in the ROM folder" and
+		// Batocera's roms/psx/images and videos have them.
+		add(dir);
 		withLayouts(dir);
 		const std::string parent = parentOf(dir);
 		if (!parent.empty())
@@ -180,6 +213,22 @@ void make()
 			present.insert(lower(name));
 		if (present.empty())
 			continue;
+		// Batocera's and EmulationStation's images folder: one folder, the
+		// kind in the name's ending (<game>-thumb.png, <game>-marquee.png).
+		if (present.count("images") != 0)
+			for (const auto& [name, path] : listFolder(base + "/images"))
+			{
+				if (!wantedFile("images", name))
+					continue;
+				const std::string stem = lower(withoutExtension(name));
+				for (const auto& [ending, folder] : imageEndings())
+					if (stem.size() > ending.size() && stem.compare(stem.size() - ending.size(), ending.size(), ending) == 0)
+					{
+						if (fresh.files[folder].emplace(stem.substr(0, stem.size() - ending.size()), path).second)
+							fresh.count++;
+						any = true;
+					}
+			}
 		for (const char *folder : Folders)
 		{
 			if (present.count(folder) == 0)
@@ -189,7 +238,7 @@ void make()
 			{
 				if (!wantedFile(folder, name))
 					continue;
-				if (names.emplace(lower(withoutExtension(name)), path).second)
+				if (names.emplace(stripEnding(lower(withoutExtension(name))), path).second)
 					fresh.count++;
 				any = true;
 			}

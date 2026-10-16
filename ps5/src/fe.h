@@ -885,7 +885,7 @@ enum Kind { BoxArt, TitleScreen, InGame, KindCount };
 // ES-DE's folders) for an ES-DE theme, or empty; asks for a download from
 // the same collection when there is none and downloads are on.
 std::string findMedia(const library::Game& game, int kind);
-// A cover was put in covers/ by something else (scraper.cpp): looked at again.
+// A cover was put in covers/ by something else: looked at again.
 void changed();
 enum ChooseState { ChooseIdle, ChooseWorking, ChooseDone, ChooseNotFound, ChooseFailed };
 // Fetches that picture for the game and makes it its cover (on a thread).
@@ -905,7 +905,7 @@ namespace media
 // network path, or empty. The folders are listed on a thread; until then,
 // and for what is not there, empty.
 std::string find(const library::Game& game, const std::string& folder);
-// A file fetched for a game (scraper.cpp), known at once.
+// A file fetched for a game, known at once.
 void add(const std::string& folder, const std::string& fileTitle, const std::string& path);
 // The folders are listed again.
 void rescan();
@@ -913,42 +913,6 @@ void rescan();
 bool ready();
 unsigned generation();
 std::string status();
-}
-
-// -------------------------------------------------------------- scraper.cpp
-// Pictures and videos from ScreenScraper (screenscraper.fr), with the
-// user's own account, saved where ES-DE keeps them (<root>media/<kind>/) and
-// a cover in covers/ when the game has none.
-namespace scraper
-{
-struct Kinds
-{
-	bool covers = true, screenshots = true, titlescreens = true, marquees = true, miximages = true,
-		boxes3d = false, backcovers = false, physicalmedia = false, fanart = false, videos = false;
-};
-struct Settings
-{
-	bool enabled = false;
-	std::string user, password;		// the user's screenscraper.fr account
-	Kinds kinds;
-	bool automatic = true;			// a game an ES-DE theme shows is asked for by itself
-};
-Settings& settings();
-void saveSettings();
-// Whether it can ask at all (a developer key in this build or in the file,
-// and on), and why not.
-bool usable(std::string *why = nullptr);
-// A game is asked for (once a run; a game ScreenScraper does not know is
-// remembered and not asked for again). `byHand`: asked for by the user.
-void request(const library::Game& game, bool byHand = false);
-// Every game of every source.
-void requestAll();
-void stop();
-// The account is checked (its level and today's requests).
-void checkAccount();
-std::string status();
-std::string accountStatus();
-int pending();
 }
 
 // ----------------------------------------------------------------- video.cpp
