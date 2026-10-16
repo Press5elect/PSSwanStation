@@ -426,7 +426,7 @@ void init()
 	const int patchFiles = countArchive(patchesArchive());
 	std::string text;
 	if (cheatFiles < 0 && patchFiles < 0)
-		text = "not fetched yet (Settings, Games and network, \"Fetch the newest cheat database\")";
+		text = "not fetched yet (Settings, Games and saving, \"Fetch the newest cheat database\")";
 	else
 		text = format("cheats for %d games, patches for %d", std::max(cheatFiles, 0), std::max(patchFiles, 0));
 	const int libretroFiles = countArchive(appDir + "assets/libretro-cheats.zip");

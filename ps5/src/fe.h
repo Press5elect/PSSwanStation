@@ -440,6 +440,9 @@ struct Frontend
 	int regionFilter = 0;		// 0 all, 1 USA, 2 Europe, 3 Japan
 	int idleMinutes = 5;		// the swan takes the screen after this long without a button; 0 never
 	bool clock = true;			// the time in the library's header
+	bool videos = true;			// games' videos: in the library's own views and in ES-DE themes
+	int videoVolume = 80;		// their sound, percent; 0 none
+	int videoDelay = 1;			// before a video starts in the library's own views: 0 1 s, 1 2 s, 2 3 s, 3 5 s
 	// Where the user's files are kept: 0 the title's folder, 1 /data/psswanstation,
 	// 2 a USB drive, 3 the network share's "files" folder (with a working copy on
 	// the console). 1 and 2 need the sandbox left; 3's copy is kept as 1 is where

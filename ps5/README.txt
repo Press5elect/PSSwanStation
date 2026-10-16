@@ -92,7 +92,7 @@ In a game
   OPTIONS held, and      R2 fast forward        L2 rewind
                          R1 save a state        L1 load it
                          Left, Right another slot
-  ("Shortcuts", in Settings under Shortcuts and rewind, switches these off;
+  ("Shortcuts", in Settings under Controls, switches these off;
   the menu then opens the moment OPTIONS is pressed.)
 
 
@@ -109,7 +109,7 @@ Square opens "Sort and filter": the order (by name, last played, most played,
 year, size), what is shown (everything, favourites, games not played yet,
 hidden games), one region alone, the view, and "Scan for games", which looks
 through all three places, so a drive plugged in or a share filled since gets
-its tab. The header shows the time (Settings, Interface, "Clock").
+its tab. The header shows the time (Settings, Library, "Clock").
 
 The views: Covers (a grid, with what was played lately on a shelf above it),
 List (names, with the cover and the description beside them), and five that
@@ -127,7 +127,15 @@ dashboard, shows games:
 
 Left and Right move through them (Up and Down too, in the Wall and the
 Wheel); L2, R2, the search and everything else work as in the grid. The view
-is also chosen in Settings, Interface, "Library view".
+is also chosen in Settings, Library, "Library view".
+
+Game videos: when the cursor stays on a game for a moment (2 seconds at
+first), its video plays: in the cover's place in Shelves, List and the
+game's details, and behind the covers in Covers and the views in space. The
+menu music is lowered meanwhile. Settings, Library, Videos switches them,
+their sound and the wait (also Square, "Game videos"). A game's video is
+videos/<file name>.mp4 in its games folder, media/videos, or ES-DE's
+downloaded_media/psx/videos, as below.
 
 Aurora's own layouts work too, as an experiment: copy a layout file
 (.cfljson, from Aurora's Media/Layouts folder or one of the collections of
@@ -137,12 +145,12 @@ themselves: one may look somewhat different here, and a layout made for the
 Xbox's tall cases stands PlayStation covers a little smaller.
 
 ES-DE themes (es-de.org) draw the whole library as they do in ES-DE: the
-theme's list of games, pictures, fonts and details. Settings, Interface,
+theme's list of games, pictures, fonts and details. Settings, Library,
 "ES-DE themes", "Get themes" fetches one from the list ES-DE's own theme
 downloader offers; or copy a theme's folder to themes/. There the theme's
 variant, colours, font size and aspect ratio are chosen too. Pictures ES-DE
 has scraped go in media/ (its downloaded_media/psx folder copies in as it
-is), and its videos play with the console's own player. Pictures and
+is), and its videos (MP4, H.264) play wherever the theme puts them. Pictures and
 videos are also found in any games folder, on the console, a USB drive or a
 network share: in its videos/, covers/, marquees/... folders (roms/psx/videos),
 in media/ or downloaded_media/psx/ inside it or beside it, and in Batocera's
@@ -181,7 +189,7 @@ share the first time Options or Cheats is opened; the screen says so while
 the share answers (a NAS whose disks sleep takes a few seconds) and can be
 left with Circle meanwhile.
 
-USB: off until "USB drives" is switched on in Settings, Games and network; it
+USB: off until "USB drives" is switched on in Settings, Games and saving; it
 takes effect at the next start and needs a resident Lapy service or the ELF
 loader listening on port 9021 (the title leaves its sandbox with the Lapy
 helper beside eboot.bin). Games are read from a folder named psx, ps1 or
@@ -224,14 +232,14 @@ memory"; switch it off to start at once and read while playing).
 A server that sleeps: add its network card's hardware address to network.cfg,
   wake = 00:11:32:AA:BB:CC
 and the wake-up packet (Wake-on-LAN) is sent when PSSwanStation starts,
-whenever the share is scanned, and from Settings, Games and network, "Wake the
+whenever the share is scanned, and from Settings, Games and saving, "Wake the
 server". The server has to have Wake-on-LAN switched on in its own settings.
 
 Your files on the share: a "files" line names a writable SMB or NFS folder
 for the title's own files (an FTP server is only read):
   files = 192.168.1.10/Games/PSSwanStation
   files = nfs://192.168.1.10/volume1/psswanstation
-Then, in Settings, Games and network:
+Then, in Settings, Games and saving:
   "Memory cards on the network share"  each game's card is kept in the
         share's "memory cards" folder as well, and brought up to date both
         ways: several consoles in one home play on the same cards.
@@ -263,15 +271,17 @@ collection, which names them as the No-Intro and Redump sets name games.
 Settings
 --------
 
-Every setting of the emulator is in Settings, in the emulator's own sections
-(Console, Enhancement, Display, Port, Advanced), next to the title's own
-(Interface, Picture, Sound, Controllers, Shortcuts and rewind, Games and
-network, RetroAchievements) and Debug (verbose logging and recordings of what
-you press, below).
+Settings (first in the menu) has nine sections: Library (the view, ES-DE
+themes, game videos, covers), Look (theme, size, animations, the swan),
+Sound, Picture, Controls (controllers, shortcuts, rewind), Games and saving
+(where games and files are, saving, RetroAchievements), Emulator (every
+setting of the emulator, in one list with a part for each of its sections),
+System (notices, verbose logging, recordings of what you press) and About.
+L1 and R1 change section, L2 and R2 jump between the parts of one.
 
-Interface also has the interface's size (up to 140%), High contrast (white
-text on black, stronger outlines) and Colour-blind safe colours (blue for
-good and orange for bad in place of green and red).
+Look also has the interface's size (up to 140%), High contrast (white text
+on black, stronger outlines) and Colour-blind safe colours (blue for good
+and orange for bad in place of green and red).
 
 A game's own settings are in its details (Options) and, while it runs, in
 the menu: "Settings" changes them for every game, "Game settings" for this
@@ -297,7 +307,7 @@ player 1 in port 1. Leave it off otherwise: some games for one or two do not
 see a controller behind a multitap. Each player's controller type is set on
 the same page, where the first line shows who is connected.
 
-The swan: with Animations (Interface) on Full, PSSwanStation opens with its
+The swan: with Animations (Look) on Full, PSSwanStation opens with its
 head coming up in the bottom right corner and paddling along the bottom of
 the screen to the middle, where it goes under and takes the lift: the box
 comes up between its rails to the middle of the screen, its bell rings, its
@@ -308,16 +318,16 @@ animation. Reduced keeps the swan still (the start-up screen is the finished
 picture, with the bell) and starts games at once; Off stops every movement
 of the interface and skips the start-up screen.
 
-"Interface sounds" (Interface) are the small sounds of the menus: the cursor
+"Menu sounds" (Sound) are the small sounds of the menus: the cursor
 moving, a choice, a step back, a letter typed.
 
-"Start-up sound" (Interface) is what that animation sounds like - water, the
+"Start-up sound" (Sound) is what that animation sounds like - water, the
 lift, the bell, wings - at the Volume set under Sound. The sounds are made by
 the title when it starts; none is a recording.
 
-The picture: the internal resolution starts at 8x. Lower it (Enhancement,
+The picture: the internal resolution starts at 8x. Lower it (Emulator,
 Internal Resolution Scale) if a game does not hold its speed; "Show frame
-rate" (Interface) tells.
+rate" (Picture) tells.
 
 Above 1x, "Close Gaps Between Polygons" (Enhancement, on at first) covers the
 hairline gaps where a game's polygons meet unevenly: the sparkles along their
@@ -547,7 +557,7 @@ The cheats and patches are the DuckStation project's chtdb: cheat codes for
 about 4500 games and patches (widescreen, 60 frames a second and others) for
 about 140. A release of PSSwanStation does not carry the database, because
 its entries belong to their authors and the project gives no licence to pass
-them on: Settings, Games and network, "Fetch the newest cheat database" gets
+them on: Settings, Games and saving, "Fetch the newest cheat database" gets
 it once from the project's own releases (and again whenever you ask, as it
 grows); it is kept in data/ and used from then on. A game's entries are in
 its details (Triangle in the library) and in its menu while it runs, under
@@ -580,13 +590,13 @@ the picture it was saved at, and, if "Save when a game is closed" is on, one
 more that is written when the game is closed; "Continue where I left off"
 starts from it.
 
-Rewind (Settings, Shortcuts and rewind; off at first): keeps the last while of
+Rewind (Settings, Controls; off at first): keeps the last while of
 play so that OPTIONS and L2 go back through it. It is kept in memory only,
 128 MB to 1 GB of it, and never written to the console's storage; it is gone
 when the game closes. Fast forward (OPTIONS and R2) runs at 2x to 8x, or as
 fast as the console manages.
 
-Sleep-safe saving (Settings, Games and network; off at first): while a game
+Sleep-safe saving (Settings, Games and saving; off at first): while a game
 runs, its resume state is saved every five minutes of play and whenever the
 console's own menu (the PS button) opens over it, on a thread of its own and
 without a pause. If the console then closes PSSwanStation (rest mode, or
@@ -627,7 +637,7 @@ hardcore mode.
 Recordings and verbose logging
 ------------------------------
 
-Settings, Debug. "Record what I press" (with a game running) takes a state of
+Settings, System. "Record what I press" (with a game running) takes a state of
 the game and keeps every player's buttons, frame by frame, until you stop it,
 load a state, reset or close the game. "Play back a recording" starts the
 game from that state and gives it the recorded presses again, so it runs the
@@ -654,7 +664,7 @@ and single saves (.mcs .psx .psv and others). I have tested the raw card and
 .mcs forms most; the rarer ones follow their descriptions.
 
 When a game closes and its card changed, a copy of the card is kept (the last
-ten of each; Settings, Games and network, "Card backups"), and the manager can
+ten of each; Settings, Games and saving, "Card backups"), and the manager can
 go back to one.
 
 
@@ -715,7 +725,7 @@ has not run between two consoles.
 Phone and web control
 ---------------------
 
-Settings, Games and network, "Phone and web control": switch it on and scan
+Settings, Games and saving, "Phone and web control": switch it on and scan
 the code on that page with a phone's camera, or type the address on a
 computer on the same network (port 3311). The page in the browser starts and
 closes games, resets, saves and loads states, runs the speedrun timer,
@@ -734,7 +744,7 @@ newer build, shows what changed, fetches it, checks it, and replaces the
 program's files (eboot.bin, sce_sys, sce_module, assets, licences, the texts).
 Your games, saves, states, covers and settings are not touched. PSSwanStation
 closes when it is done; start it again from the home screen. With "Ask for
-updates at start" (Interface) the library's header says when a build is out;
+updates" (Library) the library's header says when a build is out;
 nothing is fetched until you say so.
 
 The first start after an update, however it came (the updater, or a folder
@@ -763,7 +773,7 @@ files back.
 Keeping your files outside the title folder
 -------------------------------------------
 
-Settings, Games and network, "Where my files are kept": BIOS files, covers,
+Settings, Games and saving, "Where my files are kept": BIOS files, covers,
 cheats, memory cards, states, layouts and settings live in
 
   the title's folder      as before

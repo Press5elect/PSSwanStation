@@ -10,7 +10,21 @@ Build 23 (not released yet)
     there ("LibCrypt: Protected; .sbi found", or "Missing <name>.sbi").
   - A disc in the drive wears its cover: the cover is printed on the disc
     in the Disc Drive tab and turns with it.
+  - Settings has nine sections instead of sixteen: Library, Look, Sound,
+    Picture, Controls (controllers, shortcuts and rewind together), Games
+    and saving (with RetroAchievements), Emulator (all of the emulator's
+    own sections in one list), System (notices and debugging) and About.
+    The descriptions are shorter. L2 and R2 jump between the parts of a
+    list. Settings is first in the menu.
+  - Square in the library (Sort and filter) has "Game videos" and "More
+    library settings".
   Added
+  - Game videos in the library's own views: when the cursor stays on a
+    game for a moment, its video plays in the cover's place (Shelves, List
+    and the game's details) or behind the covers (Covers and the views in
+    space). Settings, Library, Videos: on or off, their sound, and the wait
+    (1, 2, 3 or 5 seconds). The same switch and sound are used by ES-DE
+    themes; the switches that were in "ES-DE themes" moved there.
   - Mods: text files in mods/ (or PSSwanStation/mods on a USB drive) that
     change a game a feature at a time without changing its disc image:
     patches written only where the bytes the mod expects are found,
@@ -48,7 +62,7 @@ Build 23 (not released yet)
     (TrueType and OpenType), texts, the game's details, the favourite badge,
     a clock and the help line. Square, View (or Settings, Interface,
     "Library view"): each theme found is "ES-DE: <name>".
-  - Settings, Interface, "ES-DE themes": the theme, its variant, colour
+  - Settings, Library, "ES-DE themes": the theme, its variant, colour
     scheme, font size, aspect ratio and language, as ES-DE's menu has them;
     a variant's fallback when the games lack its pictures.
   - "Get themes" fetches a theme from the list ES-DE's own downloader reads,
@@ -95,7 +109,7 @@ Build 22
     tab says so, and choosing it says why as far as the title can tell.
   - The boot log names each drive's maker, model and bus, the USB ports'
     state, and the console's own USB messages ("usb bus:" lines).
-  - Drive speed (Settings, Games and network, and the web panel): Quiet
+  - Drive speed (Settings, Games and saving, and the web panel): Quiet
     (8x a CD), Normal (24x) or Max, the usual, as fast as the drive goes.
     The boot log says how many MB/s a copy and a disc read into memory took.
   - The Disc Drive tab draws the drive and its disc, alive: the disc drops
@@ -120,7 +134,7 @@ Build 22
 Build 21
   Added
   - Discs from a USB CD or DVD drive, watched whenever PSSwanStation is out
-    of its sandbox for USB (Settings, Games and network: USB drives, or USB
+    of its sandbox for USB (Settings, Games and saving: USB drives, or USB
     disc drive). A disc in the drive is under the library's new Disc Drive
     tab, named from its serial, with its cover; a drive with no disc, or
     one it cannot read, is there too and says why. Before it starts,
@@ -332,7 +346,7 @@ Build 14
     setting for every game.
   - Circle in the library asks whether to close PSSwanStation.
   - The cheat and patch database is fetched from its project when asked
-    (Settings, Games and network); a release does not carry it.
+    (Settings, Games and saving); a release does not carry it.
   The first build published as a release; it ran on a console before that.
 
 Build 13

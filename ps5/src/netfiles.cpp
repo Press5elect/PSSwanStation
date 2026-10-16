@@ -21,7 +21,7 @@
 	                 one folder for each console (data/console-name.txt), which
 	                 follows what is kept here (the oldest left out here goes
 	                 there too). Nothing is brought back from it.
-	  everything     with Settings, Games and network, "Where my files are
+	  everything     with Settings, Games and saving, "Where my files are
 	                 kept" on the network share, every folder of the user's
 	                 (bios, covers, cheats, data, textures, music, borders,
 	                 layouts, memcards) is kept there, both ways. The console
@@ -45,7 +45,7 @@
 
 	Nothing is sent or brought while a game runs: when the title starts (on a
 	thread of its own; a game cannot start until it is done), when a game
-	closes, and when asked (Settings, Games and network, "Bring my files up to
+	closes, and when asked (Settings, Games and saving, "Bring my files up to
 	date now"). A share that does not answer leaves everything as it is.
 */
 #include "fe.h"

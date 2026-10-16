@@ -23,8 +23,9 @@
 	ES-DE can be copied in), else the cover, and title screens and moments of
 	play from the libretro thumbnails collection when downloads are on.
 	A video element plays the game's video (media/videos/<file name>.mp4, as
-	ES-DE keeps them) after its delay, with the console's own player
-	(video.cpp), its picture until then; animations are not played.
+	ES-DE keeps them) after its delay (video.cpp, FFmpeg's decoders), its
+	picture until then; animations are not played. Whether videos play and
+	how loud is the library's setting (Settings, Library), for every view.
 
 	Themes are not part of the title. Each is its author's, under its own
 	licence; they go in <root>themes (or PSSwanStation/themes on a USB drive),
@@ -67,7 +68,6 @@ struct Settings
 {
 	bool read = false;
 	std::string theme;
-	bool videos = true, videoSound = true;
 	std::map<std::string, esde::Selection> chosen;
 };
 Settings settings;
@@ -100,9 +100,19 @@ void readSettings()
 			settings.theme = value;
 			continue;
 		}
+		// Before build 23's test 10 the videos' switches were here; they are
+		// the library's now (frontend.cfg), for every view. One that was off
+		// stays off.
 		if (key == "videos" || key == "video_sound")
 		{
-			(key == "videos" ? settings.videos : settings.videoSound) = value != "0";
+			if (value == "0")
+			{
+				if (key == "videos")
+					options::frontend().videos = false;
+				else
+					options::frontend().videoVolume = 0;
+				options::saveFrontend();
+			}
 			continue;
 		}
 		const size_t dot = key.rfind('.');
@@ -126,9 +136,8 @@ void readSettings()
 
 void saveSettings()
 {
-	std::string text = "# PSSwanStation - the ES-DE theme the library is drawn in (Settings, Interface).\n";
+	std::string text = "# PSSwanStation - the ES-DE theme the library is drawn in (Settings, Library).\n";
 	text += "theme = " + settings.theme + "\n";
-	text += format("videos = %d\nvideo_sound = %d\n", settings.videos ? 1 : 0, settings.videoSound ? 1 : 0);
 	for (const auto& [id, s] : settings.chosen)
 	{
 		const std::pair<const char *, const std::string *> fields[] = { { "variant", &s.variant },
@@ -941,13 +950,13 @@ void videoElement(const esde::Element& e, Shown& s)
 		file = videoOf(*s.game);
 	if (file.empty() && !e.get("default").empty() && exists(e.get("default")))
 		file = e.get("default");
-	const bool wanted = !file.empty() && !s.videoTaken && settings.videos && motion() != MotionOff
+	const bool wanted = !file.empty() && !s.videoTaken && options::frontend().videos && motion() != MotionOff
 			&& s.since >= e.number("delay", 1.5f) && video::available();
 	if (wanted)
 	{
 		s.videoTaken = true;
 		const int iterations = (int)e.number("iterationCount", 0);
-		video::play(file, iterations <= 0, settings.videoSound && e.flag("audio", true));
+		video::play(file, iterations <= 0, options::frontend().videoVolume > 0 && e.flag("audio", true));
 		int vw = 0, vh = 0;
 		void *pic = video::picture(vw, vh);
 		const bool showImageAfter = video::ended() && e.get("onIterationsDone", "nothing") == "image";
@@ -2379,17 +2388,8 @@ void themesPage(Frame& f)
 		pick("Language", theme->languages, &esde::Selection::language, false);
 		(void)sel;
 	}
-	{
-		Item videos = toggle("Videos", &settings.videos, "", [] {
-			saveSettings();
-			if (!settings.videos)
-				video::stop();
-		});
-		items.push_back(videos);
-		Item sound = toggle("Video sound", &settings.videoSound, "", [] { saveSettings(); });
-		sound.enabled = settings.videos;
-		items.push_back(sound);
-	}
+	// The same switches as Settings, Library: they are for every view.
+	videoSettingItems(items, false);
 	{
 		Item get = action(icon::Download, "Get themes", "", [] { push(Page::ThemeDownload); });
 		items.push_back(get);
@@ -2407,7 +2407,7 @@ void themesPage(Frame& f)
 			"their pictures and details where the theme puts them. Themes go in " + shownRoot() + "themes (or "
 			"PSSwanStation/themes on a USB drive), each in its own folder. Pictures ES-DE has scraped go in "
 			+ shownRoot() + "media (its downloaded_media/psx folders as they are: covers, screenshots, marquees, "
-			"miximages..., and videos/<file name>.mp4 for the videos the console's own player plays). Each theme is its author's work, under its own "
+			"miximages..., and videos/<file name>.mp4). Each theme is its author's work, under its own "
 			"licence, and is not part of PSSwanStation." + problems;
 	const Item *focused = panelList(f, "ES-DE themes", items, 900, (float)std::min((int)items.size(), 7) * 60 + 10, note);
 	standardHints(focused);
