@@ -423,10 +423,6 @@ std::string find(const library::Game& game)
 	const std::string kept = media::find(game, "covers");
 	if (!kept.empty())
 		return kept;
-	// ScreenScraper first when it is on and asks by itself, the collection meanwhile.
-	const scraper::Settings& scraping = scraper::settings();
-	if (media::ready() && scraping.automatic && scraping.kinds.covers && scraper::usable())
-		scraper::request(game);
 	request(game.fileTitle);
 	return "";
 }

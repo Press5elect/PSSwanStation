@@ -143,11 +143,11 @@ downloader offers; or copy a theme's folder to themes/. There the theme's
 variant, colours, font size and aspect ratio are chosen too. Pictures ES-DE
 has scraped go in media/ (its downloaded_media/psx folder copies in as it
 is), and its videos play with the console's own player. Pictures and
-videos are also found in media/ or downloaded_media/psx/ inside (or beside)
-any games folder, on a USB drive or a network share, and can be fetched
-from ScreenScraper with your own screenscraper.fr account (Settings, Games
-and network, ScreenScraper). Each theme is its author's, under its own
-licence, and is not part of PSSwanStation.
+videos are also found in any games folder, on the console, a USB drive or a
+network share: in its videos/, covers/, marquees/... folders (roms/psx/videos),
+in media/ or downloaded_media/psx/ inside it or beside it, and in Batocera's
+images/ folder. Each theme is its author's, under its own licence, and is not
+part of PSSwanStation.
 
 Finding a game: L2 and R2 jump to the letter before and the letter after
 (the letters stand down the right edge for a moment). Pressing the touch pad
