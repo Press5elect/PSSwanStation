@@ -254,6 +254,11 @@ void stopSounds();
 // null fades out what plays. `volume` 0..100.
 void setMusic(std::shared_ptr<const std::vector<int16_t>> frames);
 void setMusicVolume(int percent);
+// A video's sound (video.cpp): `frames` of `channels` interleaved at `rate`,
+// made 48 kHz stereo and mixed in as it comes (the music lowered meanwhile).
+void pushStream(const int16_t *samples, size_t frames, int channels, int rate);
+void clearStream();
+void setStreamVolume(int percent);
 // How many times the music has played through to its end and started again.
 unsigned musicRounds();
 // The game's sound is not heard (fast forward, rewind); the ring is emptied.
@@ -886,6 +891,31 @@ void choose(const library::Game& game, int kind);
 ChooseState chooseState();
 // Removes the game's cover: the automatic one comes back when downloads are on.
 void remove(const library::Game& game);
+}
+
+// ----------------------------------------------------------------- video.cpp
+// Videos (an ES-DE theme's): played by the console's own player (AvPlayer,
+// ps5/video_ps5.cpp), on the PC by its ffmpeg (host/video_host.cpp, for the
+// tests). One at a time.
+namespace video
+{
+// Whether videos can be played at all (the player could be loaded, and it
+// did not fail before).
+bool available();
+// Plays a file (.mp4), from its start, round and round when `loop`; its
+// sound when `sound`. An empty path, or another file, stops what plays.
+void play(const std::string& path, bool loop, bool sound);
+void stop();
+// What plays (the path given), and whether it has played to its end.
+const std::string& current();
+bool ended();
+// Once a frame while a video is wanted: the newest picture as the
+// interface draws it (null until the first one), and its size.
+void *picture(int& width, int& height);
+// Once a frame: a video no one asked for this frame or the one before is
+// stopped (the library left the screen).
+void frame();
+std::string status();
 }
 
 // ---------------------------------------------------------------- cheats.cpp

@@ -4874,6 +4874,7 @@ void frame()
 {
 	widgetsFrame();
 	imagesFrame();
+	video::frame();
 #if defined(SWANSTATION_HOST)
 	if (generationTest() || lookTest() || swanSheet())
 		return;

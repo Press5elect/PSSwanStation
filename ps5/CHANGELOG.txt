@@ -59,8 +59,14 @@ Build 23 (not released yet)
     media/marquees, media/miximages...; ES-DE's downloaded_media/psx copies in
     as it is). Title screens and screenshots are fetched from the libretro
     thumbnails collection with "Download covers" on.
-  - Videos are shown as their pictures, ratings are not shown, and the
-    system view is not used.
+  - Videos: a theme's video element plays the game's video
+    (media/videos/<file name>.mp4, as ES-DE keeps them) after the theme's
+    delay, with its sound under the lowered menu music, through the
+    console's own video player (AvPlayer): no video decoder is part of the
+    title. "ES-DE themes" switches videos and their sound on and off. Not
+    yet tried on a console: the boot log's "video:" lines say what the
+    player did.
+  - Ratings are not shown, and the system view is not used.
 
 Build 22
   Added

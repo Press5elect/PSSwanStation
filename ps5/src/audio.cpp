@@ -15,7 +15,10 @@
 
 	The interface's own sounds (sound.cpp) are 48 kHz already: they are mixed
 	into what goes out, game or no game. So is the menus' music, one piece
-	played round and round, which comes and goes with a fade.
+	played round and round, which comes and goes with a fade. A video's sound
+	(an ES-DE theme's, video.cpp) comes at its own rate and channels: it is
+	made 48 kHz stereo into a ring of its own, and the music is lowered while
+	it plays.
 */
 #include "fe.h"
 
@@ -66,14 +69,26 @@ std::atomic<unsigned> musicLaps{0};
 std::atomic<bool> muted{false};
 constexpr float MusicFade = 1.f / (48000.f * 1.2f);		// per frame: 1.2 s from silence to full
 
+// A video's sound: 48 kHz stereo, a second at most, and how it was resampled.
+constexpr size_t StreamCapacity = 48000;
+std::vector<int16_t> stream(StreamCapacity * 2);
+size_t streamRead, streamWrite, streamFilled;
+double streamPhase;
+int16_t streamLastL, streamLastR;
+std::atomic<int> streamVolume{100};
+float musicDuck = 1.f;					// the music's part while a video speaks
+
 // With the lock held.
 void mixMusic(int16_t *out, size_t frames)
 {
 	if (!musicNow && !musicWanted)
 		return;
+	// Down to a quarter while a video's sound plays, back up after it.
+	const float duckTarget = streamFilled > 0 ? 0.25f : 1.f;
 	const float level = (float)volume * (float)musicVolume / 10000.f;
 	for (size_t i = 0; i < frames; i++)
 	{
+		musicDuck += (duckTarget - musicDuck) * 0.0002f;
 		if (musicNow != musicWanted)
 		{
 			// The piece changes, or ends: this one goes out first.
@@ -93,7 +108,7 @@ void mixMusic(int16_t *out, size_t frames)
 		const size_t total = data.size() / 2;
 		if (total == 0)
 			return;
-		const float gain = musicGain * level;
+		const float gain = musicGain * level * musicDuck;
 		out[i * 2] = (int16_t)std::clamp((int)(out[i * 2] + data[musicAt * 2] * gain), -32768, 32767);
 		out[i * 2 + 1] = (int16_t)std::clamp((int)(out[i * 2 + 1] + data[musicAt * 2 + 1] * gain), -32768, 32767);
 		if (++musicAt >= total)
@@ -103,6 +118,23 @@ void mixMusic(int16_t *out, size_t frames)
 			musicLaps++;
 		}
 	}
+}
+
+// With the lock held.
+void mixStream(int16_t *out, size_t frames)
+{
+	if (streamFilled == 0)
+		return;
+	const int gain = volume * streamVolume / 100;
+	const size_t n = std::min(frames, streamFilled);
+	for (size_t i = 0; i < n; i++)
+	{
+		const int l = stream[streamRead * 2] * gain / 100, r = stream[streamRead * 2 + 1] * gain / 100;
+		out[i * 2] = (int16_t)std::clamp(out[i * 2] + l, -32768, 32767);
+		out[i * 2 + 1] = (int16_t)std::clamp(out[i * 2 + 1] + r, -32768, 32767);
+		streamRead = (streamRead + 1) % StreamCapacity;
+	}
+	streamFilled -= n;
 }
 
 // With the lock held.
@@ -232,6 +264,46 @@ void setMusic(std::shared_ptr<const std::vector<int16_t>> frames)
 	musicWanted = std::move(frames);
 }
 
+void pushStream(const int16_t *samples, size_t frames, int channels, int rate)
+{
+	if (samples == nullptr || frames == 0 || channels <= 0 || rate <= 0)
+		return;
+	std::lock_guard<std::mutex> lock(mutex);
+	const double step = (double)rate / OutRate;
+	for (size_t f = 0; f < frames; f++)
+	{
+		// Mono to both sides; more than two channels: the front two.
+		const int16_t l = samples[f * channels];
+		const int16_t r = channels > 1 ? samples[f * channels + 1] : l;
+		while (streamPhase < 1.0)
+		{
+			if (streamFilled >= StreamCapacity)
+				break;		// more than a second ahead: dropped
+			stream[streamWrite * 2] = (int16_t)(streamLastL + (l - streamLastL) * streamPhase);
+			stream[streamWrite * 2 + 1] = (int16_t)(streamLastR + (r - streamLastR) * streamPhase);
+			streamWrite = (streamWrite + 1) % StreamCapacity;
+			streamFilled++;
+			streamPhase += step;
+		}
+		streamPhase = streamPhase >= 1.0 ? streamPhase - 1.0 : 0;
+		streamLastL = l;
+		streamLastR = r;
+	}
+}
+
+void clearStream()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	streamRead = streamWrite = streamFilled = 0;
+	streamPhase = 0;
+	streamLastL = streamLastR = 0;
+}
+
+void setStreamVolume(int percent)
+{
+	streamVolume = std::clamp(percent, 0, 100);
+}
+
 void setMusicVolume(int percent)
 {
 	musicVolume = std::clamp(percent, 0, 100);
@@ -306,6 +378,7 @@ void render(int16_t *out, size_t frames)
 	std::lock_guard<std::mutex> lock(mutex);
 	renderGame(out, frames);
 	mixMusic(out, frames);
+	mixStream(out, frames);
 	mixVoices(out, frames);
 }
 
