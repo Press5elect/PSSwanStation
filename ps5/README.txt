@@ -450,7 +450,7 @@ in a frame: a frame it drew nothing in shows the picture before again. Where
 the pictures come unevenly (two refreshes, then three), the steps between
 them follow the average of the last four gaps. Settings, Picture, "Frame
 generation" says what the running game is counted at, and the frame counter
-(Interface, "Show frame rate") shows the game's pictures and the screen's
+(Picture, "Show frame rate") shows the game's pictures and the screen's
 side by side, as "30 -> 60".
 
 How a picture is made: the two game pictures are compared at four sizes,
