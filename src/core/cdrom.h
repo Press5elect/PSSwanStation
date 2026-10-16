@@ -32,6 +32,8 @@ public:
 
   void InsertMedia(std::unique_ptr<CDImage> media);
   std::unique_ptr<CDImage> RemoveMedia(bool for_disc_swap);
+  void SetShellOpen(bool opened) { m_shell_open = opened; }
+  bool IsShellOpen() const { return m_shell_open; }
 
   void CPUClockChanged();
 
@@ -374,6 +376,8 @@ private:
   std::array<SectorBuffer, NUM_SECTOR_BUFFERS> m_sector_buffers;
 
   CDROMAsyncReader m_reader;
+  // The status bit stays latched until Getstat acknowledges a closed shell.
+  bool m_shell_open = false;
 
   // How long the emulated drive has been held for a slow image's read (not
   // kept in save states: a state loaded re-queues its read).
