@@ -2593,6 +2593,9 @@ void aboutItems(std::vector<Item>& items)
 			"fonts made into the interface's by stb_truetype (Sean Barrett, MIT or public domain). The themes "
 			"themselves are their authors', under their own licences, and are not part of PSSwanStation; ES-DE is "
 			"es-de.org's."));
+	items.push_back(fact("FFmpeg", "LGPL-2.1-or-later", "ES-DE themes' videos are decoded with FFmpeg 9.0.2 "
+			"(ffmpeg.org): its MP4 demuxer and its H.264, AAC and MP3 decoders, unmodified. Its source and how it "
+			"is built are published with PSSwanStation's."));
 	items.push_back(fact("libsmb2", "LGPL-2.1", "Network shares are read with libsmb2 by Ronnie Sahlberg."));
 	items.push_back(fact("Game database", "CC BY-SA 4.0", "The libretro database's PlayStation lists "
 			"(github.com/libretro/libretro-database), Creative Commons Attribution-ShareAlike 4.0."));

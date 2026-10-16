@@ -20,6 +20,8 @@
 #   GLSLANG_DIR       glslang 16.6.0 (default: ../deps-src/glslang)
 #   MBEDTLS_DIR       mbedTLS 3.6.7 (default: ../deps-src/mbedtls-3.6.7), the
 #                     TLS of the title's own HTTPS client
+#   FFMPEG_DIR        FFmpeg n9.0.2 (default: ../deps-src/ffmpeg-n9.0.2), whose
+#                     decoders play ES-DE themes' videos (tools/build-ffmpeg.sh)
 #   LAPY_HELPER_DIR   a folder holding lapy.elf and lapy-manifest.json: the
 #                     Lapy helper for this title, as ps5-native-app-boilerplate's
 #                     tools/build-lapy-helper.py PPSA99248 builds it (default:
@@ -220,7 +222,8 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
 # Every part as data, with the revision it was built from.
 python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$hui" "$libsmb2" "$rcheevos" "$lapy" \
     "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}" "${LIBNFS_DIR:-$src/../deps-src/libnfs}" "$slang" \
-    "${GLSLANG_DIR:-$src/../deps-src/glslang}" "${MBEDTLS_DIR:-$src/../deps-src/mbedtls-3.6.7}"
+    "${GLSLANG_DIR:-$src/../deps-src/glslang}" "${MBEDTLS_DIR:-$src/../deps-src/mbedtls-3.6.7}" \
+    "${FFMPEG_DIR:-$src/../deps-src/ffmpeg-n9.0.2}"
 # Everything is readable and writable over FTP; the program's own files as the
 # console wants a title's (and as the updater leaves them).
 find "$app" -type d -exec chmod 0777 {} +

@@ -78,6 +78,7 @@ LOCAL = {
     "libnfs": ("LIBNFS_DIR", SRC.parent / "deps-src/libnfs"),
     "glslang": ("GLSLANG_DIR", SRC.parent / "deps-src/glslang"),
     "mbedtls": ("MBEDTLS_DIR", SRC.parent / "deps-src/mbedtls-3.6.7"),
+    "ffmpeg": ("FFMPEG_DIR", SRC.parent / "deps-src/ffmpeg-n9.0.2"),
     "slang-shaders": ("SLANG_SHADERS_DIR", SRC.parent / "deps-src/slang-shaders"),
 }
 # Folders of the title that are the user's: a release has them empty.

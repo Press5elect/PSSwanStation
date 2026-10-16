@@ -916,9 +916,8 @@ std::string status();
 }
 
 // ----------------------------------------------------------------- video.cpp
-// Videos (an ES-DE theme's): played by the console's own player (AvPlayer,
-// ps5/video_ps5.cpp), on the PC by its ffmpeg (host/video_host.cpp, for the
-// tests). One at a time.
+// Videos (an ES-DE theme's): decoded with FFmpeg (video_ffmpeg.cpp). One at
+// a time.
 namespace video
 {
 // Whether videos can be played at all (the player could be loaded, and it

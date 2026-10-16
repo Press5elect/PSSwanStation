@@ -1,6 +1,6 @@
 /*
-	PSSwanStation - what plays a video for video.cpp: the console's player
-	(ps5/video_ps5.cpp) or, on the PC, its ffmpeg (host/video_host.cpp).
+	PSSwanStation - what plays a video for video.cpp (video_ffmpeg.cpp, on the
+	console and the PC alike).
 
 	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
