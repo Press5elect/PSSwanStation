@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Build 24
+Build 24 (not released yet)
   Added
   - HD texture packs for 3D games too, by the GPU's texture cache blocks:
     a pack's picture replaces a block of a texture page (64x64 texels of a
