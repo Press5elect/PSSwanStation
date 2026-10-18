@@ -496,6 +496,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
      {NULL, NULL},
    },
    "true"},
+  {"swanstation_GPU_ExactLines",
+   "Lines Drawn as the Console Draws Them",
+   NULL,
+   "Lines go pixel by pixel as the console steps them, at any resolution: their pixels are the console's, a "
+   "poly-line's corners join, and a semi-transparent line blends as it does there. Off: each line is drawn as a thin "
+   "strip, smoother at a high resolution but a pixel off here and there.",
+   NULL,
+   "enhancement",
+   {
+     {"true", "Enabled"},
+     {"false", "Disabled"},
+     {NULL, NULL},
+   },
+   "true"},
   {"swanstation_GPU_PGXPEnable",
    "PGXP Geometry Correction",
    NULL,
