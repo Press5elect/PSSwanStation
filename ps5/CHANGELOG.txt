@@ -27,6 +27,10 @@ Build 24
   Changed
   - Every picture preset switches on accurate blending and exact lines.
   - The Shortcuts page names the button that opens the menu, as set.
+  - Newer parts: the RADV driver at PS5 Mesa 14c2f44 (fragment shader
+    barycentrics, with the 120 Hz settling and timed waits kept), libsmb2
+    and libnfs at their newest revisions (SMB request sizes kept within the
+    server's limits; NFSv4 leases renewed while mounted).
   Fixed (SwanStation's newest fixes)
   - A save state keeps a controller or memory card transfer in progress,
     the disc that was in (a game on several discs, or no disc with the lid
