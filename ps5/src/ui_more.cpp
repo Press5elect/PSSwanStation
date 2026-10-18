@@ -752,8 +752,10 @@ namespace
 {
 const char *const playStationButtons[16] = { "Cross", "Square", "Select", "Start", "D-pad up", "D-pad down", "D-pad left",
 		"D-pad right", "Circle", "Triangle", "L1", "R1", "L2", "R2", "L3", "R3" };
-const char *const padButtonNames[16] = { "Cross", "Square", "Touch pad, left half", "Touch pad, right half", "D-pad up",
-		"D-pad down", "D-pad left", "D-pad right", "Circle", "Triangle", "L1", "R1", "L2", "R2", "L3", "R3" };
+const char *const padButtonNames[17] = { "Cross", "Square", "Touch pad, left half", "Touch pad, right half", "D-pad up",
+		"D-pad down", "D-pad left", "D-pad right", "Circle", "Triangle", "L1", "R1", "L2", "R2", "L3", "R3", "OPTIONS" };
+// The names of what can open the menu (options::Frontend::menuKey).
+const char *const menuKeyNames[4] = { "OPTIONS", "Touch pad, left half", "Touch pad, right half", "OPTIONS, held" };
 // The order they are listed in: the four shapes, the shoulders, the rest.
 const int buttonOrder[16] = { 0, 8, 1, 9, 10, 11, 12, 13, 14, 15, 2, 3, 4, 5, 6, 7 };
 }
@@ -767,17 +769,19 @@ void buttonsPage(Frame& f)
 	{
 		Item item;
 		item.label = playStationButtons[target];
-		for (int source = 0; source < 16; source++)
+		for (int source = 0; source < 17; source++)
 			item.choices.push_back(padButtonNames[source]);
 		item.choices.push_back("Nothing");
-		item.current = o.remap[target] < 0 ? 16 : o.remap[target];
+		item.current = o.remap[target] < 0 ? 17 : o.remap[target];
 		const bool turbo = (o.turbo & (1u << target)) != 0;
 		item.value = item.choices[(size_t)item.current] + (turbo ? "   \xc2\xb7   turbo" : "");
 		item.mark = o.remap[target] != target ? 1 : 0;
 		item.info = std::string("Which button of the pad presses the PlayStation's ") + playStationButtons[target]
-				+ ". Square switches turbo for it: held, it is then pressed again and again by itself.";
+				+ ". Square switches turbo for it: held, it is then pressed again and again by itself. The button that "
+				"opens the menu (" + menuKeyNames[std::clamp(o.menuKey, 0, 3)] + ", \"The menu opens with\" below) "
+				"is the menu's only, unless it is OPTIONS held.";
 		item.choose = [target](int index) {
-			options::frontend().remap[target] = index >= 16 ? -1 : index;
+			options::frontend().remap[target] = index >= 17 ? -1 : index;
 			options::saveFrontend();
 		};
 		// Turbo is for buttons a game wants hammered, not for directions.
@@ -791,14 +795,24 @@ void buttonsPage(Frame& f)
 		}
 		items.push_back(item);
 	}
+	items.push_back(header("THE MENU"));
+	items.push_back(choice("The menu opens with", o.menuKey, { menuKeyNames[0], menuKeyNames[1], menuKeyNames[2],
+			"OPTIONS, held for a second" },
+			"The button that opens PSSwanStation's menu over a game and, held, is the shortcuts' key; the game does not "
+			"see it, so OPTIONS can press a PlayStation button once a half of the touch pad opens the menu. Held for a "
+			"second: OPTIONS stays a button the game can have too, and there are no shortcuts. A USB controller's "
+			"PS or Guide button is its OPTIONS, and its Select and Start the touch pad's halves.",
+			[](int i) { options::frontend().menuKey = i; }));
 	items.push_back(header("TURBO"));
 	items.push_back(choice("Turbo speed", o.turboRate, { "7 a second", "10 a second", "15 a second" },
 			"How fast a button with turbo is pressed while it is held.", [](int i) { options::frontend().turboRate = i; }));
-	items.push_back(action(icon::Undo, "Back to the usual", "Every button is itself again, and none has turbo.", [] {
+	items.push_back(action(icon::Undo, "Back to the usual", "Every button is itself again, none has turbo, and OPTIONS "
+			"opens the menu.", [] {
 		options::Frontend& o = options::frontend();
 		for (int i = 0; i < 16; i++)
 			o.remap[i] = i;
 		o.turbo = 0;
+		o.menuKey = 0;
 		options::saveFrontend();
 	}));
 	const Item *focused = menuPage(f, "Buttons", "for every player, in every game", items, 900);
@@ -1862,7 +1876,10 @@ void shadersPage(Frame& f)
 void shortcutsPage(Frame& f)
 {
 	std::vector<Item> items;
-	items.push_back(header("WHILE A GAME RUNS: OPTIONS HELD, AND"));
+	const int menuKey = std::clamp(options::frontend().menuKey, 0, 3);
+	const std::string key = menuKey == 3 ? "OPTIONS" : menuKeyNames[menuKey];
+	items.push_back(header(menuKey == 3 ? std::string("NO SHORTCUTS WHILE OPTIONS IS A GAME BUTTON")
+			: "WHILE A GAME RUNS: " + key + " HELD, AND"));
 	const auto row = [&items](const char *symbol, const std::string& button, const std::string& does, const std::string& info) {
 		Item item = fact(does, button, info);
 		item.icon = symbol;
@@ -1878,9 +1895,13 @@ void shortcutsPage(Frame& f)
 	row(icon::Upload, "L1", "Load that state", "");
 	row(icon::List, "Left, Right", "Another slot", "Which of the ten slots the two shortcuts above use.");
 	items.push_back(header("AND BY ITSELF"));
-	row(icon::Gear, "OPTIONS, tapped", "The menu", "With the shortcuts on, the menu opens when OPTIONS is let go, since "
-			"holding it is the shortcuts' key.");
-	row(icon::Gamepad, "Touch pad, left and right", "Select and Start", "Press the pad down on that side.");
+	if (menuKey == 3)
+		row(icon::Gear, "OPTIONS, held for a second", "The menu", "Settings, Controls, Buttons: \"The menu opens with\".");
+	else
+		row(icon::Gear, key + ", tapped", "The menu", "With the shortcuts on, the menu opens when it is let go, since "
+				"holding it is the shortcuts' key. Settings, Controls, Buttons: \"The menu opens with\".");
+	row(icon::Gamepad, "Touch pad, left and right", "Select and Start", "Press the pad down on that side (unless a half "
+			"opens the menu, or Buttons gives them other buttons).");
 	standardHints(menuPage(f, "Shortcuts", "", items, 900));
 }
 
@@ -1889,12 +1910,32 @@ void shortcutsPage(Frame& f)
 bool gameShortcuts()
 {
 	static bool optionsDown, usedAsKey;
+	static double heldSince = -1;
 	const options::Frontend& settings = options::frontend();
+	// The menu's button (Settings, Controls, "The menu opens with").
+	const uint32_t key = host::menuButton();
 	if (optionsSpent)
 	{
 		// The press that closed the menu: nothing until it is let go.
-		optionsSpent = (in.held & Options) != 0;
+		optionsSpent = (in.held & (key | Options)) != 0;
 		optionsDown = false;
+		heldSince = -1;
+		return false;
+	}
+	if (settings.menuKey == 3)
+	{
+		// OPTIONS held for a second, the game seeing it meanwhile: no shortcuts.
+		const double now = clock();
+		if ((in.held & Options) == 0)
+			heldSince = -1;
+		else if (heldSince < 0)
+			heldSince = now;
+		else if (now - heldSince >= 1.0)
+		{
+			heldSince = -1;
+			optionsSpent = true;
+			return true;
+		}
 		return false;
 	}
 	if (!settings.hotkeys)
@@ -1903,9 +1944,9 @@ bool gameShortcuts()
 		host::setInputBlocked(false);
 		host::setFastForward(false);
 		host::setRewinding(false);
-		return hit(Options);
+		return hit(key);
 	}
-	if ((in.held & Options) == 0)
+	if ((in.held & key) == 0)
 	{
 		// Let go: by itself it was the menu's button.
 		const bool tapped = optionsDown && !usedAsKey;
@@ -2998,7 +3039,8 @@ void moreSettings(int kind, std::vector<Item>& items)
 
 		items.push_back(header("The pad"));
 		items.push_back(action(icon::Gamepad, "Buttons", "Which button of the pad presses which of the PlayStation's "
-				"(the touch pad's halves are Select and Start), and which fire again and again while held (turbo).",
+				"(the touch pad's halves are Select and Start, OPTIONS can be one too), which opens the menu, and which "
+				"fire again and again while held (turbo).",
 				[] { push(Page::Buttons); }));
 		items.push_back(choice("Stick dead zone", (int)std::lround(f.deadZone * 20.f),
 				{ "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%" },

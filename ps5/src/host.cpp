@@ -324,13 +324,32 @@ int16_t stick(float value)
 	return (int16_t)std::lround(std::clamp(scaled, -1.f, 1.f) * 32767.f);
 }
 
+}
+
+// The button that opens PSSwanStation's menu over a game (Settings,
+// Controls, "The menu opens with").
+uint32_t menuButton()
+{
+	switch (options::frontend().menuKey)
+	{
+	case 1: return platform::TouchLeft;
+	case 2: return platform::TouchRight;
+	default: return platform::Options;
+	}
+}
+
+namespace
+{
+
 // The PlayStation's sixteen buttons, in libretro's order, as the pad's own
-// buttons stand for them before any remapping. Select and Start are the two
-// halves of the touch pad; OPTIONS belongs to the title (it opens the menu).
-uint16_t padButtons(const platform::Pad& pad)
+// buttons stand for them before any remapping, and OPTIONS as a seventeenth.
+// Select and Start are the two halves of the touch pad. The button that opens
+// the menu is the title's, not the game's (OPTIONS unless that is changed;
+// held for a second, OPTIONS is both).
+uint32_t padButtons(const platform::Pad& pad)
 {
 	using namespace platform;
-	static const uint32_t map[16] = {
+	static const uint32_t map[17] = {
 		Cross,		// B
 		Square,		// Y
 		TouchLeft,	// Select
@@ -339,16 +358,19 @@ uint16_t padButtons(const platform::Pad& pad)
 		Circle,		// A
 		Triangle,	// X
 		L1, R1, L2, R2, L3, R3,
+		Options,
 	};
 	uint32_t buttons = pad.buttons;
+	if (options::frontend().menuKey != 3)
+		buttons &= ~menuButton();
 	if (pad.l2 > 0.25f)
 		buttons |= L2;
 	if (pad.r2 > 0.25f)
 		buttons |= R2;
-	uint16_t mask = 0;
-	for (unsigned i = 0; i < 16; i++)
+	uint32_t mask = 0;
+	for (unsigned i = 0; i < 17; i++)
 		if (buttons & map[i])
-			mask |= (uint16_t)(1u << i);
+			mask |= 1u << i;
 	return mask;
 }
 
@@ -357,14 +379,14 @@ uint16_t padButtons(const platform::Pad& pad)
 uint16_t gameButtons(const platform::Pad& pad)
 {
 	const options::Frontend& settings = options::frontend();
-	const uint16_t held = padButtons(pad);
+	const uint32_t held = padButtons(pad);
 	static const int periods[3] = { 4, 3, 2 };		// frames on, and as many off
 	const bool turboOff = (emulatedFrames / (uint64_t)periods[std::clamp(settings.turboRate, 0, 2)]) % 2 == 1;
 	uint16_t out = 0;
 	for (unsigned target = 0; target < 16; target++)
 	{
 		const int source = settings.remap[target];
-		if (source < 0 || source > 15 || (held & (1u << source)) == 0)
+		if (source < 0 || source > 16 || (held & (1u << source)) == 0)
 			continue;
 		if ((settings.turbo & (1u << target)) != 0 && turboOff)
 			continue;

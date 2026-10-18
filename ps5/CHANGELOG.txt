@@ -19,6 +19,11 @@ Build 24 (not released yet)
     (fragment shader interlock); without MSAA or the PGXP depth buffer.
   - Exact lines (on): lines drawn pixel for pixel as the PlayStation steps
     them, at every resolution.
+  - OPTIONS can be remapped: Settings, Controls, Buttons offers it for any
+    of the PlayStation's buttons, beside the touch pad's halves, and "The
+    menu opens with" gives the menu (and the shortcuts' key) to OPTIONS, a
+    half of the touch pad, or OPTIONS held for a second (OPTIONS then is the
+    game's too, without shortcuts). The Shortcuts page follows the choice.
   Changed
   - The newest SwanStation fixes (save states, controllers, CD-ROM).
 

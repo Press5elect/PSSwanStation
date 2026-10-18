@@ -5243,7 +5243,7 @@ void frame()
 		{
 			if (hit(cancelButton) && page != Page::Details)
 				pop();
-			else if (game && hit(Options))
+			else if (game && hit(Options | host::menuButton()))
 			{
 				stack.clear();
 				// The same press is not the next menu's.
