@@ -2493,6 +2493,8 @@ const Preset presetOptions[] = {
 	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled", "Disabled" } },
 	{ "swanstation_GPU_WidescreenHack", { nullptr, nullptr, nullptr, "false" } },
 	{ "swanstation_GPU_ForceNTSCTimings", { nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_GPU_AccurateBlending", { "true", "true", "true", "true" } },
+	{ "swanstation_GPU_ExactLines", { "true", "true", "true", "true" } },
 };
 // And the title's own picture settings each sets: the picture tube, the
 // scaling filter; for Speedrun also what the title adds (frame generation,
