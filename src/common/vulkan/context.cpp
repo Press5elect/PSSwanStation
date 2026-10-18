@@ -160,6 +160,26 @@ bool Context::SelectDeviceExtensions(ExtensionList* extension_list, bool enable_
   if (enable_surface && !SupportsExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME, true))
     return false;
 
+  // PSSwanStation: the hardware renderer's accurate blending reads and writes
+  // video memory from the fragment shader in drawing order (GPU_HW_Vulkan).
+  m_supports_fragment_shader_interlock = false;
+  if (SupportsExtension(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME, false))
+  {
+    VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT interlock = {
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT};
+    VkPhysicalDeviceFeatures2 features2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &interlock};
+    vkGetPhysicalDeviceFeatures2(m_physical_device, &features2);
+    m_supports_fragment_shader_interlock =
+      interlock.fragmentShaderPixelInterlock && features2.features.fragmentStoresAndAtomics;
+    if (!m_supports_fragment_shader_interlock)
+      extension_list->erase(std::remove_if(extension_list->begin(), extension_list->end(),
+                                           [](const char* n) {
+                                             return std::strcmp(n, VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) == 0;
+                                           }),
+                            extension_list->end());
+  }
+  Log_InfoPrintf("Fragment shader interlock: %s", m_supports_fragment_shader_interlock ? "yes" : "no");
+
   return true;
 }
 
@@ -188,6 +208,9 @@ bool Context::SelectDeviceFeatures(const VkPhysicalDeviceFeatures* required_feat
   // PSSwanStation: the optical flow frame generation (ps5-framegen) writes
   // two-channel storage images.
   m_device_features.shaderStorageImageExtendedFormats = available_features.shaderStorageImageExtendedFormats;
+  // Accurate blending stores to video memory from the fragment shader.
+  if (m_supports_fragment_shader_interlock)
+    m_device_features.fragmentStoresAndAtomics = VK_TRUE;
   return true;
 }
 
@@ -308,6 +331,22 @@ bool Context::CreateDevice(VkSurfaceKHR surface, bool enable_validation_layer, c
     return false;
 
   device_info.pEnabledFeatures = &m_device_features;
+  // The interlock feature goes at the end of whatever chain there is.
+  static VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT s_interlock_features;
+  s_interlock_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT};
+  s_interlock_features.fragmentShaderPixelInterlock = VK_TRUE;
+  if (m_supports_fragment_shader_interlock)
+  {
+    if (s_extra_features_chain)
+    {
+      VkBaseOutStructure* last = static_cast<VkBaseOutStructure*>(s_extra_features_chain);
+      while (last->pNext && last->pNext != reinterpret_cast<VkBaseOutStructure*>(&s_interlock_features))
+        last = last->pNext;
+      last->pNext = reinterpret_cast<VkBaseOutStructure*>(&s_interlock_features);
+    }
+    else
+      device_info.pNext = &s_interlock_features;
+  }
   if (s_extra_features_chain)
   {
     VkPhysicalDeviceFeatures2* features2 = static_cast<VkPhysicalDeviceFeatures2*>(s_extra_features_chain);

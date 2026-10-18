@@ -1,0 +1,64 @@
+// PSSwanStation: accurate blending, shared by the batch fragment shaders
+// compiled with SHADER_BLEND (tools/regen_vulkan_spirv.py's *_blend blobs).
+//
+// SPDX-FileCopyrightText: 2026 Press5elect
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// The pixel is written by the shader itself instead of the blending
+// hardware, as the console writes it: the old pixel is read from video
+// memory, a pixel whose mask bit is set is left alone when "check mask" is
+// on, and a semi-transparent pixel is mixed with the old one in the
+// console's own arithmetic, a 5-bit channel at a time (8 bits in true
+// colour): B/2+F/2 rounding down, B+F and B+F/4 saturating, B-F stopping at
+// 0. Fixed-function blending cannot do the console's rounding, nor the mask
+// test and a per-texel choice to blend in one pass.
+//
+// Video memory is a storage image here; the fragment shader interlock
+// (VK_EXT_fragment_shader_interlock, pixel interlock in order) makes each
+// pixel's read and write happen in the order the console draws, so pixels
+// of overlapping polygons in one draw blend one after the other.
+//
+// The including template declares the batch UBO (u_check_mask and
+// u_transparency_mode at offsets 64 and 68) and TRUE_COLOR before this.
+
+layout(pixel_interlock_ordered) in;
+layout(set = 0, binding = 2, rgba8) uniform coherent image2D u_vram_image;
+
+// write: the pixel is drawn at all; icolor: its colour, 5-bit (8-bit in true
+// colour); blend: mixed with the old pixel; oalpha: the mask bit written;
+// ialpha: below 1 at a filtered texture's edge, where the result is mixed
+// with the old pixel by it.
+void ShaderBlendPixel(bool write, uvec3 icolor, bool blend, float oalpha, float ialpha)
+{
+  if (!write)
+    return;
+  const ivec2 pos = ivec2(gl_FragCoord.xy);
+  const vec4 bg = imageLoad(u_vram_image, pos);
+  if (u_check_mask != 0u && bg.a >= 0.5)
+    return;
+  const uint maxv = TRUE_COLOR ? 255u : 31u;
+  uvec3 r = min(icolor, uvec3(maxv));
+  if (blend)
+  {
+    const uvec3 b = uvec3(roundEven(bg.rgb * float(maxv)));
+    switch (u_transparency_mode)
+    {
+      case 0u:
+        r = (b + r) >> 1;
+        break;
+      case 1u:
+        r = min(b + r, uvec3(maxv));
+        break;
+      case 2u:
+        r = uvec3(max(ivec3(b) - ivec3(r), ivec3(0)));
+        break;
+      default:
+        r = min(b + (r >> 2), uvec3(maxv));
+        break;
+    }
+  }
+  vec3 rc = vec3(r) / float(maxv);
+  if (ialpha < 1.0)
+    rc = mix(bg.rgb, rc, ialpha);
+  imageStore(u_vram_image, pos, vec4(rc, oalpha));
+}

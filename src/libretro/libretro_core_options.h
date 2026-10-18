@@ -496,6 +496,21 @@ struct retro_core_option_v2_definition option_defs_us[] = {
      {NULL, NULL},
    },
    "true"},
+  {"swanstation_GPU_AccurateBlending",
+   "Accurate Blending",
+   NULL,
+   "Semi-transparency and the mask bit as the console does them, pixel by pixel in the order things are drawn: "
+   "the four blend modes rounded as the console rounds them, and pixels a game has protected left alone. Needs a "
+   "Vulkan driver with fragment shader interlock (the PS5's has it), and is not used with MSAA or the PGXP depth "
+   "buffer. Off: the graphics hardware's own blending, a step off here and there.",
+   NULL,
+   "enhancement",
+   {
+     {"true", "Enabled"},
+     {"false", "Disabled"},
+     {NULL, NULL},
+   },
+   "true"},
   {"swanstation_GPU_ExactLines",
    "Lines Drawn as the Console Draws Them",
    NULL,

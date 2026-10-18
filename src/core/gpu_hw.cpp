@@ -1620,8 +1620,12 @@ void GPU_HW::DispatchRenderCommand()
   const GPUTransparencyMode transparency_mode =
     rc.transparency_enable ? m_draw_mode.mode_reg.transparency_mode : GPUTransparencyMode::Disabled;
   const bool dithering_enable = (!m_true_color && rc.IsDitheringEnabled()) ? m_GPUSTAT.dither_enable : false;
+  // B-F needs a batch a primitive with the blending hardware (two primitives of one batch overlapping would
+  // subtract each from the background, not one after the other); the shader's own blending reads each
+  // pixel in drawing order.
   if (texture_mode != m_batch.texture_mode || transparency_mode != m_batch.transparency_mode ||
-      transparency_mode == GPUTransparencyMode::BackgroundMinusForeground || dithering_enable != m_batch.dithering)
+      (transparency_mode == GPUTransparencyMode::BackgroundMinusForeground && !m_shader_blending) ||
+      dithering_enable != m_batch.dithering)
   {
     FlushRender();
   }
@@ -1639,6 +1643,9 @@ void GPU_HW::DispatchRenderCommand()
                           m_batch_ubo_data.u_dst_alpha_factor != dst_alpha_factor);
     m_batch_ubo_data.u_src_alpha_factor = src_alpha_factor;
     m_batch_ubo_data.u_dst_alpha_factor = dst_alpha_factor;
+    const uint32_t mode = static_cast<uint32_t>(transparency_mode);
+    m_batch_ubo_dirty |= (m_batch_ubo_data.u_transparency_mode != mode);
+    m_batch_ubo_data.u_transparency_mode = mode;
   }
 
   const bool check_mask_before_draw = m_GPUSTAT.check_mask_before_draw;
@@ -1650,6 +1657,8 @@ void GPU_HW::DispatchRenderCommand()
     m_batch.set_mask_while_drawing = set_mask_while_drawing;
     m_batch_ubo_dirty |= (m_batch_ubo_data.u_set_mask_while_drawing != static_cast<uint32_t>(set_mask_while_drawing));
     m_batch_ubo_data.u_set_mask_while_drawing = static_cast<uint32_t>(set_mask_while_drawing);
+    m_batch_ubo_dirty |= (m_batch_ubo_data.u_check_mask != static_cast<uint32_t>(check_mask_before_draw));
+    m_batch_ubo_data.u_check_mask = static_cast<uint32_t>(check_mask_before_draw);
   }
 
   m_batch.interlacing = IsInterlacedRenderingEnabled();

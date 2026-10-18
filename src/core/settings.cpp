@@ -120,6 +120,7 @@ void Settings::Load(LibretroSettingsInterface& si)
   gpu_pgxp_depth_buffer = si.GetBoolValue("GPU", "PGXPDepthBuffer", false);
   gpu_close_gaps = si.GetBoolValue("GPU", "CloseGaps", true);
   gpu_exact_lines = si.GetBoolValue("GPU", "ExactLines", true);
+  gpu_accurate_blending = si.GetBoolValue("GPU", "AccurateBlending", true);
   SetPGXPDepthClearThreshold(si.GetFloatValue("GPU", "PGXPDepthClearThreshold", DEFAULT_GPU_PGXP_DEPTH_THRESHOLD));
 
   display_crop_mode =

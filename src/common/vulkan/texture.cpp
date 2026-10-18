@@ -269,6 +269,14 @@ void Texture::TransitionSubresourcesToLayout(VkCommandBuffer command_buffer, uin
       srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
       break;
 
+    // PSSwanStation: GENERAL is the renderer's video memory as a storage
+    // image, read and written by fragment shaders (accurate blending).
+    case VK_IMAGE_LAYOUT_GENERAL:
+      barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT |
+                              VK_ACCESS_TRANSFER_WRITE_BIT;
+      srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+      break;
+
     default:
       srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
       break;
@@ -305,6 +313,12 @@ void Texture::TransitionSubresourcesToLayout(VkCommandBuffer command_buffer, uin
     case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
       barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
       dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_GENERAL:
+      barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT |
+                              VK_ACCESS_TRANSFER_WRITE_BIT;
+      dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
       break;
 
     case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:

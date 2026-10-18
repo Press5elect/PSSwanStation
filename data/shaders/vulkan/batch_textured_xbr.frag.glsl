@@ -16,6 +16,10 @@
 // per-tap VRAM sample with UV-limit clamping.
 
 #version 450 core
+#if defined(SHADER_BLEND)
+#extension GL_ARB_fragment_shader_interlock : require
+#extension GL_GOOGLE_include_directive : require
+#endif
 
 layout(constant_id =   0) const uint RESOLUTION_SCALE              = 1u;
 layout(constant_id = 103) const bool DITHERING                     = false;
@@ -50,7 +54,14 @@ layout(std140, set = 0, binding = 0) uniform BatchUBOData {
   bool  u_set_mask_while_drawing;
   layout(offset = 52) uint u_pgxp_depth;
   layout(offset = 60) uint u_render_mode;
+  layout(offset = 64) uint u_transparency_mode;
+  layout(offset = 68) uint u_check_mask;
 };
+
+#if defined(SHADER_BLEND)
+#include "batch_shader_blend.glslinc"
+#endif
+
 
 layout(set = 0, binding = 1) uniform sampler2D samp0;
 
@@ -61,9 +72,11 @@ layout(location = 0) in VertexData {
   flat         vec4  v_uv_limits;
 };
 
+#if !defined(SHADER_BLEND)
 layout(location = 0, index = 0) out vec4 o_col0;
 #if defined(DUAL_SOURCE)
 layout(location = 0, index = 1) out vec4 o_col1;
+#endif
 #endif
 
 const int s_dither_values[16] = int[16](
@@ -440,6 +453,7 @@ void main()
                ? ((vec3(icolor) * premultiply_alpha) / vec3(255.0, 255.0, 255.0))
                : (floor(vec3(icolor) * premultiply_alpha) /  vec3(31.0,  31.0,  31.0));
 
+#if !defined(SHADER_BLEND)
   if ((u_render_mode != 0u))
   {
     if (semitransparent)
@@ -470,4 +484,10 @@ void main()
   }
 
   gl_FragDepth = (u_pgxp_depth != 0u) ? gl_FragCoord.z : (oalpha * gl_FragCoord.z);
+#else
+  // The console's own blending and mask test (batch_shader_blend.glslinc).
+  beginInvocationInterlockARB();
+  ShaderBlendPixel(true, icolor, (u_render_mode != 0u) && semitransparent, oalpha, ialpha);
+  endInvocationInterlockARB();
+#endif
 }

@@ -150,13 +150,25 @@ def _batch_fs_textured_filter_variants():
     return out
 
 
+def _with_shader_blend(variants):
+    """Adds the accurate-blending blobs (data/shaders/vulkan/
+    batch_shader_blend.glslinc): no MSAA, so no interpolation qualifier,
+    and no colour output at all, so no dual-source axis; colour
+    perspective as the batch VS has it. Suffixes none_persp_blend and
+    none_noperp_blend, after the cube above."""
+    return variants + [
+        ("none_persp_blend",  ["SHADER_BLEND"]),
+        ("none_noperp_blend", ["NOPERSP", "SHADER_BLEND"]),
+    ]
+
+
 TEMPLATE_VARIANTS = {
     "batch.vert.glsl":                      _batch_vs_variants(),
-    "batch_untextured.frag.glsl":           _batch_fs_untextured_variants(),
-    "batch_textured_nearest.frag.glsl":     _batch_fs_textured_nearest_variants(),
-    "batch_textured_bilinear.frag.glsl":    _batch_fs_textured_filter_variants(),
-    "batch_textured_jinc2.frag.glsl":       _batch_fs_textured_filter_variants(),
-    "batch_textured_xbr.frag.glsl":         _batch_fs_textured_filter_variants(),
+    "batch_untextured.frag.glsl":           _with_shader_blend(_batch_fs_untextured_variants()),
+    "batch_textured_nearest.frag.glsl":     _with_shader_blend(_batch_fs_textured_nearest_variants()),
+    "batch_textured_bilinear.frag.glsl":    _with_shader_blend(_batch_fs_textured_filter_variants()),
+    "batch_textured_jinc2.frag.glsl":       _with_shader_blend(_batch_fs_textured_filter_variants()),
+    "batch_textured_xbr.frag.glsl":         _with_shader_blend(_batch_fs_textured_filter_variants()),
 }
 
 
