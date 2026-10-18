@@ -1,4 +1,5 @@
 #include "gpu_hw.h"
+#include "gpu_hw_texture_blocks.h"
 #include "common/state_wrapper.h"
 #include "cpu_core.h"
 #include "gpu_sw_backend.h"
@@ -120,6 +121,8 @@ void GPU_HW::Reset(bool clear_vram)
   m_vram_shadow.fill(0);
   if (m_sw_renderer)
     m_sw_renderer->Reset(clear_vram);
+  // The texture blocks' copy of video memory is read again at the next draw.
+  m_texture_blocks_active = false;
 
   m_batch = {};
   m_batch_ubo_data = {};
@@ -165,6 +168,7 @@ bool GPU_HW::DoState(StateWrapper& sw, HostDisplayTexture** host_texture, bool u
     m_batch_current_vertex_ptr = m_batch_start_vertex_ptr;
     SetFullVRAMDirtyRectangle();
     ResetBatchVertexDepth();
+    m_texture_blocks_active = false;
   }
 
   return true;
@@ -948,6 +952,29 @@ void GPU_HW::LoadVertices()
       if (m_using_uv_limits && textured)
         ComputePolygonUVLimits(vertices.data(), num_vertices);
 
+      // HD texture blocks (gpu_hw_texture_blocks.cpp).
+      if (m_texture_blocks_active && textured)
+      {
+        uint32_t min_u = 255, max_u = 0, min_v = 255, max_v = 0;
+        for (uint32_t i = 0; i < num_vertices; i++)
+        {
+          const uint32_t tu = native_texcoords[i] & 0xFFu, tv = native_texcoords[i] >> 8;
+          min_u = std::min(min_u, tu);
+          max_u = std::max(max_u, tu);
+          min_v = std::min(min_v, tv);
+          max_v = std::max(max_v, tv);
+        }
+        uint32_t replacement, replacement_slots;
+        if (LookupTextureBlocks(min_u, max_u, min_v, max_v, &replacement, &replacement_slots))
+        {
+          for (uint32_t i = 0; i < num_vertices; i++)
+          {
+            vertices[i].replacement = replacement;
+            vertices[i].replacement_slots = replacement_slots;
+          }
+        }
+      }
+
       if (!IsDrawingAreaIsValid())
         return;
 
@@ -999,6 +1026,7 @@ void GPU_HW::LoadVertices()
           static_cast<uint32_t>(std::clamp<int32_t>(max_y, m_drawing_area.top, m_drawing_area.bottom)) + 1u;
 
         m_vram_dirty_rect.Include(clip_left, clip_right, clip_top, clip_bottom);
+        MarkTextureBlockTilesDrawn(clip_left, clip_right, clip_top, clip_bottom);
         AddDrawTriangleTicks(native_vertex_positions[0][0], native_vertex_positions[0][1],
                              native_vertex_positions[1][0], native_vertex_positions[1][1],
                              native_vertex_positions[2][0], native_vertex_positions[2][1], rc.shading_enable,
@@ -1029,6 +1057,7 @@ void GPU_HW::LoadVertices()
             static_cast<uint32_t>(std::clamp<int32_t>(max_y_123, m_drawing_area.top, m_drawing_area.bottom)) + 1u;
 
           m_vram_dirty_rect.Include(clip_left, clip_right, clip_top, clip_bottom);
+          MarkTextureBlockTilesDrawn(clip_left, clip_right, clip_top, clip_bottom);
           AddDrawTriangleTicks(native_vertex_positions[2][0], native_vertex_positions[2][1],
                                native_vertex_positions[1][0], native_vertex_positions[1][1],
                                native_vertex_positions[3][0], native_vertex_positions[3][1], rc.shading_enable,
@@ -1123,6 +1152,9 @@ void GPU_HW::LoadVertices()
           // Texture coordinates go to the batch in sixteenths of a texel (AddPolygonTriangle).
           const uint16_t l16 = static_cast<uint16_t>(tex_left << 4), r16 = static_cast<uint16_t>(tex_right << 4);
           const uint16_t t16 = static_cast<uint16_t>(tex_top << 4), b16 = static_cast<uint16_t>(tex_bottom << 4);
+          uint32_t replacement = 0, replacement_slots = 0;
+          if (m_texture_blocks_active && rc.texture_enable)
+            LookupTextureBlocks(tex_left, tex_right - 1, tex_top, tex_bottom - 1, &replacement, &replacement_slots);
           AddNewVertex(quad_start_x, quad_start_y, depth, 1.0f, color, texpage, l16, t16, uv_limits);
           AddNewVertex(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, r16, t16, uv_limits);
           AddNewVertex(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, l16, b16, uv_limits);
@@ -1130,6 +1162,14 @@ void GPU_HW::LoadVertices()
           AddNewVertex(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, l16, b16, uv_limits);
           AddNewVertex(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, r16, t16, uv_limits);
           AddNewVertex(quad_end_x, quad_end_y, depth, 1.0f, color, texpage, r16, b16, uv_limits);
+          if (replacement != 0)
+          {
+            for (BatchVertex* v = m_batch_current_vertex_ptr - 6; v != m_batch_current_vertex_ptr; v++)
+            {
+              v->replacement = replacement;
+              v->replacement_slots = replacement_slots;
+            }
+          }
 
           x_offset += quad_width;
           tex_left = 0;
@@ -1147,6 +1187,7 @@ void GPU_HW::LoadVertices()
         static_cast<uint32_t>(std::clamp<int32_t>(pos_y + rectangle_height, m_drawing_area.top, m_drawing_area.bottom)) + 1u;
 
       m_vram_dirty_rect.Include(clip_left, clip_right, clip_top, clip_bottom);
+      MarkTextureBlockTilesDrawn(clip_left, clip_right, clip_top, clip_bottom);
       AddDrawRectangleTicks(clip_right - clip_left, clip_bottom - clip_top, rc.texture_enable, rc.transparency_enable);
 
       if (m_sw_renderer)
@@ -1206,6 +1247,7 @@ void GPU_HW::LoadVertices()
           static_cast<uint32_t>(std::clamp<int32_t>(max_y, m_drawing_area.top, m_drawing_area.bottom)) + 1u;
 
         m_vram_dirty_rect.Include(clip_left, clip_right, clip_top, clip_bottom);
+        MarkTextureBlockTilesDrawn(clip_left, clip_right, clip_top, clip_bottom);
         AddDrawLineTicks(clip_right - clip_left, clip_bottom - clip_top, rc.shading_enable);
 
         // TODO: Should we do a PGXP lookup here? Most lines are 2D.
@@ -1274,6 +1316,7 @@ void GPU_HW::LoadVertices()
               static_cast<uint32_t>(std::clamp<int32_t>(max_y, m_drawing_area.top, m_drawing_area.bottom)) + 1u;
 
             m_vram_dirty_rect.Include(clip_left, clip_right, clip_top, clip_bottom);
+            MarkTextureBlockTilesDrawn(clip_left, clip_right, clip_top, clip_bottom);
             AddDrawLineTicks(clip_right - clip_left, clip_bottom - clip_top, rc.shading_enable);
 
             // TODO: Should we do a PGXP lookup here? Most lines are 2D.
@@ -1586,6 +1629,9 @@ void GPU_HW::DispatchRenderCommand()
 {
   const GPURenderCommand rc{m_render_command.bits};
 
+  if (rc.IsTexturingEnabled() || m_texture_blocks)
+    UpdateTextureBlocksActive();
+
   GPUTextureMode texture_mode;
   if (rc.IsTexturingEnabled())
   {
@@ -1735,6 +1781,9 @@ void GPU_HW::FlushRender()
 
   if (vertex_count == 0)
     return;
+
+  // A new batch: the texture block slots its vertices name are drawn from now on.
+  m_flush_serial++;
 
   // Single-pass: stamp u_render_mode with the per-batch enum value
   // before the (possibly cached) UBO upload below.

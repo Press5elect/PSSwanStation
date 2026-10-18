@@ -94,6 +94,9 @@ layout(location = 3) in uint a_texpage;
 // values are zero when ComputePolygonUVLimits didn't run and the
 // FS short-circuits on u_uv_limits in that case.
 layout(location = 4) in vec4 a_uv_limits;
+// HD texture blocks' places in the replacement atlas, 0 for none
+// (batch_texture_blocks.glslinc).
+layout(location = 5) in uvec2 a_replacement;
 #endif
 
 // ---- Vertex outputs (interpolation + perspective axis) -------------
@@ -103,6 +106,7 @@ layout(location = 0) out VertexData {
   INTERP vec2 v_tex0;
   flat uvec4 v_texpage;
   flat vec4 v_uv_limits;
+  flat uvec2 v_replacement;
 #endif
 };
 
@@ -183,5 +187,6 @@ void main()
   // collapse commit); the FS-side u_uv_limits gates whether to
   // consume the value.
   v_uv_limits = a_uv_limits * vec4(255.0, 255.0, 255.0, 255.0);
+  v_replacement = a_replacement;
 #endif
 }

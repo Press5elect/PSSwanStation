@@ -1,0 +1,57 @@
+// PSSwanStation - HD texture packs by the texture cache's blocks, for the
+// textured batch fragment shaders (included by every textured template).
+//
+// The console's texture cache holds a texture page in blocks (psx-spx,
+// "GPU Texture Caching"): 64x64 texels of a 4-bit texture, 32x64 of an
+// 8-bit one, 32x32 of a 15-bit one. When a primitive reads at most 2 x 2
+// blocks and a pack has pictures of them (GPU_HW, gpu_hw_texture_blocks.cpp),
+// its vertices carry the pictures' places in the replacement atlas (16 x 16
+// slots of 256 x 256):
+//
+//   v_replacement.x  bit 31     some block has a picture
+//                    bit 30     two columns of blocks
+//                    bit 29     two rows
+//                    bits 8-15  the first block's row in its texture page
+//                    bits 0-7   its column
+//   v_replacement.y  a byte a block (0 1 / 2 3), its picture's slot, 255
+//                    for none
+//
+// SampleFromVRAM then returns the picture's colour, filtered, with the
+// console's own texel for the semi-transparency bit. A picture's transparent
+// pixels (alpha below one half) are the console's transparent texel, 0000h.
+//
+// SPDX-FileCopyrightText: 2026 Press5elect
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+layout(set = 0, binding = 3) uniform sampler2D samp_blocks;
+
+vec4 SampleFromVRAMBase(uvec4 texpage, vec2 coords);
+
+vec4 SampleFromVRAM(uvec4 texpage, vec2 coords)
+{
+  vec4 texel = SampleFromVRAMBase(texpage, coords);
+  uint info = v_replacement.x;
+  if ((info & 0x80000000u) == 0u)
+    return texel;
+
+  // Palette textures come here in native texels, direct ones in scaled.
+  bool palette = PALETTE_4_BIT || PALETTE_8_BIT;
+  vec2 native = palette ? coords : (coords / float(RESOLUTION_SCALE));
+  vec2 dims = PALETTE_4_BIT ? vec2(64.0, 64.0) : (PALETTE_8_BIT ? vec2(32.0, 64.0) : vec2(32.0, 32.0));
+  uvec2 first = uvec2(info & 0xFFu, (info >> 8) & 0xFFu);
+  uvec2 last = first + uvec2((info >> 30) & 1u, (info >> 29) & 1u);
+  uvec2 block = clamp(uvec2(max(floor(native / dims), vec2(0.0))), first, last);
+  uvec2 which = block - first;
+  uint slot = (v_replacement.y >> ((which.x + which.y * 2u) * 8u)) & 0xFFu;
+  if (slot == 255u)
+    return texel;
+
+  vec2 local = clamp((native - vec2(block) * dims) / dims, vec2(0.0), vec2(1.0));
+  vec2 origin = vec2(float(slot & 15u), float(slot >> 4)) * 256.0;
+  vec4 hd = textureLod(samp_blocks, (origin + vec2(0.5) + local * 255.0) / 4096.0, 0.0);
+  if (hd.a < 0.5)
+    return vec4(0.0);
+  // Never the transparent texel by accident: a black picture pixel of an
+  // opaque texel keeps one step of 8-bit colour, nothing at 5 bits.
+  return vec4(max(hd.rgb, vec3(1.0 / 255.0)), texel.a);
+}

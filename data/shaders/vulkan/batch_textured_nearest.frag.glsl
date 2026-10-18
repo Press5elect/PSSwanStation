@@ -51,9 +51,9 @@
 // m_multisamples).
 
 #version 450 core
+#extension GL_GOOGLE_include_directive : require
 #if defined(SHADER_BLEND)
 #extension GL_ARB_fragment_shader_interlock : require
-#extension GL_GOOGLE_include_directive : require
 #endif
 
 // ---- Specialisation constants --------------------------------------
@@ -123,6 +123,7 @@ layout(location = 0) in VertexData {
   INTERP       vec2 v_tex0;
   flat         uvec4 v_texpage;
   flat         vec4 v_uv_limits;
+  flat         uvec2 v_replacement;
 };
 
 // ---- Outputs -------------------------------------------------------
@@ -187,7 +188,9 @@ uint RGBA8ToRGBA5551(vec4 v)
 }
 
 // ---- VRAM atlas sample ---------------------------------------------
-vec4 SampleFromVRAM(uvec4 texpage, vec2 coords)
+#include "batch_texture_blocks.glslinc"
+
+vec4 SampleFromVRAMBase(uvec4 texpage, vec2 coords)
 {
   const vec2  rcp_vram_size = vec2(1.0) / vec2(uvec2(1024u, 512u) * RESOLUTION_SCALE);
 

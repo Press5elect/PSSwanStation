@@ -66,7 +66,48 @@ def share(png, cell, test):
     return magenta / max(total, 1)
 
 
+def cell_box(img, cell):
+    """A cell's pixels on the screen (as share() places them)."""
+    w, h = img.size
+    ph = h
+    pw = ph * 4 // 3
+    if pw > w:
+        pw = w
+        ph = pw * 3 // 4
+    ox, oy = (w - pw) // 2, (h - ph) // 2
+    cx, cy = (cell % 4) * 80, (cell // 4) * 60
+    return (ox + cx * pw // 320 + 1, oy + cy * ph // 240 + 1, ox + (cx + 80) * pw // 320 - 1,
+            oy + (cy + 60) * ph // 240 - 1)
+
+
+def blocks(out):
+    """blocks.sh: the share of each cell that the HD pack changed."""
+    base = Image.open(out / "base.png").convert("RGB")
+    pack = Image.open(out / "pack.png").convert("RGB")
+    bp, pp = base.load(), pack.load()
+    untextured = {4, 5, 6, 7, 14}
+    bad = 0
+    print("cell                changed (share of the cell)")
+    for cell in range(16):
+        x0, y0, x1, y1 = cell_box(base, cell)
+        total = changed = 0
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                total += 1
+                changed += bp[x, y] != pp[x, y]
+        share = changed / max(total, 1)
+        note = ""
+        if cell in untextured and share > 0.001:
+            note, bad = "  << untextured, should not change", bad + 1
+        if cell in (0, 2) and share < 0.5:
+            note, bad = "  << textured, should change", bad + 1
+        print("  %2d %-14s %8.4f%s" % (cell, NAMES[cell], share, note))
+    return 1 if bad else 0
+
+
 def main():
+    if sys.argv[1] == "--blocks":
+        return blocks(Path(sys.argv[2]))
     out = Path(sys.argv[1])
     sw = vram(out / "sw.vram")
     worst = 0

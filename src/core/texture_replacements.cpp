@@ -16,8 +16,12 @@
 #if (defined(CPU_X86) || defined(CPU_X64)) && !defined(__PROSPERO__)
 #include "xxh_x86dispatch.h"
 #endif
+#include <algorithm>
 #include <cinttypes>
 #include <file/file_path.h>
+#include <cstdio>
+#include <cstring>
+#include <vector>
 Log_SetChannel(TextureReplacements);
 
 TextureReplacements g_texture_replacements;
@@ -64,6 +68,15 @@ TextureReplacements::~TextureReplacements() = default;
 
 void TextureReplacements::SetGameID(std::string game_id)
 {
+#ifdef SWANSTATION_STANDALONE
+  // The renderer tests (ps5/tests/gpu) run a program as the BIOS, with no
+  // disc to name the texture folder.
+  if (game_id.empty())
+  {
+    if (const char* test_id = std::getenv("SWANSTATION_TEXTURE_ID"))
+      game_id = test_id;
+  }
+#endif
   if (m_game_id == game_id)
     return;
 
@@ -131,9 +144,133 @@ TextureReplacementHash TextureReplacements::GetVRAMWriteHash(uint32_t width, uin
   return {hash.low64, hash.high64};
 }
 
+static uint64_t TextureBlockKey(uint32_t bits, uint64_t hash)
+{
+  return (static_cast<uint64_t>(bits) << 56) ^ hash;
+}
+
+bool TextureReplacements::HasTextureBlock(uint32_t bits, uint64_t hash) const
+{
+  return m_texture_block_replacements.find(TextureBlockKey(bits, hash)) != m_texture_block_replacements.end();
+}
+
+bool TextureReplacements::LoadTextureBlock(uint32_t bits, uint64_t hash, TextureReplacementTexture* out) const
+{
+  const auto it = m_texture_block_replacements.find(TextureBlockKey(bits, hash));
+  if (it == m_texture_block_replacements.end())
+    return false;
+  if (!Common::LoadImageFromFile(out, it->second.c_str()) || out->GetWidth() == 0 || out->GetHeight() == 0)
+  {
+    Log_ErrorPrintf("Failed to load '%s'", it->second.c_str());
+    return false;
+  }
+  return true;
+}
+
+bool TextureReplacements::DumpingTextureBlocks() const
+{
+  return g_settings.texture_replacements.dump_texture_blocks && !m_game_id.empty();
+}
+
+// A PNG of RGBA pixels, its image data in stored (uncompressed) deflate
+// blocks: the pictures are small, and every build has this (the libretro
+// build's miniz has no deflate).
+static std::vector<uint8_t> EncodeStoredPNG(const uint32_t* rgba, uint32_t width, uint32_t height)
+{
+  static uint32_t crc_table[256];
+  if (crc_table[1] == 0)
+  {
+    for (uint32_t n = 0; n < 256; n++)
+    {
+      uint32_t c = n;
+      for (int k = 0; k < 8; k++)
+        c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+      crc_table[n] = c;
+    }
+  }
+  std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+  const auto put32 = [](std::vector<uint8_t>& v, uint32_t x) {
+    v.push_back(static_cast<uint8_t>(x >> 24));
+    v.push_back(static_cast<uint8_t>(x >> 16));
+    v.push_back(static_cast<uint8_t>(x >> 8));
+    v.push_back(static_cast<uint8_t>(x));
+  };
+  const auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
+    put32(png, static_cast<uint32_t>(data.size()));
+    const size_t start = png.size();
+    png.insert(png.end(), type, type + 4);
+    png.insert(png.end(), data.begin(), data.end());
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = start; i < png.size(); i++)
+      crc = crc_table[(crc ^ png[i]) & 0xFF] ^ (crc >> 8);
+    put32(png, crc ^ 0xFFFFFFFFu);
+  };
+
+  std::vector<uint8_t> header;
+  put32(header, width);
+  put32(header, height);
+  header.insert(header.end(), {8, 6, 0, 0, 0}); // 8 bits, RGBA, deflate, filter 0, no interlace
+  chunk("IHDR", header);
+
+  // The rows, each after its filter byte (none).
+  std::vector<uint8_t> raw;
+  raw.reserve((width * 4 + 1) * height);
+  for (uint32_t y = 0; y < height; y++)
+  {
+    raw.push_back(0);
+    const uint8_t* row = reinterpret_cast<const uint8_t*>(rgba + y * width);
+    raw.insert(raw.end(), row, row + width * 4);
+  }
+  std::vector<uint8_t> z = {0x78, 0x01};
+  uint32_t a = 1, b = 0;
+  for (uint8_t c : raw)
+  {
+    a = (a + c) % 65521u;
+    b = (b + a) % 65521u;
+  }
+  for (size_t pos = 0; pos < raw.size() || pos == 0;)
+  {
+    const size_t len = std::min<size_t>(raw.size() - pos, 65535);
+    const bool last = (pos + len) == raw.size();
+    z.push_back(last ? 1 : 0);
+    z.push_back(static_cast<uint8_t>(len));
+    z.push_back(static_cast<uint8_t>(len >> 8));
+    z.push_back(static_cast<uint8_t>(~len));
+    z.push_back(static_cast<uint8_t>(~len >> 8));
+    z.insert(z.end(), raw.begin() + pos, raw.begin() + pos + len);
+    pos += len;
+    if (last)
+      break;
+  }
+  put32(z, (b << 16) | a);
+  chunk("IDAT", z);
+  chunk("IEND", {});
+  return png;
+}
+
+void TextureReplacements::DumpTextureBlock(uint32_t bits, uint64_t hash, const uint32_t* rgba, uint32_t width,
+                                           uint32_t height)
+{
+  if (!m_texture_blocks_dumped.emplace(TextureBlockKey(bits, hash), true).second)
+    return;
+  const std::string dir = GetSourceDirectory() + FS_OSPATH_SEPARATOR_STR "dump";
+  if (!path_is_directory(dir.c_str()) && !path_mkdir(dir.c_str()))
+    return;
+  const std::string path = StringUtil::StdStringFromFormat("%s" FS_OSPATH_SEPARATOR_STR "block-%u-%016" PRIx64 ".png",
+                                                           dir.c_str(), bits, hash);
+  if (path_is_valid(path.c_str()))
+    return;
+  const std::vector<uint8_t> png = EncodeStoredPNG(rgba, width, height);
+  if (FileSystem::WriteBinaryFile(path.c_str(), png.data(), png.size()))
+    Log_InfoPrintf("Wrote out texture block %s", path.c_str());
+}
+
 void TextureReplacements::Reload()
 {
   m_vram_write_replacements.clear();
+  m_texture_block_replacements.clear();
+  m_texture_blocks_dumped.clear();
+  m_generation++;
 
   if (g_settings.texture_replacements.AnyReplacementsEnabled())
     FindTextures(GetSourceDirectory());
@@ -212,6 +349,23 @@ void TextureReplacements::FindTextures(const std::string& dir)
 
   for (FILESYSTEM_FIND_DATA& fd : files)
   {
+    // block-<bits>-<16 hex digits>.<image>: a texture cache block (GetTextureBlock).
+    {
+      const char* title = std::strrchr(fd.FileName.c_str(), '/');
+      title = title ? title + 1 : fd.FileName.c_str();
+      unsigned bits = 0;
+      char hex[17] = {};
+      if (g_settings.texture_replacements.enable_texture_blocks &&
+          StringUtil::Strncasecmp(title, "block-", 6) == 0 && std::sscanf(title + 6, "%u-%16[0-9a-fA-F]", &bits, hex) == 2 &&
+          (bits == 4 || bits == 8 || bits == 15) && std::strlen(hex) == 16 &&
+          fd.FileName.find(FS_OSPATH_SEPARATOR_STR "dump" FS_OSPATH_SEPARATOR_STR) == std::string::npos)
+      {
+        const uint64_t block_hash = std::strtoull(hex, nullptr, 16);
+        m_texture_block_replacements.emplace(TextureBlockKey(bits, block_hash), fd.FileName);
+        continue;
+      }
+    }
+
     TextureReplacementHash hash;
     ReplacmentType type;
     if (!ParseReplacementFilename(fd.FileName, &hash, &type))
@@ -221,6 +375,8 @@ void TextureReplacements::FindTextures(const std::string& dir)
     {
       case ReplacmentType::VRAMWrite:
       {
+        if (!g_settings.texture_replacements.enable_vram_write_replacements)
+          continue;
         auto it = m_vram_write_replacements.find(hash);
         if (it != m_vram_write_replacements.end())
         {
@@ -234,7 +390,8 @@ void TextureReplacements::FindTextures(const std::string& dir)
     }
   }
 
-  Log_InfoPrintf("Found %zu replacement VRAM writes for '%s'", m_vram_write_replacements.size(), m_game_id.c_str());
+  Log_InfoPrintf("Found %zu replacement VRAM writes and %zu texture blocks for '%s'", m_vram_write_replacements.size(),
+                 m_texture_block_replacements.size(), m_game_id.c_str());
 }
 
 const TextureReplacementTexture* TextureReplacements::LoadTexture(const std::string& filename)

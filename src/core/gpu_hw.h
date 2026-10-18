@@ -3,6 +3,7 @@
 #include "gpu.h"
 #include "host_display.h"
 #include <cstring>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -60,10 +61,17 @@ protected:
     uint16_t u; // 16-bit texcoords are needed for 256 extent rectangles
     uint16_t v;
     uint32_t uv_limits;
+    // PSSwanStation: an HD texture pack's pictures of the texture cache
+    // blocks this primitive reads (gpu_hw_texture_blocks.cpp,
+    // batch_texture_blocks.glslinc); 0 for none.
+    uint32_t replacement;
+    uint32_t replacement_slots;
 
     ALWAYS_INLINE void Set(float x_, float y_, float z_, float w_, uint32_t color_, uint32_t texpage_, uint16_t packed_texcoord,
                            uint32_t uv_limits_)
     {
+      replacement = 0;
+      replacement_slots = 0;
       x         = x_;
       y         = y_;
       z         = z_;
@@ -78,6 +86,8 @@ protected:
     ALWAYS_INLINE void Set(float x_, float y_, float z_, float w_, uint32_t color_, uint32_t texpage_, uint16_t u_, uint16_t v_,
                            uint32_t uv_limits_)
     {
+      replacement = 0;
+      replacement_slots = 0;
       x = x_;
       y = y_;
       z = z_;
@@ -587,6 +597,43 @@ protected:
 
   // Bounding box of VRAM area that the GPU has drawn into.
   Common::Rectangle<uint32_t> m_vram_dirty_rect;
+
+  // PSSwanStation: HD texture packs by the texture cache's blocks
+  // (gpu_hw_texture_blocks.cpp). The replacement atlas is 16 x 16 slots of
+  // 256 x 256 RGBA8 pictures; slot 255 means none.
+  static constexpr uint32_t TEXTURE_BLOCK_ATLAS_SIZE = 4096, TEXTURE_BLOCK_SLOT_SIZE = 256,
+                            TEXTURE_BLOCK_SLOTS = 255, TEXTURE_BLOCK_NO_SLOT = 255;
+  // A backend that can sample the atlas says so and takes a slot's picture.
+  virtual bool SupportsTextureBlocks() const { return false; }
+  virtual bool UploadTextureBlock(uint32_t slot, const uint32_t* rgba) { return false; }
+  // Video memory as the CPU wrote it, kept beside the GPU's while packs are
+  // in use; drawing marks what it touches as unknown.
+  void UpdateTextureBlocksActive();
+  void TextureBlocksFill(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color);
+  void TextureBlocksUpdate(uint32_t x, uint32_t y, uint32_t width, uint32_t height, const void* data, bool set_mask,
+                           bool check_mask);
+  void TextureBlocksCopy(uint32_t src_x, uint32_t src_y, uint32_t dst_x, uint32_t dst_y, uint32_t width,
+                         uint32_t height);
+  // After a read back of video memory into m_vram_ptr: that part is known again.
+  void TextureBlocksReadBack(const Common::Rectangle<uint32_t>& rect);
+  void MarkTextureBlockTilesDrawnSlow(uint32_t left, uint32_t right, uint32_t top, uint32_t bottom);
+  ALWAYS_INLINE void MarkTextureBlockTilesDrawn(uint32_t left, uint32_t right, uint32_t top, uint32_t bottom)
+  {
+    if (m_texture_blocks_active)
+      MarkTextureBlockTilesDrawnSlow(left, right, top, bottom);
+  }
+  // The pack's pictures for a primitive reading texels [min_u, max_u] x
+  // [min_v, max_v] of the current page; false when there are none (it reads
+  // more than 2 x 2 blocks, a texture window, a block drawn by the GPU...).
+  // May flush the batch (a slot reused), and leaves room for the primitive.
+  bool LookupTextureBlocks(uint32_t min_u, uint32_t max_u, uint32_t min_v, uint32_t max_v, uint32_t* replacement,
+                           uint32_t* replacement_slots);
+
+  struct TextureBlockState;
+  std::unique_ptr<TextureBlockState> m_texture_blocks;
+  bool m_texture_blocks_active = false;
+  uint32_t m_texture_blocks_generation = 0;
+  uint32_t m_flush_serial = 0;
 
   // Changed state
   bool m_batch_ubo_dirty = true;

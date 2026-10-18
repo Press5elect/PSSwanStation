@@ -92,8 +92,15 @@ struct Settings
   {
     bool enable_vram_write_replacements = false;
     bool preload_textures = false;
+    // PSSwanStation: HD texture packs by the texture cache's blocks, and
+    // writing out the blocks a game uses for pack makers.
+    bool enable_texture_blocks = true;
+    bool dump_texture_blocks = false;
 
-    ALWAYS_INLINE bool AnyReplacementsEnabled() const { return enable_vram_write_replacements; }
+    ALWAYS_INLINE bool AnyReplacementsEnabled() const
+    {
+      return enable_vram_write_replacements || enable_texture_blocks || dump_texture_blocks;
+    }
 
   } texture_replacements;
 
