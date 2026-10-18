@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Build 24 (not released yet)
+Build 24
   Added
   - HD texture packs for 3D games too, by the GPU's texture cache blocks:
     a pack's picture replaces a block of a texture page (64x64 texels of a
@@ -25,7 +25,16 @@ Build 24 (not released yet)
     half of the touch pad, or OPTIONS held for a second (OPTIONS then is the
     game's too, without shortcuts). The Shortcuts page follows the choice.
   Changed
-  - The newest SwanStation fixes (save states, controllers, CD-ROM).
+  - Every picture preset switches on accurate blending and exact lines.
+  - The Shortcuts page names the button that opens the menu, as set.
+  Fixed (SwanStation's newest fixes)
+  - A save state keeps a controller or memory card transfer in progress,
+    the disc that was in (a game on several discs, or no disc with the lid
+    closed) and the drive's lid, so loading it no longer swaps the disc or
+    upsets the controller.
+  - A damaged or mismatched save state is refused and the console reset,
+    instead of running on in a broken state; states made with an M3U
+    playlist load again.
 
 Build 23
   Changed
