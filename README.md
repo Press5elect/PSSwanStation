@@ -2,13 +2,34 @@
 
 This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a native title (`PPSA99248`) for a jailbroken PS5, drawing with Vulkan through the RADV driver, with a library for the controller, every setting of the emulator, save states, cheats, RetroAchievements and more. The work is on the branch `ps5-port`.
 
-- **Latest release: [build 23](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console, with the source of every part)
+- **Latest release: [build 24](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console, with the source of every part)
 - The manual, every screen and setting: [`ps5/MANUAL.md`](ps5/MANUAL.md)
 - What it does and how to use it: [`ps5/README.txt`](ps5/README.txt)
 - What changed in each build: [`ps5/CHANGELOG.txt`](ps5/CHANGELOG.txt)
 - How it is built: the head of [`ps5/tools/build.sh`](ps5/tools/build.sh); a release is made by [`ps5/tools/release.py`](ps5/tools/release.py)
 - What leaves the console and what is kept: [`ps5/PRIVACY.md`](ps5/PRIVACY.md)
 - Licences of every part: [`ps5/licenses/README.txt`](ps5/licenses/README.txt)
+
+### Build 24
+
+#### Added
+
+- **HD texture packs for 3D games too.** A pack picture replaces one block of a texture page as the PlayStation's texture cache holds it (64x64 texels of a 4-bit texture, 32x64 of an 8-bit one, 32x32 of a 15-bit one). Pictures are named `block-<4|8|15>-<hash>.png` and go in `textures/<serial>/`; they can be up to 256x256 and are drawn smoothly with every texture filter. Vulkan renderer; Settings, Emulator, Enhancement, "HD Texture Packs" (on).
+- **Write Out Texture Blocks** (Settings, Emulator, Enhancement): every block a game shows is saved once to `textures/<serial>/dump/`, already named, to make packs from.
+- **Accurate blending** (on): semi-transparency and the mask bit worked out the way the PlayStation does them, at 5 bits a channel, in drawing order. Not used with MSAA or the PGXP depth buffer.
+- **Exact lines** (on): lines drawn pixel for pixel as the PlayStation steps them, at every resolution.
+- **OPTIONS can be remapped.** Settings, Controls, Buttons offers OPTIONS for any PlayStation button, beside the touch pad's halves. "The menu opens with" gives the menu and the shortcuts' key to OPTIONS, to either half of the touch pad, or to OPTIONS held for a second (a tap is then the game's, and there are no shortcuts).
+
+#### Changed
+
+- Every picture preset switches on accurate blending and exact lines.
+- The Shortcuts page names the button that opens the menu, as set.
+- Newer parts: the RADV driver at PS5 Mesa 14c2f44 (fragment shader barycentrics, with the 120 Hz settling and timed waits kept), and libsmb2 and libnfs at their newest revisions (SMB request sizes kept within the server's limits; NFSv4 leases renewed while mounted).
+
+#### Fixed
+
+- A save state keeps a controller or memory card transfer in progress, the disc that was in (a game on several discs, or no disc with the lid closed) and the drive's lid, so loading it no longer swaps the disc or upsets the controller.
+- A damaged or mismatched save state is refused and the console reset, instead of running on in a broken state; states made with an M3U playlist load again.
 
 **Author and credit.** The PS5 title (everything in `ps5/` and the changes to SwanStation for it) is Copyright (C) 2026 [Press5elect](https://github.com/Press5elect), under the GNU General Public License, version 3 or later, with one additional term under its section 7(b): anyone who passes on this work or a work based on it, in source or binary form, must keep its author's attributions and credit "PSSwanStation by Press5elect" wherever the work shows its credits. That holds however a copy or an adaptation is made, AI tools included. The term is in [`ps5/licenses/ADDITIONAL-TERMS.txt`](ps5/licenses/ADDITIONAL-TERMS.txt). SwanStation and the libraries keep their own licences and authors.
 
