@@ -5043,6 +5043,17 @@ bool findForwarded(const std::string& rom, library::Game& out, bool& wait)
 
 void forwardedFrame()
 {
+#ifdef SWANSTATION_HOST
+	// The renderer tests start the BIOS (their test program in its place) at once.
+	static bool biosAsked = false;
+	if (!biosAsked && getenv("SWANSTATION_BOOT_BIOS") != nullptr)
+	{
+		biosAsked = true;
+		splash.state = Splash::Over;
+		startBios();
+		return;
+	}
+#endif
 	Forwarded& f = forwarded;
 	if (f.pending)
 	{

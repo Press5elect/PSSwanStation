@@ -98,6 +98,14 @@ uint32_t coreDrawResolutionScale()
 	return g_gpu ? g_gpu->GetDrawResolutionScale() : 1;
 }
 
+bool coreReadVram(uint16_t *out)
+{
+	if (!g_gpu)
+		return false;
+	g_gpu->ReadVRAMForTests(out);
+	return true;
+}
+
 uint32_t coreVideoBlocks()
 {
 	return g_mdec.GetDecodedBlockCount();

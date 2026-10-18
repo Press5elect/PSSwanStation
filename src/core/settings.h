@@ -55,6 +55,7 @@ struct Settings
   bool gpu_pgxp_preserve_proj_fp = false;
   bool gpu_pgxp_depth_buffer = false;
   bool gpu_close_gaps = true;
+  bool gpu_exact_lines = true;
   DisplayCropMode display_crop_mode = DisplayCropMode::None;
   DisplayAspectRatio display_aspect_ratio = DisplayAspectRatio::Auto;
   uint16_t display_aspect_ratio_custom_numerator = 0;

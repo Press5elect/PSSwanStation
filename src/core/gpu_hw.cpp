@@ -759,6 +759,126 @@ void GPU_HW::DrawLine(float x0, float y0, uint32_t col0, float x1, float y1, uin
   AddVertex(output[1]);
 }
 
+// PSSwanStation: lines as the console draws them.
+//
+// The console steps a line one pixel at a time along its longer axis, from
+// the end further left, with 32 fractional bits for the shorter axis, and
+// rounds as below (the software renderer does the same; GPU_SW_Backend::
+// DrawLine). Drawn as a strip of triangles a line comes out a pixel off here
+// and there, its corners leave notches, and two segments of a semi-
+// transparent poly-line do not overlap where the console blends their shared
+// pixel twice. Here the console's pixels are found and drawn as blocks of
+// whole native pixels: a run of pixels in one row (or column) is one block;
+// a shaded line's pixels are blocks of one, each with its colour.
+void GPU_HW::DrawLineExact(int32_t x0, int32_t y0, uint32_t col0, int32_t x1, int32_t y1, uint32_t col1,
+                           bool shaded, float depth)
+{
+  const int32_t adx = std::abs(x1 - x0), ady = std::abs(y1 - y0);
+  const int32_t k = std::max(adx, ady);
+  if (k > 0 && x0 >= x1)
+  {
+    std::swap(x0, x1);
+    std::swap(y0, y1);
+    std::swap(col0, col1);
+  }
+  constexpr int frac = 32, rgb_frac = 12;
+  const auto divide = [](int64_t delta, int32_t dk) -> int64_t {
+    delta = static_cast<int64_t>(static_cast<uint64_t>(delta) << frac);
+    if (delta < 0)
+      delta -= dk - 1;
+    if (delta > 0)
+      delta += dk - 1;
+    return delta / dk;
+  };
+  const int64_t dx = (k > 0) ? divide(x1 - x0, k) : 0;
+  const int64_t dy = (k > 0) ? divide(y1 - y0, k) : 0;
+  uint64_t px = (static_cast<uint64_t>(static_cast<uint32_t>(x0)) << frac) | (1ull << (frac - 1));
+  uint64_t py = (static_cast<uint64_t>(static_cast<uint32_t>(y0)) << frac) | (1ull << (frac - 1));
+  px -= 1024;
+  if (dy < 0)
+    py -= 1024;
+
+  const auto channel = [](uint32_t c, int shift) { return static_cast<int32_t>((c >> shift) & 0xFFu); };
+  int32_t r = 0, g = 0, b = 0, dr = 0, dg = 0, db = 0;
+  if (shaded)
+  {
+    r = (channel(col0, 0) << rgb_frac) | (1 << (rgb_frac - 1));
+    g = (channel(col0, 8) << rgb_frac) | (1 << (rgb_frac - 1));
+    b = (channel(col0, 16) << rgb_frac) | (1 << (rgb_frac - 1));
+    if (k > 0)
+    {
+      dr = static_cast<int32_t>(static_cast<uint32_t>(channel(col1, 0) - channel(col0, 0)) << rgb_frac) / k;
+      dg = static_cast<int32_t>(static_cast<uint32_t>(channel(col1, 8) - channel(col0, 8)) << rgb_frac) / k;
+      db = static_cast<int32_t>(static_cast<uint32_t>(channel(col1, 16) - channel(col0, 16)) << rgb_frac) / k;
+    }
+  }
+
+  // A block from (bx, by), w by h native pixels, one colour.
+  const auto block = [&](int32_t bx, int32_t by, int32_t w, int32_t h, uint32_t colour) {
+    if (GetBatchVertexSpace() < 6)
+    {
+      FlushRender();
+      MapBatchVertexPointer(std::max<uint32_t>(6, LineVertexCount(bx, by, x1, y1, shaded, true)));
+    }
+    const float l = static_cast<float>(bx), t = static_cast<float>(by);
+    const float rr = static_cast<float>(bx + w), bb = static_cast<float>(by + h);
+    AddNewVertex(l, t, depth, 1.0f, colour, 0u, static_cast<uint16_t>(0), 0u);
+    AddNewVertex(rr, t, depth, 1.0f, colour, 0u, static_cast<uint16_t>(0), 0u);
+    AddNewVertex(l, bb, depth, 1.0f, colour, 0u, static_cast<uint16_t>(0), 0u);
+    AddNewVertex(l, bb, depth, 1.0f, colour, 0u, static_cast<uint16_t>(0), 0u);
+    AddNewVertex(rr, t, depth, 1.0f, colour, 0u, static_cast<uint16_t>(0), 0u);
+    AddNewVertex(rr, bb, depth, 1.0f, colour, 0u, static_cast<uint16_t>(0), 0u);
+  };
+
+  const bool x_major = adx >= ady;
+  int32_t run_x = 0, run_y = 0, run_len = 0;
+  for (int32_t i = 0; i <= k; i++)
+  {
+    // The coordinates as the console has them: 11 bits, wrapping (as 2048 apart, so a sign-extended value).
+    int32_t x = static_cast<int32_t>((px >> frac) & 2047u);
+    int32_t y = static_cast<int32_t>((py >> frac) & 2047u);
+    if (x >= 1024)
+      x -= 2048;
+    if (y >= 1024)
+      y -= 2048;
+    if (shaded)
+    {
+      const uint32_t colour = static_cast<uint32_t>(r >> rgb_frac) & 0xFFu |
+                              ((static_cast<uint32_t>(g >> rgb_frac) & 0xFFu) << 8) |
+                              ((static_cast<uint32_t>(b >> rgb_frac) & 0xFFu) << 16);
+      block(x, y, 1, 1, colour);
+      r += dr;
+      g += dg;
+      b += db;
+    }
+    else if (run_len > 0 && (x_major ? (y == run_y && x == run_x + run_len) : (x == run_x && y == run_y + run_len)))
+    {
+      run_len++;
+    }
+    else
+    {
+      if (run_len > 0)
+        block(run_x, run_y, x_major ? run_len : 1, x_major ? 1 : run_len, col0);
+      run_x = x;
+      run_y = y;
+      run_len = 1;
+    }
+    px += static_cast<uint64_t>(dx);
+    py += static_cast<uint64_t>(dy);
+  }
+  if (!shaded && run_len > 0)
+    block(run_x, run_y, x_major ? run_len : 1, x_major ? 1 : run_len, col0);
+}
+
+uint32_t GPU_HW::LineVertexCount(int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool shaded, bool exact)
+{
+  if (!exact)
+    return 6;
+  const uint32_t adx = static_cast<uint32_t>(std::abs(x1 - x0)), ady = static_cast<uint32_t>(std::abs(y1 - y0));
+  // A shaded line: a block a pixel; a mono one: a block a run, at most one a step of the shorter axis.
+  return 6u * ((shaded ? std::max(adx, ady) : std::min(adx, ady)) + 1u);
+}
+
 void GPU_HW::LoadVertices()
 {
   if (m_GPUSTAT.check_mask_before_draw)
@@ -1089,8 +1209,11 @@ void GPU_HW::LoadVertices()
         AddDrawLineTicks(clip_right - clip_left, clip_bottom - clip_top, rc.shading_enable);
 
         // TODO: Should we do a PGXP lookup here? Most lines are 2D.
-        DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), start_color, static_cast<float>(end_x),
-                 static_cast<float>(end_y), end_color, depth);
+        if (g_settings.gpu_exact_lines)
+          DrawLineExact(start_x, start_y, start_color, end_x, end_y, end_color, rc.shading_enable, depth);
+        else
+          DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), start_color, static_cast<float>(end_x),
+                   static_cast<float>(end_y), end_color, depth);
 
         if (m_sw_renderer)
         {
@@ -1154,8 +1277,11 @@ void GPU_HW::LoadVertices()
             AddDrawLineTicks(clip_right - clip_left, clip_bottom - clip_top, rc.shading_enable);
 
             // TODO: Should we do a PGXP lookup here? Most lines are 2D.
-            DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), start_color, static_cast<float>(end_x),
-                     static_cast<float>(end_y), end_color, depth);
+            if (g_settings.gpu_exact_lines)
+              DrawLineExact(start_x, start_y, start_color, end_x, end_y, end_color, shaded, depth);
+            else
+              DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), start_color, static_cast<float>(end_x),
+                       static_cast<float>(end_y), end_color, depth);
           }
 
           start_x = end_x;

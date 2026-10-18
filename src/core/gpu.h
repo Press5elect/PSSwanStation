@@ -7,6 +7,7 @@
 #include "types.h"
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <vector>
@@ -159,6 +160,13 @@ public:
   virtual void SetDrawJitter(float x, float y) {}
   // The scale the hardware renderer draws at now (1 for the software one).
   virtual uint32_t GetDrawResolutionScale() const { return 1; }
+  // The whole of video memory as the console has it (1024 x 512 16-bit
+  // pixels), read back from the renderer: for the PS5 title's renderer tests.
+  void ReadVRAMForTests(uint16_t* out)
+  {
+    ReadVRAM(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
+    std::memcpy(out, m_vram_ptr, VRAM_WIDTH * VRAM_HEIGHT * sizeof(uint16_t));
+  }
   // The lines of video memory the display shows, before any scaling (a game's
   // own line count: 240, 480...).
   uint32_t GetDisplayVRAMHeight() const { return m_crtc_state.display_vram_height; }

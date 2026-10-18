@@ -492,6 +492,13 @@ protected:
 
   /// Expands a line into two triangles.
   void DrawLine(float x0, float y0, uint32_t col0, float x1, float y1, uint32_t col1, float depth);
+  /// A line pixel by pixel as the console steps it (the software renderer's
+  /// stepping): its pixels in runs along a row or a column, each run a block
+  /// of whole native pixels; a shaded line's pixels each with their colour.
+  void DrawLineExact(int32_t x0, int32_t y0, uint32_t col0, int32_t x1, int32_t y1, uint32_t col1, bool shaded,
+                     float depth);
+  /// Batch room a line needs, in vertices.
+  static uint32_t LineVertexCount(int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool shaded, bool exact);
 
   /// Handles quads with flipped texture coordinate directions.
   static void HandleFlippedQuadTextureCoordinates(BatchVertex* vertices);

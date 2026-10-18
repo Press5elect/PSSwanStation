@@ -85,6 +85,7 @@ const uint8_t *coreBios(uint32_t& size);
 uint32_t coreDisplayChanges();
 uint32_t coreDrawCommands();
 uint32_t coreVideoBlocks();
+bool coreReadVram(uint16_t *out);
 
 namespace
 {
@@ -1654,6 +1655,27 @@ void runOne(bool keep)
 #endif
 	retro_run();
 	emulatedFrames++;
+#ifdef SWANSTATION_HOST
+	// The renderer tests (ps5/tests/gpu): the whole of video memory written
+	// to a file once the game has run this many frames.
+	if (const char *dump = getenv("SWANSTATION_VRAM_DUMP"))
+	{
+		const char *colon = strchr(dump, ':');
+		if (colon != nullptr && emulatedFrames == strtoull(dump, nullptr, 10))
+		{
+			std::vector<uint16_t> vram(1024 * 512);
+			if (coreReadVram(vram.data()))
+			{
+				if (FILE *f = fopen(colon + 1, "wb"))
+				{
+					fwrite(vram.data(), 2, vram.size(), f);
+					fclose(f);
+				}
+				diag::mark("vram: written at frame %llu", (unsigned long long)emulatedFrames);
+			}
+		}
+	}
+#endif
 	if (options::frontend().speedrun)
 		speedrun::frame(av.timing.fps);
 	{
