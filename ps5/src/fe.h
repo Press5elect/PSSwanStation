@@ -405,8 +405,14 @@ struct Frontend
 	bool playerLights = true;	// each player's light bar in their colour
 	// The PlayStation's sixteen buttons (libretro's order: Cross, Square,
 	// Select, Start, Up, Down, Left, Right, Circle, Triangle, L1, R1, L2, R2,
-	// L3, R3): which button of the pad presses each (the same order; -1 none).
+	// L3, R3): which button of the pad presses each (the same order, 16 for
+	// OPTIONS; -1 none).
 	int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+	// What opens PSSwanStation's menu over a game (and, held, is the
+	// shortcuts' key): 0 OPTIONS, 1 the touch pad's left half, 2 its right
+	// half, 3 OPTIONS held for a second (no shortcuts; OPTIONS can then be a
+	// PlayStation button too). The button that opens the menu is not the game's.
+	int menuKey = 0;
 	unsigned turbo = 0;			// the PlayStation buttons that fire repeatedly while held, as bits
 	int turboRate = 1;			// 0 slow (7 a second), 1 normal (10), 2 fast (15)
 	bool hotkeys = true;		// OPTIONS held with another button: fast forward, rewind, quick save and load
@@ -693,6 +699,8 @@ std::vector<std::string> textureFolders();
 // How many files a game's pack holds, in the first of those folders that has
 // one (`where`: which).
 int texturePackFiles(const std::string& serial, std::string *where = nullptr);
+// The button that opens the menu over a game (platform:: bits; Settings, Controls).
+uint32_t menuButton();
 // Which BIOS files are in <root>bios/, for the About page.
 std::string biosSummary();
 // Memory card 1 as libretro save RAM, when that card type is chosen.

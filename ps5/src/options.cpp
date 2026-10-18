@@ -303,6 +303,7 @@ std::vector<Field> fields()
 		{ "player_lights", nullptr, &c.playerLights, 0, 1 },
 		{ "turbo_rate", &c.turboRate, nullptr, 0, 2 },
 		{ "hotkeys", nullptr, &c.hotkeys, 0, 1 },
+		{ "menu_key", &c.menuKey, nullptr, 0, 3 },
 		{ "fast_forward", &c.fastForward, nullptr, 0, 4 },
 		{ "rewind", nullptr, &c.rewind, 0, 1 },
 		{ "rewind_detail", &c.rewindDetail, nullptr, 0, 2 },
@@ -351,7 +352,7 @@ std::vector<Field> fields()
 			"map_left", "map_right", "map_circle", "map_triangle", "map_l1", "map_r1", "map_l2", "map_r2", "map_l3",
 			"map_r3" };
 	for (int i = 0; i < 16; i++)
-		list.push_back({ mapNames[i], &c.remap[i], nullptr, -1, 15 });
+		list.push_back({ mapNames[i], &c.remap[i], nullptr, -1, 16 });
 	return list;
 }
 }
