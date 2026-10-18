@@ -61,6 +61,9 @@ public:
   }
   ALWAYS_INLINE const VkPhysicalDeviceProperties& GetDeviceProperties() const { return m_device_properties; }
   ALWAYS_INLINE const VkPhysicalDeviceFeatures& GetDeviceFeatures() const { return m_device_features; }
+  // VK_EXT_fragment_shader_interlock's pixel interlock, enabled on the device
+  // (with fragmentStoresAndAtomics): the renderer's accurate blending.
+  ALWAYS_INLINE bool SupportsFragmentShaderInterlock() const { return m_supports_fragment_shader_interlock; }
   ALWAYS_INLINE const VkPhysicalDeviceLimits& GetDeviceLimits() const { return m_device_properties.limits; }
 
   // Helpers for getting constants
@@ -193,6 +196,7 @@ private:
   uint32_t m_current_frame;
 
   bool m_owns_device = false;
+  bool m_supports_fragment_shader_interlock = false;
 
   // Render pass cache
   using RenderPassCacheKey = std::tuple<VkFormat, VkFormat, VkSampleCountFlagBits, VkAttachmentLoadOp>;

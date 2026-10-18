@@ -306,6 +306,12 @@ const EmbeddedShaderBlob& GetBatchTexturedXBRFragmentShaderBlob(bool msaa,
                                                                 bool dual_source);
 
 
+// The accurate-blending batch fragment shaders: template 0 untextured, 1
+// Nearest, 2 Bilinear, 3 JINC2, 4 xBR (each filter's BinAlpha variant by the
+// BINALPHA spec constant, as above).
+extern const EmbeddedShaderBlob k_batch_shader_blend_fs_blobs[10];
+const EmbeddedShaderBlob& GetBatchShaderBlendFragmentShaderBlob(unsigned template_index, bool noperspective_color);
+
 // Create a VkShaderModule directly from a pre-compiled SPIR-V blob.
 //
 // This intentionally bypasses Vulkan::ShaderCache: pre-baked SPIR-V is already

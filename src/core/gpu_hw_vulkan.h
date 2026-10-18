@@ -11,6 +11,7 @@
 #include <memory>
 #include <rthreads/rthreads.h>
 #include <tuple>
+#include <unordered_map>
 #include <libretro.h>
 
 #define HAVE_VULKAN
@@ -191,6 +192,20 @@ private:
   // the worker, the main cache on the main thread.
   VkShaderModule GetBatchFragmentShader(GPUTextureFilter filter, uint8_t render_mode, uint8_t texture_mode,
                                         bool dithering, bool interlacing);
+
+  // PSSwanStation: accurate blending (batch_shader_blend.glslinc). The batch
+  // draws with the shader's own blending use pipelines with no colour
+  // attachment, video memory bound as a storage image (binding 2) in the
+  // GENERAL layout, inside a render pass of the depth buffer alone; blend
+  // mode, render mode and the mask test are the batch UBO's. Main thread only.
+  void UpdateShaderBlending();
+  void BeginVRAMBlendRenderPass();
+  VkPipeline GetBatchBlendPipeline(GPUTextureFilter filter, bool true_color, bool scaled_dithering,
+                                   uint8_t texture_mode, bool dithering, bool interlacing);
+  void DestroyBatchBlendPipelines();
+  // The depth buffer keeps a copy of the mask bits for the mask test of
+  // VRAM writes and copies; blending draws do not keep it.
+  void SyncDepthFromMaskIfNeeded();
   VkPipeline GetBatchPipeline(GPUTextureFilter filter, bool true_color, bool scaled_dithering,
                               uint8_t depth_test, uint8_t render_mode, uint8_t texture_mode,
                               uint8_t transparency_mode, bool dithering, bool interlacing,
@@ -271,6 +286,13 @@ private:
   VkFramebuffer m_vram_framebuffer = VK_NULL_HANDLE;
   VkFramebuffer m_vram_update_depth_framebuffer = VK_NULL_HANDLE;
   VkFramebuffer m_vram_readback_framebuffer = VK_NULL_HANDLE;
+  VkRenderPass m_vram_blend_render_pass = VK_NULL_HANDLE;
+  VkFramebuffer m_vram_blend_framebuffer = VK_NULL_HANDLE;
+  bool m_supports_shader_blend = false;
+  bool m_vram_storage = false;       // video memory was made a storage image too
+  bool m_depth_needs_update = false; // blending draws changed mask bits the depth copy lacks
+  std::array<VkShaderModule, 5> m_batch_blend_fragment_shaders = {};
+  std::unordered_map<uint32_t, VkPipeline> m_batch_blend_pipelines;
   VkFramebuffer m_display_framebuffer = VK_NULL_HANDLE;
 
   VkSampler m_point_sampler = VK_NULL_HANDLE;

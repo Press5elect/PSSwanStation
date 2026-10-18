@@ -193,13 +193,15 @@ protected:
     // for the D3D12 pre-bake: 288 -> 72 variants per textured
     // filter template (4x reduction).
     uint32_t u_render_mode;
-#ifdef SWANSTATION_STANDALONE
+    // PSSwanStation, accurate blending (the SHADER_BLEND batch shaders):
+    // the batch's blend mode (GPUTransparencyMode, 0..3) and whether pixels
+    // whose mask bit is set are left alone.
+    uint32_t u_transparency_mode;
+    uint32_t u_check_mask;
     // u_jitter_x/y: a sub-pixel shift of everything drawn, in pixels of
-    // the scaled framebuffer, set per picture (SetDrawJitter).
+    // the scaled framebuffer, set per picture (SetDrawJitter); 0 otherwise.
     float u_jitter_x;
     float u_jitter_y;
-    float u_jitter_pad[2];
-#endif
   };
 
   struct VRAMFillUBOData
@@ -380,10 +382,11 @@ protected:
   }
 
   /// We need two-pass rendering when using BG-FG blending and texturing, as the transparency can be enabled
-  /// on a per-pixel basis, and the opaque pixels shouldn't be blended at all.
+  /// on a per-pixel basis, and the opaque pixels shouldn't be blended at all. Not with the shader's own
+  /// blending, which decides per pixel.
   ALWAYS_INLINE bool NeedsTwoPassRendering() const
   {
-    return (m_batch.texture_mode != GPUTextureMode::Disabled &&
+    return !m_shader_blending && (m_batch.texture_mode != GPUTextureMode::Disabled &&
             (m_batch.transparency_mode == GPUTransparencyMode::BackgroundMinusForeground ||
              (!m_supports_dual_source_blend && m_batch.transparency_mode != GPUTransparencyMode::Disabled)));
   }
@@ -562,6 +565,10 @@ protected:
   GPUTextureFilter m_texture_filtering = GPUTextureFilter::Nearest;
   GPUDownsampleMode m_downsample_mode = GPUDownsampleMode::Disabled;
   bool m_using_uv_limits = false;
+  // PSSwanStation: semi-transparency and the mask test done in the fragment
+  // shader, reading video memory (the backend decides: the setting, and a
+  // device that can).
+  bool m_shader_blending = false;
   bool m_close_gaps = false;
   bool m_pgxp_depth_buffer = false;
 

@@ -55,6 +55,10 @@
 // present in the UBO but unused in the untextured path.
 
 #version 450 core
+#if defined(SHADER_BLEND)
+#extension GL_ARB_fragment_shader_interlock : require
+#extension GL_GOOGLE_include_directive : require
+#endif
 
 // ---- Specialisation constants --------------------------------------
 layout(constant_id =   0) const uint RESOLUTION_SCALE              = 1u;
@@ -94,7 +98,14 @@ layout(std140, set = 0, binding = 0) uniform BatchUBOData {
   bool  u_set_mask_while_drawing;
   layout(offset = 52) uint u_pgxp_depth;
   layout(offset = 60) uint u_render_mode;
+  layout(offset = 64) uint u_transparency_mode;
+  layout(offset = 68) uint u_check_mask;
 };
+
+#if defined(SHADER_BLEND)
+#include "batch_shader_blend.glslinc"
+#endif
+
 
 // ---- Inputs from the batch VS --------------------------------------
 layout(location = 0) in VertexData {
@@ -102,9 +113,11 @@ layout(location = 0) in VertexData {
 };
 
 // ---- Outputs (DUAL_SOURCE axis) ------------------------------------
+#if !defined(SHADER_BLEND)
 layout(location = 0, index = 0) out vec4 o_col0;
 #if defined(DUAL_SOURCE)
 layout(location = 0, index = 1) out vec4 o_col1;
+#endif
 #endif
 
 // PGXP_DEPTH axis collapsed: gl_FragDepth is now always written, with
@@ -177,6 +190,7 @@ void main()
   // alpha factor; without, only o_col0 is written. The matching
   // pipeline blend state references SRC1_* or it does not, set by
   // GetBatchPipeline on the C++ side.
+#if !defined(SHADER_BLEND)
   o_col0 = vec4(color, oalpha);
 #if defined(DUAL_SOURCE)
   if ((u_render_mode != 0u))
@@ -199,4 +213,10 @@ void main()
   // oalpha * gl_FragCoord.z to encode the PSX mask bit into the
   // depth buffer for the legacy non-PGXP path.
   gl_FragDepth = (u_pgxp_depth != 0u) ? gl_FragCoord.z : (oalpha * gl_FragCoord.z);
+#else
+  // The console's own blending and mask test (batch_shader_blend.glslinc).
+  beginInvocationInterlockARB();
+  ShaderBlendPixel(true, icolor, (u_render_mode != 0u), oalpha, ialpha);
+  endInvocationInterlockARB();
+#endif
 }

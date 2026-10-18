@@ -119,8 +119,8 @@ layout(std140, set = 0, binding = 0) uniform BatchUBOData {
   layout(offset = 52) uint u_pgxp_depth;
   // A sub-pixel shift of everything drawn, in pixels of the scaled
   // framebuffer, set per picture (SetDrawJitter); 0 otherwise.
-  layout(offset = 64) float u_jitter_x;
-  layout(offset = 68) float u_jitter_y;
+  layout(offset = 72) float u_jitter_x;
+  layout(offset = 76) float u_jitter_y;
 };
 
 // --------------------------------------------------------------------

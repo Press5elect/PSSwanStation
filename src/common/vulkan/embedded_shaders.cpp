@@ -105,6 +105,16 @@ namespace Vulkan::EmbeddedShaders {
 #include "embedded_spirv/vram_update_depth_msaa_fs.inc"
 #include "embedded_spirv/vram_write_ssbo_fs.inc"
 #include "embedded_spirv/vram_write_texbuf_fs.inc"
+#include "embedded_spirv/batch_untextured_fs_none_persp_blend.inc"
+#include "embedded_spirv/batch_untextured_fs_none_noperp_blend.inc"
+#include "embedded_spirv/batch_textured_nearest_fs_none_persp_blend.inc"
+#include "embedded_spirv/batch_textured_nearest_fs_none_noperp_blend.inc"
+#include "embedded_spirv/batch_textured_bilinear_fs_none_persp_blend.inc"
+#include "embedded_spirv/batch_textured_bilinear_fs_none_noperp_blend.inc"
+#include "embedded_spirv/batch_textured_jinc2_fs_none_persp_blend.inc"
+#include "embedded_spirv/batch_textured_jinc2_fs_none_noperp_blend.inc"
+#include "embedded_spirv/batch_textured_xbr_fs_none_persp_blend.inc"
+#include "embedded_spirv/batch_textured_xbr_fs_none_noperp_blend.inc"
 
 // Batch VS blob lookup table. Index encoding (must match
 // GetBatchVertexShaderBlob below):
@@ -350,6 +360,30 @@ const EmbeddedShaderBlob& GetBatchTexturedXBRFragmentShaderBlob(bool msaa,
   const unsigned dual   = dual_source ? 1u : 0u;
   const unsigned index  = interp * 4u + persp * 2u + dual;
   return k_batch_textured_xbr_fs_blobs[index];
+}
+
+// PSSwanStation: the accurate-blending batch fragment shaders (SHADER_BLEND;
+// data/shaders/vulkan/batch_shader_blend.glslinc). Index: template * 2 +
+// noperspective colour, the templates being untextured, Nearest, Bilinear,
+// JINC2, xBR.
+#define BLOB(name) { k_##name, k_##name##_size_bytes }
+const EmbeddedShaderBlob k_batch_shader_blend_fs_blobs[10] = {
+  BLOB(batch_untextured_fs_none_persp_blend),
+  BLOB(batch_untextured_fs_none_noperp_blend),
+  BLOB(batch_textured_nearest_fs_none_persp_blend),
+  BLOB(batch_textured_nearest_fs_none_noperp_blend),
+  BLOB(batch_textured_bilinear_fs_none_persp_blend),
+  BLOB(batch_textured_bilinear_fs_none_noperp_blend),
+  BLOB(batch_textured_jinc2_fs_none_persp_blend),
+  BLOB(batch_textured_jinc2_fs_none_noperp_blend),
+  BLOB(batch_textured_xbr_fs_none_persp_blend),
+  BLOB(batch_textured_xbr_fs_none_noperp_blend),
+};
+#undef BLOB
+
+const EmbeddedShaderBlob& GetBatchShaderBlendFragmentShaderBlob(unsigned template_index, bool noperspective_color)
+{
+  return k_batch_shader_blend_fs_blobs[(template_index < 5u ? template_index : 0u) * 2u + (noperspective_color ? 1u : 0u)];
 }
 
 VkShaderModule CreateShaderModule(const uint32_t* spv, size_t spv_size_bytes)

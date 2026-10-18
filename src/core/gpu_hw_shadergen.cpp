@@ -86,7 +86,7 @@ void GPU_HW_ShaderGen::WriteBatchUniformBuffer(std::stringstream& ss)
                         "bool u_set_mask_while_drawing", "uint u_resolution_scale", "uint u_true_color",
                         "uint u_scaled_dithering", "uint u_dithering",
                         "uint u_interlacing", "uint u_pgxp_depth", "uint u_uv_limits", "uint u_render_mode",
-                        "float u_jitter_x", "float u_jitter_y"},
+                        "uint u_transparency_mode", "uint u_check_mask", "float u_jitter_x", "float u_jitter_y"},
                        false);
 
   // Alias the historical compile-time constants to their cbuffer-

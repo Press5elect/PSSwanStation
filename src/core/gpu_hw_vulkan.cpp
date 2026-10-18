@@ -663,6 +663,8 @@ bool GPU_HW_Vulkan::Initialize(HostDisplay* host_display)
     return false;
   }
 
+  UpdateShaderBlending();
+
   if (!CreateFramebuffer())
   {
     Log_ErrorPrintf("Failed to create framebuffer");
@@ -807,6 +809,11 @@ void GPU_HW_Vulkan::UpdateSettings()
   bool framebuffer_changed, shaders_changed, only_dim_changed, downsample_changed, display_only_source_changed;
   UpdateHWSettings(&framebuffer_changed, &shaders_changed, &only_dim_changed, &downsample_changed,
                    /*shader_source_changed=*/nullptr, &display_only_source_changed);
+  const bool was_shader_blending = m_shader_blending;
+  UpdateShaderBlending();
+  // Video memory is a storage image only while the shader blends.
+  if (m_shader_blending && !m_vram_storage)
+    framebuffer_changed = true;
 
   if (framebuffer_changed)
   {
@@ -974,6 +981,14 @@ void GPU_HW_Vulkan::UpdateSettings()
     UpdateDisplay();
     ResetGraphicsAPIState();
   }
+  else if (was_shader_blending && !m_shader_blending)
+  {
+    // Back to the blending hardware: its mask test reads the depth copy.
+    RestoreGraphicsAPIState();
+    UpdateDepthBufferFromMaskBit();
+    ResetGraphicsAPIState();
+  }
+  m_depth_needs_update = false;
 }
 
 void GPU_HW_Vulkan::MapBatchVertexPointer(uint32_t required_vertices)
@@ -1053,6 +1068,9 @@ void GPU_HW_Vulkan::SetCapabilities()
     m_max_multisamples = 1;
 
   m_supports_dual_source_blend = g_vulkan_context->GetDeviceFeatures().dualSrcBlend;
+  m_supports_shader_blend = g_vulkan_context->SupportsFragmentShaderInterlock();
+  Log_InfoPrintf("Accurate blending (fragment shader interlock): %s",
+                 m_supports_shader_blend ? "supported" : "not supported");
   m_supports_per_sample_shading = g_vulkan_context->GetDeviceFeatures().sampleRateShading;
   m_supports_adaptive_downsampling = true;
   m_supports_disable_color_perspective = true;
@@ -1145,7 +1163,147 @@ void GPU_HW_Vulkan::BeginVRAMRenderPass()
     return;
 
   EndRenderPass();
+  // After blending draws, video memory is in the storage image's layout.
+  m_vram_texture.TransitionToLayout(g_vulkan_context->GetCurrentCommandBuffer(),
+                                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
   BeginRenderPass(m_vram_render_pass, m_vram_framebuffer, 0, 0, m_vram_texture.GetWidth(), m_vram_texture.GetHeight());
+}
+
+void GPU_HW_Vulkan::BeginVRAMBlendRenderPass()
+{
+  if (InRenderPass() && m_current_render_pass == m_vram_blend_render_pass)
+    return;
+
+  EndRenderPass();
+  m_vram_texture.TransitionToLayout(g_vulkan_context->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_GENERAL);
+  BeginRenderPass(m_vram_blend_render_pass, m_vram_blend_framebuffer, 0, 0, m_vram_texture.GetWidth(),
+                  m_vram_texture.GetHeight());
+}
+
+void GPU_HW_Vulkan::UpdateShaderBlending()
+{
+  // Not with MSAA (a storage image of one sample a pixel) nor the PGXP depth buffer (the depth test of
+  // pixels the shader may still discard).
+  m_shader_blending =
+    g_settings.gpu_accurate_blending && m_supports_shader_blend && m_multisamples == 1 && !m_pgxp_depth_buffer;
+}
+
+void GPU_HW_Vulkan::SyncDepthFromMaskIfNeeded()
+{
+  if (!m_depth_needs_update)
+    return;
+  m_depth_needs_update = false;
+  UpdateDepthBufferFromMaskBit();
+}
+
+VkPipeline GPU_HW_Vulkan::GetBatchBlendPipeline(GPUTextureFilter filter, bool true_color, bool scaled_dithering,
+                                                uint8_t texture_mode, bool dithering, bool interlacing)
+{
+  const uint8_t lookup_mode = (texture_mode == static_cast<uint8_t>(GPUTextureMode::Reserved_Direct16Bit))    ? 2u :
+                              (texture_mode == static_cast<uint8_t>(GPUTextureMode::Reserved_RawDirect16Bit)) ? 6u :
+                                                                                                                texture_mode;
+  const bool textured = (static_cast<GPUTextureMode>(lookup_mode) != GPUTextureMode::Disabled);
+  // Untextured draws do not depend on the filter.
+  const GPUTextureFilter key_filter = textured ? filter : GPUTextureFilter::Nearest;
+  const uint32_t key = static_cast<uint32_t>(key_filter) | (static_cast<uint32_t>(true_color) << 4) |
+                       (static_cast<uint32_t>(scaled_dithering) << 5) | (static_cast<uint32_t>(lookup_mode) << 6) |
+                       (static_cast<uint32_t>(dithering) << 10) | (static_cast<uint32_t>(interlacing) << 11);
+  const auto found = m_batch_blend_pipelines.find(key);
+  if (found != m_batch_blend_pipelines.end())
+    return found->second;
+
+  unsigned template_index = 0;
+  if (textured)
+  {
+    switch (filter)
+    {
+      case GPUTextureFilter::Bilinear:
+      case GPUTextureFilter::BilinearBinAlpha:
+        template_index = 2;
+        break;
+      case GPUTextureFilter::JINC2:
+      case GPUTextureFilter::JINC2BinAlpha:
+        template_index = 3;
+        break;
+      case GPUTextureFilter::xBR:
+      case GPUTextureFilter::xBRBinAlpha:
+        template_index = 4;
+        break;
+      default:
+        template_index = 1;
+        break;
+    }
+  }
+  VkShaderModule& fs = m_batch_blend_fragment_shaders[template_index];
+  if (fs == VK_NULL_HANDLE)
+  {
+    const Vulkan::EmbeddedShaders::EmbeddedShaderBlob& blob =
+      Vulkan::EmbeddedShaders::GetBatchShaderBlendFragmentShaderBlob(template_index, m_disable_color_perspective);
+    fs = Vulkan::EmbeddedShaders::CreateShaderModule(blob.spv, blob.size_bytes);
+    if (fs == VK_NULL_HANDLE)
+      return VK_NULL_HANDLE;
+  }
+
+  Vulkan::GraphicsPipelineBuilder gpbuilder;
+  gpbuilder.SetPipelineLayout(m_batch_pipeline_layout);
+  gpbuilder.SetRenderPass(m_vram_blend_render_pass, 0);
+  gpbuilder.AddVertexBuffer(0, sizeof(BatchVertex), VK_VERTEX_INPUT_RATE_VERTEX);
+  gpbuilder.AddVertexAttribute(0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(BatchVertex, x));
+  gpbuilder.AddVertexAttribute(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(BatchVertex, color));
+  if (textured)
+  {
+    gpbuilder.AddVertexAttribute(2, 0, VK_FORMAT_R32_UINT, offsetof(BatchVertex, u));
+    gpbuilder.AddVertexAttribute(3, 0, VK_FORMAT_R32_UINT, offsetof(BatchVertex, texpage));
+    gpbuilder.AddVertexAttribute(4, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(BatchVertex, uv_limits));
+  }
+  gpbuilder.SetPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  Vulkan::SpecConstants vs_spec;
+  vs_spec.AddUInt(0, static_cast<uint32_t>(m_resolution_scale));
+  gpbuilder.SetVertexShader(m_batch_vertex_shaders[static_cast<uint8_t>(textured)].Load(), vs_spec.GetInfo());
+
+  const uint8_t actual_tex_mode = lookup_mode & ~static_cast<uint8_t>(GPUTextureMode::RawTextureBit);
+  Vulkan::SpecConstants fs_spec;
+  fs_spec.AddUInt(0, static_cast<uint32_t>(m_resolution_scale));
+  fs_spec.AddBool(103, dithering);
+  fs_spec.AddBool(104, interlacing);
+  fs_spec.AddBool(105, scaled_dithering);
+  fs_spec.AddBool(106, true_color);
+  fs_spec.AddBool(107, actual_tex_mode == static_cast<uint8_t>(GPUTextureMode::Palette4Bit));
+  fs_spec.AddBool(108, actual_tex_mode == static_cast<uint8_t>(GPUTextureMode::Palette8Bit));
+  fs_spec.AddBool(109, (lookup_mode & static_cast<uint8_t>(GPUTextureMode::RawTextureBit)) != 0);
+  fs_spec.AddBool(110, filter == GPUTextureFilter::BilinearBinAlpha || filter == GPUTextureFilter::JINC2BinAlpha ||
+                         filter == GPUTextureFilter::xBRBinAlpha);
+  gpbuilder.SetFragmentShader(fs, fs_spec.GetInfo());
+
+  gpbuilder.SetRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+  // The mask test and every write are the shader's; the depth buffer is left as it is.
+  gpbuilder.SetDepthState(false, false, VK_COMPARE_OP_ALWAYS);
+  gpbuilder.ClearBlendAttachments();
+  gpbuilder.SetMultisamples(1, false);
+  gpbuilder.SetDynamicViewportAndScissorState();
+
+  const VkPipeline pipeline = gpbuilder.Create(g_vulkan_context->GetDevice(), g_vulkan_shader_cache->GetPipelineCache());
+  if (pipeline == VK_NULL_HANDLE)
+  {
+    Log_ErrorPrintf("Accurate blending pipeline failed (filter %u, texture mode %u)", static_cast<unsigned>(filter),
+                    static_cast<unsigned>(lookup_mode));
+    return VK_NULL_HANDLE;
+  }
+  m_batch_blend_pipelines.emplace(key, pipeline);
+  return pipeline;
+}
+
+void GPU_HW_Vulkan::DestroyBatchBlendPipelines()
+{
+  for (auto& [key, pipeline] : m_batch_blend_pipelines)
+    Vulkan::Util::SafeDestroyPipeline(pipeline);
+  m_batch_blend_pipelines.clear();
+  for (VkShaderModule& fs : m_batch_blend_fragment_shaders)
+  {
+    if (fs != VK_NULL_HANDLE)
+      vkDestroyShaderModule(g_vulkan_context->GetDevice(), fs, nullptr);
+    fs = VK_NULL_HANDLE;
+  }
 }
 
 void GPU_HW_Vulkan::EndRenderPass()
@@ -1174,6 +1332,8 @@ bool GPU_HW_Vulkan::CreatePipelineLayouts()
   dslbuilder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
   dslbuilder.AddBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
+  // Video memory as a storage image, for accurate blending (written only when it is one).
+  dslbuilder.AddBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
   m_batch_descriptor_set_layout = dslbuilder.Create(device);
   if (m_batch_descriptor_set_layout == VK_NULL_HANDLE)
     return false;
@@ -1285,10 +1445,13 @@ bool GPU_HW_Vulkan::CreateFramebuffer()
   const VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
   const VkSampleCountFlagBits samples = static_cast<VkSampleCountFlagBits>(m_multisamples);
 
+  // A storage image too while the shader blends (one sample a pixel only).
+  m_vram_storage = m_shader_blending && samples == VK_SAMPLE_COUNT_1_BIT;
   if (!m_vram_texture.Create(texture_width, texture_height, 1, 1, texture_format, samples, VK_IMAGE_VIEW_TYPE_2D,
                              VK_IMAGE_TILING_OPTIMAL,
                              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                               VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT) ||
+                               VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                               (m_vram_storage ? VK_IMAGE_USAGE_STORAGE_BIT : 0)) ||
       !m_vram_depth_texture.Create(texture_width, texture_height, 1, 1, depth_format, samples, VK_IMAGE_VIEW_TYPE_2D,
                                    VK_IMAGE_TILING_OPTIMAL,
                                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT) ||
@@ -1314,6 +1477,9 @@ bool GPU_HW_Vulkan::CreateFramebuffer()
     g_vulkan_context->GetRenderPass(texture_format, depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD);
   m_vram_update_depth_render_pass =
     g_vulkan_context->GetRenderPass(VK_FORMAT_UNDEFINED, depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+  // Accurate blending: the depth buffer alone, kept (video memory is the shaders' storage image).
+  m_vram_blend_render_pass =
+    g_vulkan_context->GetRenderPass(VK_FORMAT_UNDEFINED, depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD);
   m_display_load_render_pass = g_vulkan_context->GetRenderPass(
     m_display_texture.GetFormat(), VK_FORMAT_UNDEFINED, m_display_texture.GetSamples(), VK_ATTACHMENT_LOAD_OP_LOAD);
   m_display_discard_render_pass =
@@ -1340,6 +1506,9 @@ bool GPU_HW_Vulkan::CreateFramebuffer()
     return false;
 
   m_vram_update_depth_framebuffer = m_vram_depth_texture.CreateFramebuffer(m_vram_update_depth_render_pass);
+  m_vram_blend_framebuffer = m_vram_depth_texture.CreateFramebuffer(m_vram_blend_render_pass);
+  if (m_vram_blend_render_pass == VK_NULL_HANDLE || m_vram_blend_framebuffer == VK_NULL_HANDLE)
+    m_vram_storage = false;
   m_vram_readback_framebuffer = m_vram_readback_texture.CreateFramebuffer(m_vram_readback_render_pass);
   m_display_framebuffer = m_display_texture.CreateFramebuffer(m_display_load_render_pass);
   if (m_vram_update_depth_framebuffer == VK_NULL_HANDLE || m_vram_readback_framebuffer == VK_NULL_HANDLE ||
@@ -1369,6 +1538,23 @@ bool GPU_HW_Vulkan::CreateFramebuffer()
                                       m_uniform_stream_buffer.GetBuffer(), 0, sizeof(BatchUBOData));
   dsubuilder.AddCombinedImageSamplerDescriptorWrite(m_batch_descriptor_set, 1, m_vram_read_texture.GetView(),
                                                     m_point_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  if (m_vram_storage)
+  {
+    const VkDescriptorImageInfo storage = {VK_NULL_HANDLE, m_vram_texture.GetView(), VK_IMAGE_LAYOUT_GENERAL};
+    const VkWriteDescriptorSet write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                        nullptr,
+                                        m_batch_descriptor_set,
+                                        2,
+                                        0,
+                                        1,
+                                        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                                        &storage,
+                                        nullptr,
+                                        nullptr};
+    vkUpdateDescriptorSets(g_vulkan_context->GetDevice(), 1, &write, 0, nullptr);
+  }
+  if (!m_vram_storage)
+    m_shader_blending = false;
   dsubuilder.AddCombinedImageSamplerDescriptorWrite(m_vram_copy_descriptor_set, 1, m_vram_read_texture.GetView(),
                                                     m_point_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   dsubuilder.AddCombinedImageSamplerDescriptorWrite(m_vram_read_descriptor_set, 1, m_vram_texture.GetView(),
@@ -1550,6 +1736,7 @@ void GPU_HW_Vulkan::DestroyFramebuffer()
 
   Vulkan::Util::SafeDestroyFramebuffer(m_vram_framebuffer);
   Vulkan::Util::SafeDestroyFramebuffer(m_vram_update_depth_framebuffer);
+  Vulkan::Util::SafeDestroyFramebuffer(m_vram_blend_framebuffer);
   Vulkan::Util::SafeDestroyFramebuffer(m_vram_readback_framebuffer);
   Vulkan::Util::SafeDestroyFramebuffer(m_display_framebuffer);
 
@@ -2001,6 +2188,21 @@ bool GPU_HW_Vulkan::CompilePipelines()
       precompile_mode == GPUShaderPrecompileMode::Enabled)
   {
     StartShaderCompileThread();
+  }
+
+  // Accurate blending's pipelines for this session: every texture mode, with and without dithering and
+  // interlacing (28), so a game does not wait for one the first time it blends.
+  if (m_shader_blending && m_vram_storage)
+  {
+    for (uint8_t tm = 0; tm < 9; tm++)
+    {
+      if (tm == static_cast<uint8_t>(GPUTextureMode::Reserved_Direct16Bit) ||
+          tm == static_cast<uint8_t>(GPUTextureMode::Reserved_RawDirect16Bit))
+        continue;
+      for (uint8_t d = 0; d < 2; d++)
+        for (uint8_t i = 0; i < 2; i++)
+          (void)GetBatchBlendPipeline(m_texture_filtering, m_true_color, m_scaled_dithering, tm, d != 0, i != 0);
+    }
   }
 
   return true;
@@ -2981,6 +3183,7 @@ void GPU_HW_Vulkan::DestroyPipelines()
   // matrix - the worker writes into m_batch_fragment_shaders and
   // m_batch_pipelines, both of which we're about to enumerate-destroy.
   StopShaderCompileThread();
+  DestroyBatchBlendPipelines();
 
   // Atomic slot teardown. By this point the worker is stopped and
   // no other thread is touching the arrays.
@@ -3032,9 +3235,22 @@ void GPU_HW_Vulkan::DestroyPipelines()
 
 void GPU_HW_Vulkan::DrawBatchVertices(BatchRenderMode render_mode, uint32_t base_vertex, uint32_t num_vertices)
 {
-  BeginVRAMRenderPass();
-
   VkCommandBuffer cmdbuf = g_vulkan_context->GetCurrentCommandBuffer();
+  if (m_shader_blending)
+  {
+    BeginVRAMBlendRenderPass();
+    VkPipeline pipeline = GetBatchBlendPipeline(m_texture_filtering, m_true_color, m_scaled_dithering,
+                                                static_cast<uint8_t>(m_batch.texture_mode), m_batch.dithering,
+                                                m_batch.interlacing);
+    if (pipeline == VK_NULL_HANDLE)
+      return;
+    vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    vkCmdDraw(cmdbuf, num_vertices, 1, base_vertex, 0);
+    m_depth_needs_update = true;
+    return;
+  }
+
+  BeginVRAMRenderPass();
 
   // Fetch the batch PSO via the lazy helper. Behaviour matches the
   // D3D11 / D3D12 backends: Enabled mode pre-fills every slot at
@@ -3291,6 +3507,8 @@ void GPU_HW_Vulkan::UpdateVRAM(uint32_t x, uint32_t y, uint32_t width, uint32_t 
 
   VkCommandBuffer cmdbuf = g_vulkan_context->GetCurrentCommandBuffer();
 
+  if (check_mask)
+    SyncDepthFromMaskIfNeeded();
   BeginVRAMRenderPass();
 
   const VRAMWriteUBOData uniforms = GetVRAMWriteUBOData(x, y, width, height, start_index, set_mask, check_mask);
@@ -3327,6 +3545,8 @@ void GPU_HW_Vulkan::CopyVRAM(uint32_t src_x, uint32_t src_y, uint32_t dst_x, uin
     const VRAMCopyUBOData uniforms(GetVRAMCopyUBOData(src_x, src_y, dst_x, dst_y, width, height));
     const Common::Rectangle<uint32_t> dst_bounds_scaled(dst_bounds * m_resolution_scale);
 
+    if (m_GPUSTAT.check_mask_before_draw)
+      SyncDepthFromMaskIfNeeded();
     BeginVRAMRenderPass();
 
     vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
