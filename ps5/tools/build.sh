@@ -112,6 +112,15 @@ mkdir -p "$app/sce_sys" "$app/sce_module" "$app/assets" "$app/licenses"
 cp -- "$build/swanstation" "$app/eboot.bin"
 cp -- "$ps5/sce_sys/param.json" "$ps5/sce_sys/icon0.png" "$ps5/sce_sys/pic0.dds" "$ps5/sce_sys/pic1.dds" \
     "$app/sce_sys/"
+# The version the console's own screens show (the game's information) is the
+# build number, as the title's library shows it: build 24 is 01.024.000.
+build_number=$(sed -n 's/^const int BuildNumber = \([0-9]\{1,3\}\);/\1/p' "$ps5/src/main.cpp")
+[[ -n $build_number ]] || { echo "ps5/src/main.cpp names no BuildNumber" >&2; exit 2; }
+sed -i -e "s/\"contentVersion\": \"[0-9.]*\"/\"contentVersion\": \"01.$(printf %03d "$build_number").000\"/" \
+    -e "s/\"masterVersion\": \"[0-9.]*\"/\"masterVersion\": \"01.$(printf %02d $((build_number % 100)))\"/" \
+    "$app/sce_sys/param.json"
+grep -q "\"contentVersion\": \"01.$(printf %03d "$build_number").000\"" "$app/sce_sys/param.json" ||
+    { echo "could not put build $build_number in param.json's contentVersion" >&2; exit 2; }
 cp -- "$vk/runtime/libc.prx" "$app/sce_module/libc.prx"
 # The folders the title keeps its files in (README.txt says what goes where).
 for dir in games bios covers cheats textures music borders layouts memcards/import memcards/export; do
