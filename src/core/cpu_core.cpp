@@ -59,6 +59,10 @@ void Reset()
   g_state.cop0_regs.sr.bits = 0;
   g_state.cop0_regs.cause.bits = 0;
 
+  // SetPC() flushes delayed loads; discard any stale or partially loaded register indices first.
+  g_state.load_delay_reg = Reg::count;
+  g_state.next_load_delay_reg = Reg::count;
+
   ClearICache();
   UpdateFastmemBase();
 
@@ -113,9 +117,11 @@ bool DoState(StateWrapper& sw)
   if (sw.IsReading())
   {
     /* Execution never leaves the PC unaligned (a jump there raises an address error first); the
-     * recompiler's block lookup relies on it. */
+     * recompiler's block lookup relies on it. Pending ticks are consumed at every event, so they
+     * never go negative or reach a second of cycles; the run loop would otherwise spin to catch up. */
     if (g_state.load_delay_reg > Reg::count || g_state.next_load_delay_reg > Reg::count ||
-        (g_state.regs.pc & 3u) != 0 || (g_state.regs.npc & 3u) != 0)
+        (g_state.regs.pc & 3u) != 0 || (g_state.regs.npc & 3u) != 0 || g_state.pending_ticks < 0 ||
+        g_state.pending_ticks > System::MASTER_CLOCK)
     {
       return false;
     }

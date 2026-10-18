@@ -97,6 +97,7 @@ void CDROM::Initialize()
 
 void CDROM::Shutdown()
 {
+  m_shell_open = false;
   m_command_event.reset();
   m_command_second_response_event.reset();
   m_drive_event.reset();
@@ -113,7 +114,7 @@ void CDROM::Reset()
   m_status.bits = 0;
   m_secondary_status.bits = 0;
   m_secondary_status.motor_on = CanReadMedia();
-  m_secondary_status.shell_open = !CanReadMedia();
+  m_secondary_status.shell_open = m_shell_open;
   m_mode.bits = 0;
   m_mode.read_raw_sector = true;
   m_interrupt_enable_register = INTERRUPT_REGISTER_MASK;
@@ -171,7 +172,7 @@ void CDROM::SoftReset(TickCount ticks_late)
   ClearDriveState();
   m_secondary_status.bits = 0;
   m_secondary_status.motor_on = CanReadMedia();
-  m_secondary_status.shell_open = !CanReadMedia();
+  m_secondary_status.shell_open = m_shell_open;
   m_mode.bits = 0;
   m_mode.read_raw_sector = true;
   m_pending_async_interrupt = 0;
@@ -230,6 +231,8 @@ bool CDROM::DoState(StateWrapper& sw)
   sw.Do(&m_drive_state);
   sw.Do(&m_status.bits);
   sw.Do(&m_secondary_status.bits);
+  /* Media is restored before this runs; older states imply an open tray when empty. */
+  sw.DoEx(&m_shell_open, 56, !HasMedia());
   sw.Do(&m_mode.bits);
 
   bool current_double_speed = m_mode.double_speed;
@@ -336,6 +339,7 @@ void CDROM::InsertMedia(std::unique_ptr<CDImage> media)
 {
   if (CanReadMedia())
     RemoveMedia(true);
+  m_shell_open = false;
 
   // set the region from the system area of the disc
   m_disc_region = System::GetRegionForImage(media.get());
@@ -350,8 +354,9 @@ void CDROM::InsertMedia(std::unique_ptr<CDImage> media)
 
 std::unique_ptr<CDImage> CDROM::RemoveMedia(bool for_disc_swap)
 {
-  if (!HasMedia())
+  if (!HasMedia() && m_shell_open)
     return nullptr;
+  m_shell_open = true;
 
   // Add an additional two seconds to the disc swap, some games don't like it happening too quickly.
   TickCount stop_ticks = GetTicksForStop(true);
@@ -881,7 +886,7 @@ void CDROM::ExecuteCommand(TickCount ticks_late)
       SendACKAndStat();
 
       // shell open bit is cleared after sending the status
-      if (CanReadMedia())
+      if (!m_shell_open && m_drive_state != DriveState::ShellOpening)
         m_secondary_status.shell_open = false;
 
       EndCommand();
