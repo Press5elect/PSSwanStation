@@ -1255,6 +1255,7 @@ VkPipeline GPU_HW_Vulkan::GetBatchBlendPipeline(GPUTextureFilter filter, bool tr
     gpbuilder.AddVertexAttribute(2, 0, VK_FORMAT_R32_UINT, offsetof(BatchVertex, u));
     gpbuilder.AddVertexAttribute(3, 0, VK_FORMAT_R32_UINT, offsetof(BatchVertex, texpage));
     gpbuilder.AddVertexAttribute(4, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(BatchVertex, uv_limits));
+    gpbuilder.AddVertexAttribute(5, 0, VK_FORMAT_R32G32_UINT, offsetof(BatchVertex, replacement));
   }
   gpbuilder.SetPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   Vulkan::SpecConstants vs_spec;
@@ -1334,6 +1335,8 @@ bool GPU_HW_Vulkan::CreatePipelineLayouts()
   dslbuilder.AddBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
   // Video memory as a storage image, for accurate blending (written only when it is one).
   dslbuilder.AddBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
+  // HD texture blocks' atlas (gpu_hw_texture_blocks.cpp; a 1x1 picture until a pack needs it).
+  dslbuilder.AddBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
   m_batch_descriptor_set_layout = dslbuilder.Create(device);
   if (m_batch_descriptor_set_layout == VK_NULL_HANDLE)
     return false;
@@ -1538,6 +1541,16 @@ bool GPU_HW_Vulkan::CreateFramebuffer()
                                       m_uniform_stream_buffer.GetBuffer(), 0, sizeof(BatchUBOData));
   dsubuilder.AddCombinedImageSamplerDescriptorWrite(m_batch_descriptor_set, 1, m_vram_read_texture.GetView(),
                                                     m_point_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  if (!m_texture_block_atlas.IsValid())
+  {
+    if (!m_texture_block_atlas.Create(1, 1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_VIEW_TYPE_2D,
+                                      VK_IMAGE_TILING_OPTIMAL,
+                                      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+      return false;
+    m_texture_block_atlas.TransitionToLayout(cmdbuf, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  }
+  dsubuilder.AddCombinedImageSamplerDescriptorWrite(m_batch_descriptor_set, 3, m_texture_block_atlas.GetView(),
+                                                    m_linear_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   if (m_vram_storage)
   {
     const VkDescriptorImageInfo storage = {VK_NULL_HANDLE, m_vram_texture.GetView(), VK_IMAGE_LAYOUT_GENERAL};
@@ -2494,6 +2507,7 @@ VkPipeline GPU_HW_Vulkan::GetBatchPipeline(GPUTextureFilter filter, bool true_co
     // points at a valid 4-byte slot regardless of whether
     // ComputePolygonUVLimits ran on the vertex.
     gpbuilder.AddVertexAttribute(4, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(BatchVertex, uv_limits));
+    gpbuilder.AddVertexAttribute(5, 0, VK_FORMAT_R32G32_UINT, offsetof(BatchVertex, replacement));
   }
 
   gpbuilder.SetPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -3397,6 +3411,7 @@ void GPU_HW_Vulkan::ReadVRAM(uint32_t x, uint32_t y, uint32_t width, uint32_t he
   if (IsUsingSoftwareRendererForReadbacks())
   {
     ReadSoftwareRendererVRAM(x, y, width, height);
+    TextureBlocksReadBack(GetVRAMTransferBounds(x, y, width, height));
     return;
   }
 
@@ -3444,6 +3459,7 @@ void GPU_HW_Vulkan::ReadVRAM(uint32_t x, uint32_t y, uint32_t width, uint32_t he
   m_vram_readback_staging_texture.ReadTexels(0, 0, encoded_width, encoded_height,
                                              &m_vram_shadow[copy_rect.top * VRAM_WIDTH + copy_rect.left],
                                              VRAM_WIDTH * sizeof(uint16_t));
+  TextureBlocksReadBack(copy_rect);
 }
 
 void GPU_HW_Vulkan::FillVRAM(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color)
@@ -3452,6 +3468,7 @@ void GPU_HW_Vulkan::FillVRAM(uint32_t x, uint32_t y, uint32_t width, uint32_t he
     FillSoftwareRendererVRAM(x, y, width, height, color);
 
   GPU_HW::FillVRAM(x, y, width, height, color);
+  TextureBlocksFill(x, y, width, height, color);
 
   BeginVRAMRenderPass();
 
@@ -3476,6 +3493,7 @@ void GPU_HW_Vulkan::UpdateVRAM(uint32_t x, uint32_t y, uint32_t width, uint32_t 
 {
   if (IsUsingSoftwareRendererForReadbacks())
     UpdateSoftwareRendererVRAM(x, y, width, height, data, set_mask, check_mask);
+  TextureBlocksUpdate(x, y, width, height, data, set_mask, check_mask);
 
   const Common::Rectangle<uint32_t> bounds = GetVRAMTransferBounds(x, y, width, height);
   GPU_HW::UpdateVRAM(bounds.left, bounds.top, bounds.GetWidth(), bounds.GetHeight(), data, set_mask, check_mask);
@@ -3533,6 +3551,7 @@ void GPU_HW_Vulkan::CopyVRAM(uint32_t src_x, uint32_t src_y, uint32_t dst_x, uin
   VkCommandBuffer cmdbuf = g_vulkan_context->GetCurrentCommandBuffer();
   if (IsUsingSoftwareRendererForReadbacks())
     CopySoftwareRendererVRAM(src_x, src_y, dst_x, dst_y, width, height);
+  TextureBlocksCopy(src_x, src_y, dst_x, dst_y, width, height);
 
   if (UseVRAMCopyShader(src_x, src_y, dst_x, dst_y, width, height) || IsUsingMultisampling())
   {
@@ -3869,4 +3888,50 @@ void GPU_HW_Vulkan::DownsampleFramebufferAdaptive(Vulkan::Texture& source, uint3
 std::unique_ptr<GPU> GPU::CreateHardwareVulkanRenderer()
 {
   return std::make_unique<GPU_HW_Vulkan>();
+}
+
+bool GPU_HW_Vulkan::UploadTextureBlock(uint32_t slot, const uint32_t* rgba)
+{
+  if (m_texture_block_atlas.GetWidth() != TEXTURE_BLOCK_ATLAS_SIZE)
+  {
+    // The atlas itself, the first time a pack has a picture to show: what was
+    // recorded with the 1x1 stand-in goes to the GPU first, then the batch
+    // descriptor names the atlas.
+    FlushRender();
+    ExecuteCommandBuffer(true, true);
+    Vulkan::Texture atlas;
+    if (!atlas.Create(TEXTURE_BLOCK_ATLAS_SIZE, TEXTURE_BLOCK_ATLAS_SIZE, 1, 1, VK_FORMAT_R8G8B8A8_UNORM,
+                      VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
+                      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+    {
+      Log_ErrorPrintf("Could not make the %ux%u texture block atlas", TEXTURE_BLOCK_ATLAS_SIZE, TEXTURE_BLOCK_ATLAS_SIZE);
+      return false;
+    }
+    atlas.TransitionToLayout(g_vulkan_context->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    m_texture_block_atlas.Destroy(true);
+    m_texture_block_atlas = std::move(atlas);
+    Vulkan::DescriptorSetUpdateBuilder dsubuilder;
+    dsubuilder.AddCombinedImageSamplerDescriptorWrite(m_batch_descriptor_set, 3, m_texture_block_atlas.GetView(),
+                                                      m_linear_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    dsubuilder.Update(g_vulkan_context->GetDevice());
+  }
+
+  if (!CreateTextureReplacementStreamBuffer())
+    return false;
+  const uint32_t size = TEXTURE_BLOCK_SLOT_SIZE * TEXTURE_BLOCK_SLOT_SIZE * sizeof(uint32_t);
+  const uint32_t alignment = static_cast<uint32_t>(g_vulkan_context->GetBufferImageGranularity());
+  if (!m_texture_replacment_stream_buffer.ReserveMemory(size, alignment))
+    return false; // tried again at a later draw
+  const uint32_t offset = m_texture_replacment_stream_buffer.GetCurrentOffset();
+  std::memcpy(m_texture_replacment_stream_buffer.GetCurrentHostPointer(), rgba, size);
+  m_texture_replacment_stream_buffer.CommitMemory(size);
+
+  EndRenderPass();
+  const uint32_t per_row = TEXTURE_BLOCK_ATLAS_SIZE / TEXTURE_BLOCK_SLOT_SIZE;
+  m_texture_block_atlas.UpdateFromBuffer(g_vulkan_context->GetCurrentCommandBuffer(), 0, 0,
+                                         (slot % per_row) * TEXTURE_BLOCK_SLOT_SIZE,
+                                         (slot / per_row) * TEXTURE_BLOCK_SLOT_SIZE, TEXTURE_BLOCK_SLOT_SIZE,
+                                         TEXTURE_BLOCK_SLOT_SIZE, m_texture_replacment_stream_buffer.GetBuffer(), offset,
+                                         TEXTURE_BLOCK_SLOT_SIZE);
+  return true;
 }

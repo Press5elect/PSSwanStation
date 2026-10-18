@@ -250,6 +250,8 @@ private:
   void StopShaderCompileThread();
 
   bool CreateTextureReplacementStreamBuffer();
+  bool SupportsTextureBlocks() const override { return true; }
+  bool UploadTextureBlock(uint32_t slot, const uint32_t* rgba) override;
 
   bool BlitVRAMReplacementTexture(const TextureReplacementTexture* tex, uint32_t dst_x, uint32_t dst_y, uint32_t width, uint32_t height);
 
@@ -410,6 +412,8 @@ private:
 
   // texture replacements
   Vulkan::Texture m_vram_write_replacement_texture;
+  // HD texture blocks' pictures (gpu_hw_texture_blocks.cpp): 1x1 until a pack needs it.
+  Vulkan::Texture m_texture_block_atlas;
   Vulkan::StreamBuffer m_texture_replacment_stream_buffer;
 
   // downsampling

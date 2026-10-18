@@ -359,6 +359,7 @@ SOURCES_CXX += \
    $(CORE_SRC_DIR)/gpu_backend.cpp \
    $(CORE_SRC_DIR)/gpu_commands.cpp \
    $(CORE_SRC_DIR)/gpu_hw.cpp \
+   $(CORE_SRC_DIR)/gpu_hw_texture_blocks.cpp \
    $(CORE_SRC_DIR)/gpu_hw_opengl.cpp \
    $(CORE_SRC_DIR)/gpu_hw_shadergen.cpp \
    $(CORE_SRC_DIR)/gpu_hw_vulkan.cpp \

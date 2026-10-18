@@ -32,6 +32,7 @@ add_library(core
     gpu_backend.h
     gpu_commands.cpp
     gpu_hw.cpp
+    gpu_hw_texture_blocks.cpp
     gpu_hw.h
     gpu_hw_opengl.cpp
     gpu_hw_opengl.h

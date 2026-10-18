@@ -3318,10 +3318,12 @@ void detailsMoreItems(std::vector<Item>& items)
 				? format("%d files", files) : std::string("None"),
 				serial.empty() ? std::string("The pack's folder is named by the disc's serial number, which is read when "
 				"Options or Cheats is opened, or when the game starts.")
-				: files > 0 ? "In " + where + ". Used when \"Enable VRAM Write Texture Replacement\" is on (Options)."
+				: files > 0 ? "In " + where + ". HD packs of texture blocks (block-....png) are used with the "
+				"Vulkan renderer while \"HD Texture Packs\" is on; packs of whole uploads (vram-write-....png) when "
+				"\"Enable VRAM Write Texture Replacement\" is on (Options)."
 				: "Replacement pictures for this game go in " + shownRoot() + "textures/" + serial + "/ or, on a USB "
-				"drive, in " + std::string(storage::UsbFolder) + "/textures/" + serial + "/, and are used when \"Enable VRAM Write Texture "
-				"Replacement\" is on (Options)."));
+				"drive, in " + std::string(storage::UsbFolder) + "/textures/" + serial + "/. \"Write Out Texture "
+				"Blocks\" (Options) puts the pictures a pack replaces in its dump folder."));
 	}
 }
 

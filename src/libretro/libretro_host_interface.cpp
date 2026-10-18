@@ -1359,6 +1359,10 @@ bool HostInterface::UpdateCoreOptionsDisplay(bool controller)
   g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
   option_display.key = "swanstation_TextureReplacements_EnableVRAMWriteReplacements";
   g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+  option_display.key = "swanstation_TextureReplacements_EnableTextureBlocks";
+  g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+  option_display.key = "swanstation_TextureReplacements_DumpTextureBlocks";
+  g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
   option_display.key = "swanstation_GPU_PGXPEnable";
   g_retro_environment_callback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
   option_display.key = "swanstation_GPU_CloseGaps";

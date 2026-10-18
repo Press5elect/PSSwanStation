@@ -342,7 +342,9 @@ void HostInterface::CheckForSettingsChanges(const Settings& old_settings)
 
     if (g_settings.texture_replacements.enable_vram_write_replacements !=
           old_settings.texture_replacements.enable_vram_write_replacements ||
-        g_settings.texture_replacements.preload_textures != old_settings.texture_replacements.preload_textures)
+        g_settings.texture_replacements.preload_textures != old_settings.texture_replacements.preload_textures ||
+        g_settings.texture_replacements.enable_texture_blocks != old_settings.texture_replacements.enable_texture_blocks ||
+        g_settings.texture_replacements.dump_texture_blocks != old_settings.texture_replacements.dump_texture_blocks)
     {
       g_texture_replacements.Reload();
     }

@@ -1,6 +1,27 @@
 PSSwanStation - what changed
 ============================
 
+Build 24
+  Added
+  - HD texture packs for 3D games too, by the GPU's texture cache blocks:
+    a pack's picture replaces a block of a texture page (64x64 texels of a
+    4-bit texture, 32x64 of an 8-bit one, 32x32 of a 15-bit one), named by
+    a hash of the block and its palette (block-4-<hash>.png and so on, in
+    textures/<serial>/). Pictures up to four times the block's size (eight
+    for 15-bit) are drawn smoothly. A primitive reading up to 2 x 2 blocks
+    is replaced; textures the game draws itself never are. Vulkan renderer.
+    Emulator, Enhancement: "HD Texture Packs" (on) and "Write Out Texture
+    Blocks", which puts each block a game shows in textures/<serial>/dump/
+    for pack makers.
+  - Accurate blending (Emulator, Enhancement, on): semi-transparency and
+    the mask bit worked out in the fragment shader the way the PlayStation
+    does, at 5 bits a channel, in drawing order, where the device can
+    (fragment shader interlock); without MSAA or the PGXP depth buffer.
+  - Exact lines (on): lines drawn pixel for pixel as the PlayStation steps
+    them, at every resolution.
+  Changed
+  - The newest SwanStation fixes (save states, controllers, CD-ROM).
+
 Build 23
   Changed
   - A LibCrypt-protected game whose disc image has no .sbi file beside it

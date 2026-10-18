@@ -180,6 +180,8 @@ void Settings::Load(LibretroSettingsInterface& si)
   texture_replacements.enable_vram_write_replacements =
     si.GetBoolValue("TextureReplacements", "EnableVRAMWriteReplacements", false);
   texture_replacements.preload_textures = si.GetBoolValue("TextureReplacements", "PreloadTextures", false);
+  texture_replacements.enable_texture_blocks = si.GetBoolValue("TextureReplacements", "EnableTextureBlocks", true);
+  texture_replacements.dump_texture_blocks = si.GetBoolValue("TextureReplacements", "DumpTextureBlocks", false);
 }
 
 static std::array<const char*, static_cast<std::size_t>(LogLevel::Count)> s_log_level_names = {

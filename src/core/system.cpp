@@ -1645,7 +1645,12 @@ bool IsMediaTrayOpen()
 void UpdateRunningGame(const char* path, CDImage* image)
 {
   if (s_running_game_path == path)
+  {
+    // (The BIOS alone, at the first boot: the texture folder is still named;
+    // TextureReplacements::SetGameID.)
+    g_texture_replacements.SetGameID(s_running_game_code);
     return;
+  }
 
   s_running_game_path.clear();
   s_running_game_code.clear();
