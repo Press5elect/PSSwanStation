@@ -10,7 +10,7 @@
   "conceptId": "99248",
   "contentBadgeType": 1,
   "contentId": "UP9000-PPSA99248_00-SWANSTATIONPS500",
-  "contentVersion": "01.000.000",
+  "contentVersion": "01.024.000",
   "downloadDataSize": 256,
   "gameIntent": {
     "permittedIntents": [
@@ -25,7 +25,7 @@
       "titleName": "PSSwanStation"
     }
   },
-  "masterVersion": "01.00",
+  "masterVersion": "01.24",
   "pubtools": {
     "creationDate": "2026-10-04 00:00:00",
     "loudnessSnd0": "-28.00",

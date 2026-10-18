@@ -24,6 +24,7 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 
 - Every picture preset switches on accurate blending and exact lines.
 - The Shortcuts page names the button that opens the menu, as set.
+- The console's own information about the title gives its build as the version: 01.024.000 for build 24 (it said 01.000.000 for every build).
 - Newer parts: the RADV driver at PS5 Mesa 14c2f44 (fragment shader barycentrics, with the 120 Hz settling and timed waits kept), and libsmb2 and libnfs at their newest revisions (SMB request sizes kept within the server's limits; NFSv4 leases renewed while mounted).
 
 #### Fixed
