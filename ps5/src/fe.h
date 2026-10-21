@@ -352,7 +352,7 @@ struct Frontend
 	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch (3, before build 15: fit with FSR 1)
 	// How the picture is grown to the screen: 0 smooth (bilinear), 1 square
 	// pixels (nearest), 2 sharp bilinear, 3 FSR 1, 4 NIS, 5 CAS.
-	int scaler = 0;
+	int scaler = 0;				// 0 smooth, 1 square pixels, 2 sharp bilinear, 3 FSR 1, 4 NIS, 5 CAS, 6 MMPX
 	int fsrSharpness = 1;		// the sharpening of FSR, NIS and CAS: 0 soft, 1 normal, 2 sharp
 	bool linearFilter = true;	// before build 15: square pixels when false (scaler took its place)
 	int signal = 0;				// 0 as it is, 1 the dither undone, 2 S-Video, 3 composite
@@ -360,6 +360,7 @@ struct Frontend
 	int brightness = 10, contrast = 10, saturation = 10, gamma = 10;
 	int grain = 0;				// film grain over the picture: 0 off, 1 light, 2 medium, 3 strong
 	int volume = 100;
+	int audioLatency = 0;		// the game's sound kept ahead: 0 60 ms, 1 32 ms, 2 16 ms
 	bool showFps = false;
 	// How frames are timed: 0 by the display (one frame of the game for each
 	// refresh when the rates are within one percent), 1 the game's own speed
@@ -398,7 +399,7 @@ struct Frontend
 	bool speedrun = false;		// the speedrun timer over the game, its shortcuts and its conditions
 	int speedrunClock = 0;		// 0 game time (the emulator's frames), 1 real time	// everything the emulator says into the boot log, and a line about speed every ten seconds
 	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
-	// 4 neGcon, 5 GunCon.
+	// 4 neGcon, 5 GunCon, 6 PlayStation Mouse (the touch pad).
 	int controller[4] = {1, 1, 1, 1};
 	float deadZone = 0.10f;
 	bool rumble = true;
@@ -457,6 +458,7 @@ struct Frontend
 	// The newest build whose "What's new" has been shown on this console.
 	int seenBuild = 0;
 	bool cardsOnShare = false;		// copies of the memory cards in the share's "files" folder
+	bool cloudStates = false;		// cloud saves (cloud.cpp) keep the save states too, not only the cards
 	bool coversFromShare = false;	// covers brought from the share's "files" folder
 	int cardBackups = 10;		// copies kept of each memory card that changed; 0 none
 	bool updateCheck = true;	// ask the releases page at start-up
@@ -961,6 +963,7 @@ struct Cheat
 	std::string code;			// GameShark lines, '+' separated; '?' where a choice goes
 	bool manual = false;		// applied once on request, not every frame
 	bool patch = false;			// from the patch database (widescreen, 60 fps...)
+	bool own = false;			// from the user's own <root>cheats/<serial>.cht
 	std::string mod;			// a mod package's feature: the package's name and version
 	bool supported = true;		// every code type is one the emulator has
 	bool enabled = false;
@@ -1001,6 +1004,15 @@ void setEnabled(size_t index, bool enabled);
 void setValue(size_t index, uint32_t value);
 // Runs a manual cheat once.
 void runOnce(size_t index);
+// GameShark codes typed in: `lines` is "80012345 0063" lines (any spacing,
+// one code a line or '+' between them). Checked, written to the game's own
+// <root>cheats/<serial>.cht, listed and switched on. False, and `why`, when
+// the codes are not GameShark codes or the file cannot be written.
+bool addOwn(const std::string& name, const std::string& lines, std::string& why);
+// Takes one of the user's own entries out of that file again.
+bool removeOwn(size_t index);
+// An entry's code as typed lines, "80012345 0063" each, '\n' between them.
+std::string codeLines(const Cheat& cheat);
 // Hands the enabled set to the emulator (after a start, a reset, a state).
 void apply();
 // How many cheats and patches the databases hold, for the About page.

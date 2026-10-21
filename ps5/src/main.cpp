@@ -10,6 +10,7 @@
 	the display (FIFO), and that wait is what paces the emulator.
 */
 #include "fe.h"
+#include "cloud.h"
 #include "display.h"
 #include "update.h"
 #include "web.h"
@@ -32,7 +33,7 @@ namespace fe
 std::string rootDir;
 std::string appDir;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 24;
+const int BuildNumber = 25;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 
@@ -394,6 +395,7 @@ int main(int argc, char **argv)
 	host::shutdown();
 	discdrive::stop();
 	netfiles::finish();
+	cloud::finish();
 	options::saveFrontend();
 	audio::shutdown();
 	platform::quit();

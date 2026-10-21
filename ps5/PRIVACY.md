@@ -19,6 +19,7 @@ it keeps stays on the console, in its title folder (or in
 | The update check | the GitHub API, this repository's latest release | when the check runs |
 | Netplay | the other console's address that I type in, directly | only during netplay |
 | Network game folders | the SMB, NFS or FTP server I name in `network.cfg` | when that folder is used |
+| Cloud saves: the memory cards (and the save states, if that is switched on); the sign-in's tokens; for showing it, the account's address | Google (oauth2.googleapis.com, www.googleapis.com: Drive's folder of the app's own) or Dropbox (api.dropboxapi.com, content.dropboxapi.com: Apps/PSSwanStation) | only while signed in to cloud saves, when PSSwanStation starts, a game closes or "Bring my saves up to date now" is used |
 
 Each request says it comes from PSSwanStation and its build number (its
 User-Agent, for example `PSSwanStation/23 (PS5) rcheevos/<its version>`). Nothing else
@@ -29,6 +30,10 @@ their own policies (RetroAchievements, GitHub, libretro).
 
 - `data/retroachievements.cfg`: the RetroAchievements user name and token
   (never the password). Signing out deletes the token.
+- `data/cloud.cfg`: the cloud saves' service, its refresh token (never a
+  password) and the account's address, readable by the title alone and never
+  given out by the web panel. Signing out deletes it (and, for Google,
+  withdraws the token there).
 - `data/achievements-unsent.txt`: unlocks and leaderboard entries made while
   the server could not be reached, kept until they are sent after the next
   sign-in. The requests in it carry the token, so the file is readable by the

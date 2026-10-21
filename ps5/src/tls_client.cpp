@@ -691,8 +691,17 @@ std::string resolveLocation(const Url& from, const std::string& location)
 
 // Makes the request, following redirects; `body` is given the answer's body
 // in pieces and stops it by answering false. The final status, or -1.
+// A method other than GET, with headers and a body of the caller's: send().
+struct Outgoing
+{
+	std::string method = "GET";
+	std::vector<std::pair<std::string, std::string>> headers;
+	const std::string *body = nullptr;
+};
+
 int request(const std::string& start, unsigned seconds, bool wholeTime, uint64_t *announced,
-		const std::function<bool(int status, const unsigned char *data, size_t length)>& body, std::string& why)
+		const std::function<bool(int status, const unsigned char *data, size_t length)>& body, std::string& why,
+		const Outgoing& outgoing = Outgoing())
 {
 	std::string current = start;
 	const auto began = Clock::now();
@@ -710,10 +719,26 @@ int request(const std::string& start, unsigned seconds, bool wholeTime, uint64_t
 		if (!connection.open(url, seconds, deadline, why))
 			return -1;
 		const bool defaultPort = (url.secure && url.port == 443) || (!url.secure && url.port == 80);
-		std::string head = "GET " + url.path + " HTTP/1.1\r\nHost: " + url.host +
-				(defaultPort ? "" : ":" + std::to_string(url.port)) +
-				"\r\nUser-Agent: " + agent + "\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n";
+		// A redirect of another method is followed as a GET only when it says so (303).
+		const bool plainGet = hop > 0 || outgoing.method == "GET";
+		std::string head = (plainGet ? std::string("GET") : outgoing.method) + " " + url.path + " HTTP/1.1\r\nHost: "
+				+ url.host + (defaultPort ? "" : ":" + std::to_string(url.port)) + "\r\nUser-Agent: " + agent
+				+ "\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n";
+		if (!plainGet)
+		{
+			for (const auto& [name, value] : outgoing.headers)
+				head += name + ": " + value + "\r\n";
+			if (outgoing.body != nullptr || outgoing.method == "POST" || outgoing.method == "PUT"
+					|| outgoing.method == "PATCH")
+				head += "Content-Length: " + std::to_string(outgoing.body != nullptr ? outgoing.body->size() : 0) + "\r\n";
+		}
+		else if (hop == 0)
+			for (const auto& [name, value] : outgoing.headers)
+				head += name + ": " + value + "\r\n";
+		head += "\r\n";
 		if (!connection.write(head, why))
+			return -1;
+		if (!plainGet && outgoing.body != nullptr && !outgoing.body->empty() && !connection.write(*outgoing.body, why))
 			return -1;
 		std::string line;
 		if (!connection.readLine(line, why))
@@ -758,7 +783,8 @@ int request(const std::string& start, unsigned seconds, bool wholeTime, uint64_t
 			hop--;
 			continue;
 		}
-		if ((status == 301 || status == 302 || status == 303 || status == 307 || status == 308) && !location.empty())
+		if ((status == 301 || status == 302 || status == 303 || status == 307 || status == 308) && !location.empty()
+				&& (outgoing.method == "GET" || status == 303))
 		{
 			current = resolveLocation(url, location);
 			continue;
@@ -882,6 +908,39 @@ int get(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, siz
 		out.clear();
 		if (why != nullptr)
 			*why = reason;
+	}
+	return status;
+}
+
+int send(const std::string& method, const std::string& url, const std::vector<std::pair<std::string, std::string>>& headers,
+		const std::string& body, std::vector<uint8_t>& out, unsigned seconds, size_t limit, std::string *why)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	out.clear();
+	Outgoing outgoing;
+	outgoing.method = method;
+	outgoing.headers = headers;
+	outgoing.body = &body;
+	std::string reason;
+	bool tooLarge = false;
+	const int status = request(url, seconds, true, nullptr,
+			[&](int code, const unsigned char *data, size_t length) {
+				const size_t most = code >= 200 && code < 300 ? limit : (size_t)(64u << 10);
+				if (out.size() + length > most)
+				{
+					tooLarge = code >= 200 && code < 300;
+					return false;
+				}
+				out.insert(out.end(), data, data + length);
+				return true;
+			},
+			reason, outgoing);
+	if (tooLarge || status < 0)
+	{
+		out.clear();
+		if (why != nullptr)
+			*why = tooLarge ? "the answer is larger than " + std::to_string(limit) + " bytes" : reason;
+		return -1;
 	}
 	return status;
 }

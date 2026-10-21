@@ -7,7 +7,7 @@
 	The emulator runs at the display's pace and the output port at its own
 	48 kHz clock, and the two drift apart. push() resamples linearly into a
 	ring the output thread drains, at a ratio nudged by at most 0.5 %,
-	inaudibly, to keep the ring about a third full (dynamic rate control, as
+	inaudibly, to keep 60 ms in it (or 32 or 16: "Sound delay") (dynamic rate control, as
 	RetroArch and PSFlyCast do). When the game keeps its own exact speed (the
 	pacing setting) the nudging is a fifth of that, only against the two
 	clocks' slow drift. A full ring drops what does not fit instead of holding
@@ -35,7 +35,11 @@ namespace
 {
 constexpr double InRate = 44100.0, OutRate = 48000.0;
 constexpr size_t Capacity = 9600;		// frames: 200 ms
-constexpr size_t Target = 2880;			// 60 ms
+// How much is kept ahead of the output (Settings, Sound, "Sound delay"):
+// 60, 32 or 16 ms. Less is heard sooner, and runs dry sooner when a frame of
+// the game comes late.
+const size_t Targets[3] = { 2880, 1536, 768 };
+size_t Target = Targets[0];
 constexpr double MaxRateDelta = 0.005;
 
 std::mutex mutex;
@@ -217,6 +221,7 @@ void push(const int16_t *samples, size_t frames)
 	if (muted)
 		return;
 	std::lock_guard<std::mutex> lock(mutex);
+	Target = Targets[std::clamp(options::frontend().audioLatency, 0, 2)];
 	double deviation = ((double)filled - (double)Target) / (double)Target;
 	deviation = std::clamp(deviation, -1.0, 1.0);
 	if (options::frontend().pacing != 0)

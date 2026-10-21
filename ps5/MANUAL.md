@@ -239,6 +239,8 @@ The DualSense works as a PlayStation controller, button for button; the touch pa
 
 **Fast forward and rewind.** Fast forward runs at 2x to 8x, or as fast as the console manages (Settings, Controls). Rewind is off at first. When on, it keeps the last while of play in memory (128 MB to 1 GB), never on the console's storage; it is gone when the game closes.
 
+**The PlayStation Mouse** (Settings, Controllers, a player's controller), for the games made for it: slide a finger on the touch pad to move it, or use the right stick; the touch pad pressed down, Cross or R1 is its left button, Circle or L1 its right.
+
 **More players.** Player 1 is whoever started PSSwanStation. A second person presses the PS button on their controller and chooses a user, and becomes player 2 within a couple of seconds. For three or four players, switch the Multitap on in Settings, Controllers: "In port 1" suits most four-player games. Leave it off otherwise, as some one- or two-player games don't see a controller behind a multitap.
 
 **USB controllers** (an experiment; Settings, Controllers, "USB controllers", off at first). PSSwanStation reads some controllers plugged into the console's USB ports itself: a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or another USB gamepad. They can be the next player or play together with player 1. Only devices that say what they are are read; Sony's controllers are left to the console. Not yet tried on my console.
@@ -263,6 +265,13 @@ Each game has ten save-state slots and its own memory card; both are kept in `da
 
 **Card backups.** When a game closes and its card has changed, a copy is kept: the last ten of each card (Settings, Games and saving, "Card backups"). The manager can go back to one.
 
+**Cloud saves** (Settings, Games and saving, Cloud saves). The memory cards, and the save states if you switch "Save states too" on, kept in your Google Drive or Dropbox as well: brought here when PSSwanStation starts, sent there when a game closes, so another console (or this one after a reinstall) has them. A card played in two places keeps the one played last and the other beside it (`.conflict-<date>`). Signing in takes a phone, and no password is typed on the console:
+
+- **Google Drive**: the console shows a code and a QR code; open google.com/device, sign in and type the code. PSSwanStation gets a folder of its own in your Drive, hidden from your files, and nothing else.
+- **Dropbox**: scan the QR code, sign in and allow PSSwanStation; Dropbox shows a code, which you type on the console or paste in Phone and web control (Settings tab, "Dropbox code"). PSSwanStation gets `Apps/PSSwanStation` and nothing else.
+
+The console keeps only the sign-in (in `data/cloud.cfg`, never given out by the web panel); Sign out forgets it, and for Google withdraws it there too.
+
 ## The picture
 
 Games are drawn at 8x the PlayStation's resolution at first. Lower it under Settings, Emulator, "Internal Resolution Scale" (Enhancement) if a game does not hold its speed; "Show frame rate" (Picture) tells you. Every Picture setting except Display output can be a game's own (its details, Options; or Game settings, Picture while it runs).
@@ -271,7 +280,7 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 | --- | --- |
 | Picture preset | Original (its own resolution, with a picture tube's lines), Sharp (8x, full colour, PGXP), Enhanced (Sharp with xBR textures and 4x MSAA), Speedrun (the picture as the PlayStation drew it) |
 | Picture size | Fit the screen, whole multiples, or stretch |
-| Scaling filter | Smooth, square pixels, sharp bilinear, FSR 1, NIS, CAS; "Sharpening" for the last three |
+| Scaling filter | Smooth, square pixels, sharp bilinear, FSR 1, NIS, CAS, MMPX; "Sharpening" for FSR 1, NIS and CAS |
 | Picture tube | Scanlines (soft or full), a shadow mask, or crt-guest-advanced in five kinds; and presets brought in from USB |
 | Video signal | As it is, dither smoothed, S-Video or composite |
 | Brightness, Contrast, Colour, Gamma | 50% to 150% |
@@ -283,7 +292,7 @@ Games are drawn at 8x the PlayStation's resolution at first. Lower it under Sett
 | Frame generation | Pictures made between the game's, with a generation method, quality, mode and rate settings |
 | Generation method (under Frame generation) | The title's own (the default), AMD FSR3's optical flow, from AMD's FidelityFX SDK, or MihawkGen, Mihawk's small trained network |
 
-**Scaling filters.** Smooth blends neighbouring pixels; square pixels shows them as squares; sharp bilinear keeps pixels even and crisp at any size. FSR 1 and NIS follow edges, then sharpen; CAS sharpens fine detail without halos. FSR and NIS pay off most at a lower internal resolution (3x or 4x). A picture larger than the screen (8x on a 1080p screen) is made smaller by averaging, whichever filter is chosen.
+**Scaling filters.** Smooth blends neighbouring pixels; square pixels shows them as squares; sharp bilinear keeps pixels even and crisp at any size. FSR 1 and NIS follow edges, then sharpen; CAS sharpens fine detail without halos. FSR and NIS pay off most at a lower internal resolution (3x or 4x). MMPX is for pixel art at the PlayStation's own resolution (Internal Resolution Scale 1x, or the software renderer): it doubles each pixel the way an artist draws pixel art larger, keeping lines one colour and corners sharp, then grows it with sharp bilinear. A picture larger than the screen (8x on a 1080p screen) is made smaller by averaging, whichever filter is chosen.
 
 **Gaps between polygons.** Above 1x, "Close Gaps Between Polygons" (Settings, Emulator, Enhancement; on at first) covers the hairline gaps where a game's polygons meet unevenly: the sparkles along their edges. 3D objects' outlines become a quarter of a pixel fuller; 2D pictures and see-through polygons are left as they are. The Speedrun preset switches it off.
 
@@ -304,7 +313,7 @@ It makes nothing across a cut to another scene, starts again after a state is lo
 
 ## Extras
 
-**Cheats and patches.** After the cheat database is fetched (Settings, Games and saving), a game's cheats and patches are in its details and in the menu under Cheats, found by the disc's serial number. Cross switches one on or off; Left and Right choose a value where a cheat has one. What is on is kept for that game. A game the database has no codes for gets the libretro database's cheats instead; they may not fit your version. Your own codes go in `cheats/<serial>.cht`:
+**Cheats and patches.** After the cheat database is fetched (Settings, Games and saving), a game's cheats and patches are in its details and in the menu under Cheats, found by the disc's serial number. Cross switches one on or off; Left and Right choose a value where a cheat has one. What is on is kept for that game. A game the database has no codes for gets the libretro database's cheats instead; they may not fit your version. Your own GameShark codes can be typed in: "Add a GameShark code" at the end of the list asks for a name, then the code on a keypad (8 digits, a space and 4 more, a line for each code, a new line begun by itself after twelve digits). It is switched on at once and kept in `cheats/<serial>.cht`; Square on one of your codes edits it, and emptied it is removed. Your own codes go in `cheats/<serial>.cht`:
 
 ```
 [Infinite Health]
@@ -370,7 +379,7 @@ Settings (first in the menu) has nine sections. L1 and R1 move between sections,
 | --- | --- |
 | Library | View: the library view, ES-DE themes. Videos: game videos on or off, their sound, how long the cursor stays on a game before its video starts. Covers and header: cover downloads, clock, update check |
 | Look | Interface: theme, accent colour, size (up to 140%), animations. Easier to see: high contrast, colour-blind safe colours. The swan: lively, calm or still; dressed for the theme; seasonal touches; the start-up animation; the screen saver |
-| Sound | Volume: the game, menu sounds, music, videos. What plays: menu music (the title's own, your `music/` folder, or the kit's songs), the menus' sound set, the start-up sound |
+| Sound | Volume: the game, menu sounds, music, videos. Sound delay: how far ahead of the speakers the game's sound is kept (60, 32 or 16 ms; lower for rhythm games and wireless headphones, Normal should it crackle). What plays: menu music (the title's own, your `music/` folder, or the kit's songs), the menus' sound set, the start-up sound |
 | Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation (the title's own, AMD FSR3's optical flow, or MihawkGen); the frame rate counter |
 | Controls | The confirm button. Players: multitap and each player's controller type. USB controllers (an experiment). The pad: buttons (remapping, OPTIONS and the touch pad included; which opens the menu; turbo), stick dead zone, vibration, player lights, tilt steering. Shortcuts: the held-OPTIONS shortcuts and fast forward speed. Rewind and its memory |
 | Games and saving | Where the games are: folders, USB drives, the USB disc drive, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database. RetroAchievements: sign in, hardcore mode |

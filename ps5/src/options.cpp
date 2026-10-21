@@ -260,7 +260,7 @@ std::vector<Field> fields()
 		{ "ram_cache", nullptr, &c.ramCache, 0, 1 },
 		{ "notifications", nullptr, &c.notifications, 0, 1 },
 		{ "scaling", &c.scaling, nullptr, 0, 3 },
-		{ "scaler", &c.scaler, nullptr, 0, 5 },
+		{ "scaler", &c.scaler, nullptr, 0, 6 },
 		{ "fsr_sharpness", &c.fsrSharpness, nullptr, 0, 2 },
 		{ "linear_filter", nullptr, &c.linearFilter, 0, 1 },
 		{ "signal", &c.signal, nullptr, 0, 3 },
@@ -270,6 +270,7 @@ std::vector<Field> fields()
 		{ "gamma", &c.gamma, nullptr, 0, 20 },
 		{ "grain", &c.grain, nullptr, 0, 3 },
 		{ "volume", &c.volume, nullptr, 0, 100 },
+		{ "audio_latency", &c.audioLatency, nullptr, 0, 2 },
 		{ "show_fps", nullptr, &c.showFps, 0, 1 },
 		{ "pacing", &c.pacing, nullptr, 0, 2 },
 		{ "display_mode", &c.displayMode, nullptr, 0, 2 },
@@ -295,10 +296,10 @@ std::vector<Field> fields()
 		{ "web", nullptr, &c.web, 0, 1 },
 		{ "speedrun", nullptr, &c.speedrun, 0, 1 },
 		{ "speedrun_clock", &c.speedrunClock, nullptr, 0, 1 },
-		{ "controller1", &c.controller[0], nullptr, 0, 5 },
-		{ "controller2", &c.controller[1], nullptr, 0, 5 },
-		{ "controller3", &c.controller[2], nullptr, 0, 5 },
-		{ "controller4", &c.controller[3], nullptr, 0, 5 },
+		{ "controller1", &c.controller[0], nullptr, 0, 6 },
+		{ "controller2", &c.controller[1], nullptr, 0, 6 },
+		{ "controller3", &c.controller[2], nullptr, 0, 6 },
+		{ "controller4", &c.controller[3], nullptr, 0, 6 },
 		{ "rumble", nullptr, &c.rumble, 0, 1 },
 		{ "player_lights", nullptr, &c.playerLights, 0, 1 },
 		{ "turbo_rate", &c.turboRate, nullptr, 0, 2 },
@@ -340,6 +341,7 @@ std::vector<Field> fields()
 		{ "files_at", &c.filesAt, nullptr, 0, 3 },
 		{ "seen_build", &c.seenBuild, nullptr, 0, 1000000 },
 		{ "cards_on_share", nullptr, &c.cardsOnShare, 0, 1 },
+		{ "cloud_states", nullptr, &c.cloudStates, 0, 1 },
 		{ "covers_from_share", nullptr, &c.coversFromShare, 0, 1 },
 		{ "card_backups", &c.cardBackups, nullptr, 0, 50 },
 		{ "update_check", nullptr, &c.updateCheck, 0, 1 },
@@ -432,11 +434,6 @@ void migrateGame(std::map<std::string, std::string>& values)
 		if (values.count("picture_fg_quality") == 0)
 			values["picture_fg_quality"] = "0";
 	}
-	// A build 15 made before its release had a scaler (6) that is gone: back
-	// to the plain picture, not to the nearest one.
-	const auto scaler = values.find("picture_scaler");
-	if (scaler != values.end() && scaler->second == "6")
-		scaler->second = "0";
 }
 
 // The loaded game's own value of a picture setting, if it has one. Called
@@ -583,9 +580,6 @@ void loadFrontend()
 		}
 		else if (!strcmp(key, "view"))
 			current.view = i <= 0 ? 0 : std::min(i + 1, 62);
-		// A build 15 made before its release had a scaler (6) that is gone.
-		else if (!strcmp(key, "scaler") && i == 6)
-			current.scaler = 0;
 		else
 			for (const Field& field : known)
 				if (!strcmp(key, field.name))

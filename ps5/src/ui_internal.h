@@ -69,6 +69,7 @@ enum class Page
 	Memory,			// values found in the game's memory, and watched
 	Speedrun,		// the speedrun timer and the game's splits
 	Web,			// the web panel: its switch, the address and the QR code
+	Cloud,			// cloud saves: the account, signing in (a QR code), what is kept
 	Shaders,		// shader presets brought in from a USB drive
 	WhatsNew,		// what changed: a: the build the console had before (0: every build)
 	DiscDrive,		// how to play the disc in a drive (the game in `chosen`); a: state slot
@@ -267,6 +268,7 @@ void shortcutsPage(Frame& f);
 void memoryPage(Frame& f);
 void speedrunPage(Frame& f);
 void webPage(Frame& f);
+void cloudPage(Frame& f);
 void shadersPage(Frame& f);
 void whatsNewPage(Frame& f);
 void discDrivePage(Frame& f);
@@ -274,6 +276,8 @@ void discDrivePage(Frame& f);
 // The keyboard: asks for a text and hands it to `done` when it is confirmed.
 void askText(const std::string& title, const std::string& initial, bool hidden, bool address,
 		std::function<void(const std::string&)> done);
+// The hexadecimal keypad: asks for GameShark codes, one "80012345 0063" a line.
+void askCode(const std::string& title, const std::string& initial, std::function<void(const std::string&)> done);
 
 // Over a running game, with no menu open: the shortcuts (OPTIONS held with
 // another button), which take the pads from the game while they are pressed.

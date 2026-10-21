@@ -1,5 +1,5 @@
 /*
-	PSSwanStation - HTTP(S) GET with a TLS of the title's own (mbedTLS).
+	PSSwanStation - HTTP(S) requests with a TLS of the title's own (mbedTLS).
 
 	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
@@ -38,6 +38,12 @@ void setUserAgent(const std::string& agent);
 // 64 KiB; for a success up to `limit` bytes), or -1 with `why` set when no
 // answer came. `seconds` limits the whole of it.
 int get(const std::string& url, std::vector<uint8_t>& out, unsigned seconds, size_t limit = 8u << 20,
+		std::string *why = nullptr);
+// Any request: `method` (POST, PATCH, PUT, DELETE...), headers of the
+// caller's (Content-Length is added), and a body. As get() otherwise; a
+// redirect is followed only for GET, and for a 303 as a GET.
+int send(const std::string& method, const std::string& url, const std::vector<std::pair<std::string, std::string>>& headers,
+		const std::string& body, std::vector<uint8_t>& out, unsigned seconds, size_t limit = 8u << 20,
 		std::string *why = nullptr);
 // One GET written to `path` as it arrives (anything but 200 leaves no file).
 // `progress` is told how far it is (total: the server's Content-Length, else

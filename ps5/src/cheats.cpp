@@ -869,7 +869,15 @@ void loadFor(const std::string& gameSerial, const std::string& firstDisc)
 		parse(text, false, codes);
 	std::vector<uint8_t> own;
 	if (readFile(rootDir + "cheats/" + loadedSerial + ".cht", own))
-		parse(std::string(own.begin(), own.end()), false, codes);
+	{
+		std::vector<Cheat> mine;
+		parse(std::string(own.begin(), own.end()), false, mine);
+		for (Cheat& cheat : mine)
+		{
+			cheat.own = true;
+			codes.push_back(std::move(cheat));
+		}
+	}
 	// A game neither has codes for: the libretro database's, matched to the
 	// disc by name (tools/make-libretro-cheats.py), each saying so.
 	if (codes.empty() && readFromArchive(appDir + "assets/libretro-cheats.zip", loadedSerial + ".cht", text))
@@ -1050,6 +1058,183 @@ std::string summary()
 {
 	std::lock_guard<std::mutex> lock(summaryMutex);
 	return summaryText;
+}
+
+// ------------------------------------------------------- codes typed in
+
+namespace
+{
+std::string ownFile()
+{
+	return rootDir + "cheats/" + loadedSerial + ".cht";
+}
+
+// A section's name as the format has it: no brackets, no backslash (that
+// would make a group), no line breaks.
+std::string sectionName(const std::string& name)
+{
+	std::string out;
+	for (char c : name)
+		if (c != '[' && c != ']' && c != '\\' && c != '\n' && c != '\r')
+			out += c;
+	return trim(out);
+}
+
+// The file's text with the section `name` taken out ("" when it is not there).
+std::string withoutSection(const std::string& text, const std::string& name, bool& found)
+{
+	std::istringstream in(text);
+	std::string line, out;
+	bool skipping = false;
+	found = false;
+	while (std::getline(in, line))
+	{
+		const std::string t = trim(line);
+		if (!t.empty() && t.front() == '[' && t.back() == ']')
+		{
+			skipping = t.substr(1, t.size() - 2) == name;
+			found = found || skipping;
+		}
+		if (!skipping)
+			out += line + "\n";
+	}
+	return out;
+}
+}
+
+std::string codeLines(const Cheat& cheat)
+{
+	std::string out;
+	std::string code = cheat.code;
+	size_t start = 0;
+	while (start <= code.size())
+	{
+		size_t end = code.find('+', start);
+		if (end == std::string::npos)
+			end = code.size();
+		std::string part = trim(code.substr(start, end - start));
+		if (!part.empty())
+			out += (out.empty() ? "" : "\n") + part;
+		start = end + 1;
+	}
+	return out;
+}
+
+bool addOwn(const std::string& rawName, const std::string& lines, std::string& why)
+{
+	if (loadedSerial.empty())
+	{
+		why = "The game's serial number is not known, and a game's own codes are kept under it.";
+		return false;
+	}
+	const std::string name = sectionName(rawName);
+	if (name.empty())
+	{
+		why = "The code needs a name.";
+		return false;
+	}
+	// The hexadecimal digits, twelve a code: eight of address, four of value.
+	std::vector<std::string> codes;
+	std::string digits;
+	for (char c : lines)
+	{
+		if (isxdigit((unsigned char)c))
+			digits += (char)toupper((unsigned char)c);
+		else if (c == '+' || c == '\n')
+		{
+			if (!digits.empty() && digits.size() != 12)
+			{
+				why = "Each code has 12 digits (8, a space, 4): \"" + digits + "\" has " + std::to_string(digits.size()) + ".";
+				return false;
+			}
+			if (!digits.empty())
+				codes.push_back(digits.substr(0, 8) + " " + digits.substr(8));
+			digits.clear();
+		}
+		else if (c != ' ')
+		{
+			why = std::string("A GameShark code has only the digits 0 to 9 and the letters A to F, not '") + c + "'.";
+			return false;
+		}
+		if (digits.size() == 12)
+		{
+			codes.push_back(digits.substr(0, 8) + " " + digits.substr(8));
+			digits.clear();
+		}
+	}
+	if (!digits.empty())
+	{
+		why = "The last code has " + std::to_string(digits.size()) + " digits; each has 12 (8, a space, 4).";
+		return false;
+	}
+	if (codes.empty())
+	{
+		why = "No code was typed.";
+		return false;
+	}
+	// The emulator must know each line's type.
+	bool sawData = false, sawUnknown = false;
+	for (const std::string& code : codes)
+	{
+		const unsigned type = (unsigned)strtoul(code.substr(0, 2).c_str(), nullptr, 16);
+		if (!knownType(type))
+			sawUnknown = true;
+		if (hasDataLines(type))
+			sawData = true;
+	}
+	if (sawUnknown && !sawData)
+	{
+		why = "A code type this emulator does not run (the first two digits of a line). Check the code against where it "
+				"was found.";
+		return false;
+	}
+
+	std::vector<uint8_t> old;
+	std::string text = readFile(ownFile(), old) ? std::string(old.begin(), old.end()) : std::string();
+	bool replaced = false;
+	text = withoutSection(text, name, replaced);
+	if (!text.empty() && text.back() != '\n')
+		text += "\n";
+	if (!text.empty())
+		text += "\n";
+	text += "[" + name + "]\nType = Gameshark\nActivation = EndFrame\nAuthor = Typed in PSSwanStation\n";
+	for (const std::string& code : codes)
+		text += code + "\n";
+	makeDir(rootDir + "cheats");
+	if (!writeFile(ownFile(), text.data(), text.size()))
+	{
+		why = "The file " + ownFile() + " could not be written.";
+		return false;
+	}
+	diag::mark("cheats: %s: %s \"%s\" (%d line(s)) in cheats/%s.cht", loadedSerial.c_str(), replaced ? "replaced" : "added",
+			name.c_str(), (int)codes.size(), loadedSerial.c_str());
+	// Listed again, with it switched on.
+	const std::string serialNow = loadedSerial;
+	loadFor(serialNow);
+	for (size_t i = 0; i < entries.size(); i++)
+		if (entries[i].own && entries[i].group.empty() && entries[i].name == name)
+			setEnabled(i, true);
+	return true;
+}
+
+bool removeOwn(size_t index)
+{
+	if (index >= entries.size() || !entries[index].own)
+		return false;
+	const std::string name = entries[index].group.empty() ? entries[index].name
+			: entries[index].group + "\\" + entries[index].name;
+	std::vector<uint8_t> old;
+	if (!readFile(ownFile(), old))
+		return false;
+	bool found = false;
+	const std::string text = withoutSection(std::string(old.begin(), old.end()), name, found);
+	if (!found || !writeFile(ownFile(), text.data(), text.size()))
+		return false;
+	setEnabled(index, false);
+	const std::string serialNow = loadedSerial;
+	loadFor(serialNow);
+	apply();
+	return true;
 }
 
 }

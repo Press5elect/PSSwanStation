@@ -2350,12 +2350,14 @@ struct LookState
 	bool tried = false, ready = false;
 	VkPipelineLayout layout = VK_NULL_HANDLE;
 	VkPipeline signal = VK_NULL_HANDLE, scale = VK_NULL_HANDLE, cas = VK_NULL_HANDLE, down = VK_NULL_HANDLE,
-			grain = VK_NULL_HANDLE;
+			grain = VK_NULL_HANDLE, mmpx = VK_NULL_HANDLE;
 	// The picture at its own size, looked after; stretched to the screen's
 	// size; and that sharpened (CAS); the picture NIS starts from; the picture
 	// sharpened at its own size (CAS, for a large enlargement); the picture
 	// made smaller than its own size (look_down.frag).
 	Target staged, stretched, sharpened, before, sharpenedFirst, reduced;
+	// The picture made twice its size by MMPX.
+	Target doubled;
 	// The picture with film grain over it, at the screen's size.
 	Target grained;
 	unsigned frame = 0;
@@ -2408,6 +2410,7 @@ bool lookInit()
 	const VkShaderModule scale = shaderModule(look_scale_spirv, sizeof(look_scale_spirv));
 	const VkShaderModule cas = shaderModule(look_cas_spirv, sizeof(look_cas_spirv));
 	const VkShaderModule down = shaderModule(look_down_spirv, sizeof(look_down_spirv));
+	const VkShaderModule mmpx = shaderModule(look_mmpx_spirv, sizeof(look_mmpx_spirv));
 	if (vertex != VK_NULL_HANDLE && signal != VK_NULL_HANDLE && scale != VK_NULL_HANDLE && cas != VK_NULL_HANDLE)
 	{
 		l.signal = fsrPipeline(vertex, signal, l.layout);
@@ -2418,8 +2421,10 @@ bool lookInit()
 			l.down = fsrPipeline(vertex, down, l.layout);
 		if (grain != VK_NULL_HANDLE)
 			l.grain = fsrPipeline(vertex, grain, l.layout);
+		if (mmpx != VK_NULL_HANDLE)
+			l.mmpx = fsrPipeline(vertex, mmpx, l.layout);
 	}
-	for (VkShaderModule module : { vertex, signal, scale, cas, down, grain })
+	for (VkShaderModule module : { vertex, signal, scale, cas, down, grain, mmpx })
 		if (module != VK_NULL_HANDLE)
 			vkDestroyShaderModule(device, module, nullptr);
 	l.ready = l.signal != VK_NULL_HANDLE && l.scale != VK_NULL_HANDLE && l.cas != VK_NULL_HANDLE;
@@ -2698,9 +2703,10 @@ void lookShutdown()
 	chain::destroy(l.imported);
 	retire(l.crtSet);
 	retire(l.nisOutSet);
-	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before, &l.sharpenedFirst, &l.reduced, &l.grained })
+	for (Target *target : { &l.staged, &l.stretched, &l.sharpened, &l.before, &l.sharpenedFirst, &l.reduced, &l.grained,
+			&l.doubled })
 		destroyTarget(*target);
-	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis, l.down, l.grain })
+	for (VkPipeline pipeline : { l.signal, l.scale, l.cas, l.nis, l.down, l.grain, l.mmpx })
 		if (pipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(device, pipeline, nullptr);
 	for (VkPipelineLayout layout : { l.layout, l.nisLayout })
@@ -2889,6 +2895,34 @@ void *picture(void *texture, int width, int height, float u, float v, int outWid
 				result = (void *)l.sharpened.set;
 			}
 			said = "CAS";
+			break;
+		}
+		case 5:
+		{
+			// MMPX twice the size, then sharp bilinear the rest of the way (or
+			// the doubled picture made smaller, should it be larger than the screen).
+			if (l.mmpx != VK_NULL_HANDLE && ensureTarget(l.doubled, width * 2, height * 2, swapFormat, shaderPass))
+			{
+				LookConstants m{};
+				m.a[0] = (float)width;
+				m.a[1] = (float)height;
+				fsrPass(l.doubled, l.mmpx, l.layout, staged, readable, &m, sizeof(m));
+				if (ensureTarget(l.stretched, outWidth, outHeight, swapFormat, shaderPass))
+				{
+					LookConstants s{};
+					s.a[0] = (float)(width * 2);
+					s.a[1] = (float)(height * 2);
+					s.a[2] = s.a[3] = 1.f;
+					s.b[0] = (float)outWidth;
+					s.b[1] = (float)outHeight;
+					const bool smaller = width * 2 > outWidth || height * 2 > outHeight;
+					s.b[2] = smaller ? 0.f : 1.f;
+					fsrPass(l.stretched, smaller && l.down != VK_NULL_HANDLE ? l.down : l.scale, l.layout,
+							l.doubled.texture.GetView(), readable, &s, sizeof(s));
+					result = (void *)l.stretched.set;
+				}
+			}
+			said = "MMPX";
 			break;
 		}
 		}
