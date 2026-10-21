@@ -442,9 +442,9 @@ int sendAll(void *context, const unsigned char *data, size_t length)
 {
 	const int fd = *(int *)context;
 #if defined(MSG_NOSIGNAL)
-	const ssize_t n = send(fd, data, length, MSG_NOSIGNAL);
+	const ssize_t n = ::send(fd, data, length, MSG_NOSIGNAL);
 #else
-	const ssize_t n = send(fd, data, length, 0);
+	const ssize_t n = ::send(fd, data, length, 0);
 #endif
 	if (n >= 0)
 		return (int)n;
