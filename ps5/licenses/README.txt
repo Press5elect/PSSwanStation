@@ -81,6 +81,10 @@ FidelityFX CAS (sharpening)  MIT              CAS-LICENSE.txt          github.co
                                                                        (AMD), ffx_cas.h unmodified
 NVIDIA Image Scaling         MIT              NIS-LICENSE.txt          github.com/NVIDIAGameWorks/NVIDIAImageScaling,
                                                                        its headers unmodified
+MMPX (the MMPX scaling       written here     (GPL-3.0, the title's)   the algorithm of Morgan McGuire and Mara
+filter)                      after the paper                           Gagiu, "MMPX Style-Preserving Pixel Art
+                                                                       Magnification", JCGT 10(2), 2021, whose
+                                                                       reference code is MIT: shaders/look_mmpx.frag
 crt-guest-advanced           GPL-2.0-or-      GPL-3.0.txt              github.com/libretro/slang-shaders, by
 (the picture tube)           later                                     guest(r): compiled to SPIR-V, used under
                                                                        GPL-3.0 as its licence allows

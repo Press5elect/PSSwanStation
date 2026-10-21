@@ -719,8 +719,8 @@ void drawGame(float dim)
 		// grown to the screen, a picture tube. A picture that arrives the size
 		// it has here is drawn pixel for pixel.
 		display::Look look;
-		static const int scalers[6] = { 0, 0, 1, 2, 3, 4 };
-		look.scaler = scalers[std::clamp(f.scaler, 0, 5)];
+		static const int scalers[7] = { 0, 0, 1, 2, 3, 4, 5 };
+		look.scaler = scalers[std::clamp(f.scaler, 0, 6)];
 		look.sharpness = f.fsrSharpness;
 		look.signal = f.signal;
 		const int lines = host::nativeLines();
@@ -2611,6 +2611,11 @@ void frontendItems(int kind, std::vector<Item>& items)
 			item.enabled = f.videos;
 			items.push_back(std::move(item));
 		}
+		items.push_back(choice("Sound delay", f.audioLatency, { "Normal (60 ms)", "Low (32 ms)", "Lowest (16 ms)" },
+				"How far ahead of the speakers the game's sound is kept. Lower is heard sooner, for rhythm games and "
+				"wireless headphones; should the sound crackle, a game is coming late now and then, and Normal "
+				"keeps it smooth.",
+				[](int i) { options::frontend().audioLatency = i; }));
 		items.push_back(header("What plays"));
 		items.push_back(choice("Menu music", f.music, sound::musicNames(),
 				"The title's own: a quiet piece made when it starts. My music folder: every .ogg, .mp3 and .wav in "
@@ -3225,8 +3230,54 @@ void cheatItems(std::vector<Item>& items, bool running)
 					const int64_t next = std::clamp<int64_t>((int64_t)c.value + direction, c.rangeLow, c.rangeHigh);
 					cheats::setValue(i, (uint32_t)next);
 				};
+			// Codes of the user's own (typed in, or in cheats/<serial>.cht): Square edits them.
+			if (cheat.own && cheat.choices.empty() && !cheat.hasRange)
+			{
+				item.info += (item.info.empty() ? "" : "\n\n") + std::string("One of your own codes:\n")
+						+ cheats::codeLines(cheat);
+				item.altHint = "Edit";
+				item.alt = [i] {
+					const cheats::Cheat& c = cheats::list()[i];
+					const std::string name = c.group.empty() ? c.name : c.group + "\\" + c.name;
+					askCode(name, cheats::codeLines(c), [i, name](const std::string& codes) {
+						if (codes.empty())
+						{
+							if (cheats::removeOwn(i))
+								host::addMessage("Removed: " + name);
+							return;
+						}
+						std::string why;
+						if (!cheats::addOwn(name, codes, why))
+							message("The code was not changed", why);
+					});
+				};
+			}
 			items.push_back(std::move(item));
 		}
+	}
+	// GameShark codes typed in, kept in the game's own cheats/<serial>.cht.
+	if (!cheats::serial().empty())
+	{
+		items.push_back(header("YOUR OWN CODES"));
+		items.push_back(action(icon::Keyboard, "Add a GameShark code", "A name, then the code on a keypad: 8 digits, a "
+				"space and 4 more (80012345 0063), a line for each code. It is switched on at once and kept in "
+				+ shownRoot() + "cheats/" + cheats::serial() + ".cht. Square on one of your codes edits it; emptied, "
+				"it is removed.", [] {
+			askText("A name for the code", "", false, false, [](const std::string& typed) {
+				const std::string name = typed;
+				if (name.empty())
+					return;
+				askCode(name, "", [name](const std::string& codes) {
+					if (codes.empty())
+						return;
+					std::string why;
+					if (cheats::addOwn(name, codes, why))
+						host::addMessage("Added and switched on: " + name);
+					else
+						message("The code was not added", why);
+				});
+			});
+		}));
 	}
 }
 
@@ -5227,6 +5278,7 @@ void frame()
 		case Page::Memory: memoryPage(f); break;
 		case Page::Speedrun: speedrunPage(f); break;
 		case Page::Web: webPage(f); break;
+		case Page::Cloud: cloudPage(f); break;
 		case Page::Shaders: shadersPage(f); break;
 		case Page::WhatsNew: whatsNewPage(f); break;
 		case Page::DiscDrive: discDrivePage(f); break;

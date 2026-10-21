@@ -26,6 +26,7 @@
 #include "web.h"
 #include "slangimport.h"
 #include "qrcodegen.hpp"
+#include "cloud.h"
 #include "update.h"
 
 #include <algorithm>
@@ -142,6 +143,180 @@ const char *const keyLayers[3][KeyRows] = {
 };
 // For an address: the digits, the dot and the colon.
 const char *const addressKeys[KeyRows] = { "123", "456", "789", ".0:" };
+// For a GameShark code: the sixteen hexadecimal digits.
+const char *const codeKeys[KeyRows] = { "0123", "4567", "89AB", "CDEF" };
+
+// The codes typed so far, laid out as they are written: 8 digits, a space, 4,
+// a line for each code.
+std::string layoutCode(const std::string& digitsAndBreaks)
+{
+	std::string out;
+	int inLine = 0;
+	for (char c : digitsAndBreaks)
+	{
+		if (c == '\n')
+		{
+			if (inLine > 0)
+			{
+				out += '\n';
+				inLine = 0;
+			}
+			continue;
+		}
+		if (inLine == 12)
+		{
+			out += '\n';
+			inLine = 0;
+		}
+		if (inLine == 8)
+			out += ' ';
+		out += c;
+		inLine++;
+	}
+	return out;
+}
+
+// GameShark codes on the pad: the sixteen digits, a line for each code
+// (begun by itself after twelve digits), delete and done.
+void codePage(Frame& f)
+{
+	const Theme& t = theme();
+	const float W = unitsWide();
+	TextState& s = textState;
+	const float key = 96, gap = 10;
+	const float padW = 4 * key + 3 * gap;
+	const float boxW = 760;
+	const float total = boxW + 48 + padW;
+	const float x0 = (W - total) * 0.5f, y0 = 150;
+	const float padX = x0 + boxW + 48;
+
+	text(at(x0, y0 - 70), t.text, f.s, Title, 40);
+	// What was typed, a line a code; the last lines when there are many.
+	const std::string shown = layoutCode(s.text);
+	std::vector<std::string> lines;
+	{
+		size_t start = 0;
+		while (start <= shown.size())
+		{
+			size_t end = shown.find('\n', start);
+			if (end == std::string::npos)
+				end = shown.size();
+			lines.push_back(shown.substr(start, end - start));
+			start = end + 1;
+		}
+	}
+	const int visible = 8;
+	const float lineH = 46;
+	panel(at(x0, y0), at(x0 + boxW, y0 + 40 + visible * lineH), t.panel, 14);
+	outline(at(x0, y0), at(x0 + boxW, y0 + 40 + visible * lineH), withAlpha(t.accent, 0.7f), 14, 2);
+	const size_t first = lines.size() > (size_t)visible ? lines.size() - visible : 0;
+	for (size_t i = first; i < lines.size(); i++)
+	{
+		const float y = y0 + 20 + (float)(i - first) * lineH;
+		text(at(x0 + 28, y), t.dim, format("%zu", i + 1), Body, 24);
+		const float end = textFit(at(x0 + 80, y), px(boxW - 120), t.text, lines[i], Bold, 32);
+		if (i + 1 == lines.size() && (motion() == MotionOff || std::fmod(clock(), 1.0) < 0.6))
+			draw()->AddRectFilled(ImVec2(px(x0 + 80) + end + px(3), px(y)), ImVec2(px(x0 + 80) + end + px(6), px(y + 36)),
+					t.accent);
+	}
+	textWrapped(at(x0, y0 + 60 + visible * lineH), px(boxW), t.dim, "A code is 8 digits, a space and 4 more: "
+			"80012345 0063. A new line begins by itself after twelve digits. A code of several lines is typed line "
+			"after line.", Body, 22);
+
+	// The keys, and under them: a new line, delete, done.
+	const int actionRow = KeyRows;
+	static const char *const actions[3] = { "New line", "Delete", "Done" };
+	s.row = std::clamp(s.row, 0, actionRow);
+	s.column = std::clamp(s.column, 0, 3);
+	for (int r = 0; r < KeyRows; r++)
+		for (int c = 0; c < 4; c++)
+		{
+			const float x = padX + (float)c * (key + gap), y = y0 + (float)r * (key + gap);
+			const bool focused = s.row == r && s.column == c;
+			panel(at(x, y), at(x + key, y + key), focused ? t.accent : t.panelHigh, 12);
+			textCentred(at(x + key * 0.5f, y + 26), focused ? theme().onAccent : t.text, std::string(1, codeKeys[r][c]),
+					Bold, 34);
+		}
+	const float actionW = (padW - 2 * gap) / 3;
+	const int focusedAction = std::clamp(s.column * 3 / 4, 0, 2);
+	for (int c = 0; c < 3; c++)
+	{
+		const float x = padX + (float)c * (actionW + gap), y = y0 + (float)actionRow * (key + gap);
+		const bool focused = s.row == actionRow && focusedAction == c;
+		panel(at(x, y), at(x + actionW, y + key - 20), focused ? t.accent : t.panelHigh, 12);
+		textCentred(at(x + actionW * 0.5f, y + 24), focused ? theme().onAccent : t.text, actions[c], Bold, 22);
+	}
+
+	const auto type = [&](char c) {
+		if (s.text.size() < 1200)
+		{
+			s.text.push_back(c);
+			sound::play(sound::Key);
+		}
+	};
+	const auto erase = [&] {
+		if (!s.text.empty())
+		{
+			s.text.pop_back();
+			sound::play(sound::Key);
+		}
+	};
+	const auto finish = [&] {
+		const std::string result = layoutCode(s.text);
+		const std::function<void(const std::string&)> done = s.done;
+		deferred = [result, done] {
+			pop();
+			if (done)
+				done(result);
+		};
+	};
+	if (nav(Left) && s.column > 0)
+		s.column--;
+	if (nav(Right) && s.column < 3)
+		s.column++;
+	if (nav(Down) && s.row < actionRow)
+		s.row++;
+	if (nav(Up) && s.row > 0)
+		s.row--;
+	if (hit(confirmButton))
+	{
+		if (s.row < actionRow)
+			type(codeKeys[s.row][s.column]);
+		else if (focusedAction == 0)
+			type('\n');
+		else if (focusedAction == 1)
+			erase();
+		else
+			finish();
+	}
+	else if (hit(Square))
+		erase();
+	else if (hit(Triangle))
+		type('\n');
+	else if (hit(Options))
+		finish();
+	else if (hit(cancelButton))
+	{
+		deferred = [] { pop(); };
+		consumeInput();
+	}
+	hintBar({ { confirmButton, "Type" }, { Square, "Delete" }, { Triangle, "New line" }, { Options, "Done" },
+			{ cancelButton, "Cancel" } });
+}
+}
+
+void askCode(const std::string& title, const std::string& initial, std::function<void(const std::string&)> done)
+{
+	textState = TextState();
+	// Kept as digits and line breaks; laid out again as they are shown.
+	for (char c : initial)
+		if (isxdigit((unsigned char)c))
+			textState.text += (char)toupper((unsigned char)c);
+		else if (c == '\n' || c == '+')
+			textState.text += '\n';
+	textState.row = 0;
+	textState.done = std::move(done);
+	push(Page::Text, 0, 2, title);
 }
 
 void askText(const std::string& title, const std::string& initial, bool hidden, bool address,
@@ -155,6 +330,11 @@ void askText(const std::string& title, const std::string& initial, bool hidden, 
 
 void textPage(Frame& f)
 {
+	if (f.b == 2)
+	{
+		codePage(f);
+		return;
+	}
 	const Theme& t = theme();
 	const float W = unitsWide(), H = unitsHigh();
 	TextState& s = textState;
@@ -1825,6 +2005,140 @@ void webPage(Frame& f)
 	}
 }
 
+// ------------------------------------------------------------- cloud saves
+
+namespace
+{
+// A QR code on white, with its quiet edge.
+void drawQr(const std::string& text, float x0, float y0, float side)
+{
+	try
+	{
+		const qrcodegen::QrCode code = qrcodegen::QrCode::encodeText(text.c_str(), qrcodegen::QrCode::Ecc::MEDIUM);
+		const int n = code.getSize();
+		const float module = side / (float)(n + 8);
+		ImDrawList *list = draw();
+		list->AddRectFilled(at(x0, y0), at(x0 + side, y0 + side), IM_COL32(255, 255, 255, 255), px(12));
+		for (int y = 0; y < n; y++)
+			for (int x = 0; x < n; x++)
+				if (code.getModule(x, y))
+				{
+					const float mx = x0 + (x + 4) * module, my = y0 + (y + 4) * module;
+					list->AddRectFilled(at(mx, my), at(mx + module + 0.25f, my + module + 0.25f), IM_COL32(0, 0, 0, 255));
+				}
+	}
+	catch (...)
+	{
+	}
+}
+}
+
+void cloudPage(Frame& f)
+{
+	const Theme& t = theme();
+	options::Frontend& settings = options::frontend();
+	std::vector<Item> items;
+	cloud::Service service = cloud::service();
+	cloud::SignIn signing = cloud::signIn();
+	// Signed in: the saves are brought up to date at once.
+	if (signing.stage == cloud::SignIn::Done)
+	{
+		cloud::cancelSignIn();
+		signing = cloud::SignIn();
+		service = cloud::service();
+		netfiles::now();
+	}
+	const bool busy = signing.stage == cloud::SignIn::Asking || signing.stage == cloud::SignIn::Waiting;
+
+	if (service != cloud::None)
+	{
+		const std::string who = cloud::account();
+		items.push_back(fact("Signed in", cloud::serviceName(service), "Your saves go to " + cloud::serviceName(service)
+				+ (who.empty() ? std::string() : ", as " + who) + (service == cloud::GoogleDrive
+				? ", in a folder of PSSwanStation's own that only it can see (it does not show among your files)."
+				: ", in Apps/PSSwanStation; PSSwanStation sees nothing else there.")));
+		if (!who.empty())
+			items.push_back(fact("Account", who, ""));
+		items.push_back(header("What is kept there"));
+		items.push_back(fact("Memory cards", "Always", "Every game's memory card, both ways: brought here before a game "
+				"starts, sent there when it closes. Should a card have been played here and elsewhere, the one played "
+				"last is used and the other kept beside it (.conflict-<date>)."));
+		items.push_back(toggle("Save states too", &settings.cloudStates, "The save states as well (a few megabytes each), "
+				"with their pictures. More to send after each game.", [] { netfiles::now(); }));
+		{
+			Item item = action(icon::Sync, "Bring my saves up to date now", "Instead of when PSSwanStation starts or a game "
+					"closes.\n\n" + (netfiles::status().empty() ? std::string("Nothing done yet this run.") : netfiles::status()),
+					[] { netfiles::now(); }, !netfiles::working());
+			item.value = netfiles::working() ? "Working\xe2\x80\xa6" : "";
+			items.push_back(item);
+		}
+		items.push_back(action(icon::Power, "Sign out", "The console forgets the account; what is in the cloud stays there. "
+				"A Google sign-in is withdrawn there too.", [] {
+			push(Page::Confirm, 0, 0, "Sign out?", "Your saves stay in the cloud and on this console; they are no longer "
+					"kept the same.", [] { cloud::signOut(); });
+		}));
+	}
+	else if (busy || signing.stage == cloud::SignIn::Failed)
+	{
+		const std::string name = cloud::serviceName(signing.service);
+		if (signing.stage == cloud::SignIn::Asking)
+			items.push_back(fact("Asking " + name, "", "A moment."));
+		else if (signing.stage == cloud::SignIn::Waiting && signing.service == cloud::GoogleDrive)
+		{
+			items.push_back(fact("On your phone or computer", "", "Open " + signing.url + " (or scan the code), sign in to "
+					"Google and type the code shown here. This page goes on by itself once it is allowed."));
+			items.push_back(fact("The code", signing.code, "Type it at " + signing.url + "."));
+		}
+		else if (signing.stage == cloud::SignIn::Waiting)
+		{
+			items.push_back(fact("On your phone", "", "Scan the code, sign in to Dropbox and allow PSSwanStation. Dropbox "
+					"then shows a code: type it here, or paste it through Phone and web control."));
+			items.push_back(action(icon::Keyboard, "Type the code from Dropbox", "The code Dropbox showed once "
+					"PSSwanStation was allowed.", [] {
+				askText("The code from Dropbox", "", false, false, [](const std::string& code) { cloud::dropboxCode(code); });
+			}));
+		}
+		else
+			items.push_back(fact("Not signed in", "", signing.why));
+		items.push_back(action(icon::Undo, signing.stage == cloud::SignIn::Failed ? "Back" : "Cancel", "",
+				[] { cloud::cancelSignIn(); }));
+	}
+	else
+	{
+		items.push_back(fact("Not signed in", "", "Sign in to keep the memory cards in the cloud too."));
+		for (const cloud::Service which : { cloud::GoogleDrive, cloud::Dropbox })
+		{
+			Item item = action(icon::User, "Sign in to " + cloud::serviceName(which), which == cloud::GoogleDrive
+					? "Shows a code to type at google.com/device on a phone or computer. PSSwanStation gets a folder of its "
+					  "own in your Drive, hidden from your files, and nothing else."
+					: "Shows a QR code that opens Dropbox on your phone; once allowed, Dropbox shows a code to type here. "
+					  "PSSwanStation gets Apps/PSSwanStation in your Dropbox, and nothing else.",
+					[which] { cloud::startSignIn(which); }, cloud::available(which));
+			if (!cloud::available(which))
+			{
+				item.value = "Not in this build";
+				item.info += "\n\nThis build has no registration with " + cloud::serviceName(which) + ". One can be given "
+						"in " + shownRoot() + "cloud-keys.cfg (google_client_id, google_client_secret, dropbox_app_key).";
+			}
+			items.push_back(item);
+		}
+	}
+	standardHints(menuPage(f, "Cloud saves", "", items, 780));
+
+	// The code to scan, on the right, while it is waited for.
+	if (service == cloud::None && signing.stage == cloud::SignIn::Waiting && !signing.url.empty())
+	{
+		const float W = unitsWide();
+		const float side = std::min(W - 64 - (64 + 780 + 24) - 40, 420.f);
+		const float x0 = 64 + 780 + 24 + ((W - 64) - (64 + 780 + 24) - side) * 0.5f, y0 = 400;
+		drawQr(signing.url, x0, y0, side);
+		if (!signing.code.empty())
+			textCentred(at(x0 + side * 0.5f, y0 + side + 30), t.text, signing.code, Title, 56);
+		else
+			textFit(at(x0, y0 + side + 16), px(side), t.dim, "dropbox.com", Body, 20);
+	}
+}
+
 // ------------------------------------------------- shader presets from USB
 
 void shadersPage(Frame& f)
@@ -2635,14 +2949,17 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	const int crt = now_("crt");
 	{
 		Item item = pictureChoice(forGame, "scaler", "Scaling filter",
-				{ "Smooth", "Square pixels", "Sharp bilinear", "FSR 1", "NIS", "CAS" },
+				{ "Smooth", "Square pixels", "Sharp bilinear", "FSR 1", "NIS", "CAS", "MMPX" },
 				"How the picture is enlarged to the screen. Smooth blends neighbouring pixels. Square pixels shows them "
 				"as sharp squares, uneven when the size is not a whole multiple. Sharp bilinear grows each pixel to a "
 				"square first and blends only the step between two, so pixels stay crisp and even at any size. FSR 1 "
 				"(AMD FidelityFX Super Resolution) and NIS (NVIDIA Image Scaling) enlarge with edge-aware filters and "
 				"sharpen the result, so a lower Internal Resolution Scale (Enhancement) looks closer to a high one and "
 				"costs less. CAS (AMD Contrast Adaptive Sharpening) enlarges smoothly, then sharpens fine detail "
-				"without halos. A picture already as large as the screen is left as it is.");
+				"without halos. MMPX (for pixel art) doubles each pixel the way an artist would draw it larger, keeping "
+				"lines one colour and corners sharp, then grows it with sharp bilinear: for 2D games at the "
+				"PlayStation's own resolution (Internal Resolution Scale 1x, or the software renderer). A picture "
+				"already as large as the screen is left as it is.");
 		if (crt >= 4)
 		{
 			item.enabled = false;
@@ -2653,7 +2970,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	{
 		Item item = pictureChoice(forGame, "fsr_sharpness", "Sharpening", { "Soft", "Normal", "Sharp" },
 				"How strongly FSR 1, NIS or CAS sharpens the enlarged picture.");
-		item.enabled = scaler >= 3 && crt < 4;
+		item.enabled = scaler >= 3 && scaler <= 5 && crt < 4;
 		items.push_back(item);
 	}
 	{
@@ -2993,13 +3310,16 @@ void moreSettings(int kind, std::vector<Item>& items)
 		for (int player = 0; player < 4; player++)
 		{
 			Item item = choice(format("Player %d's controller", player + 1), f.controller[player],
-					{ "Digital controller", "DualShock", "Analog joystick", "None", "neGcon", "GunCon (light gun)" },
+					{ "Digital controller", "DualShock", "Analog joystick", "None", "neGcon", "GunCon (light gun)",
+						"PlayStation Mouse" },
 					"What the game finds plugged in for this player. DualShock suits most games; a few early ones only "
 					"know the digital controller. The neGcon is Namco's twisting controller, which racing games of "
 					"the time steer finely with: the left stick (or the pad leant, see Tilt steering) is its twist, "
 					"R2 and L2 its two analogue buttons. The GunCon is a light gun: the sticks move its aim, as does "
 					"turning the pad when its motion sensor answers; R2 or Cross fires, L2 or Circle fires away "
-					"from the screen (which reloads), Square and Triangle are its two buttons.",
+					"from the screen (which reloads), Square and Triangle are its two buttons. The PlayStation Mouse, for "
+					"the games made for it: slide a finger on the touch pad to move it, or use the right stick; the "
+					"touch pad pressed down, Cross or R1 is its left button, Circle or L1 its right.",
 					[player](int i) {
 						options::frontend().controller[player] = i;
 						host::applyControllers();
@@ -3232,10 +3552,21 @@ void moreSettings(int kind, std::vector<Item>& items)
 				Item item = action(icon::Sync, "Bring my files up to date now", "Sends what changed here to the network "
 						"share and brings what changed there, now, instead of when PSSwanStation starts or a game closes.\n\n"
 						+ (netfiles::status().empty() ? std::string("Nothing done yet this run.") : netfiles::status()),
-						[] { netfiles::now(); }, !noShare && netfiles::wanted() && !netfiles::working());
-				item.value = netfiles::working() ? "Working\xe2\x80\xa6" : noShare ? "No files folder" : "";
+						[] { netfiles::now(); }, netfiles::wanted() && !netfiles::working());
+				item.value = netfiles::working() ? "Working\xe2\x80\xa6"
+						: noShare && cloud::service() == cloud::None ? "No files folder" : "";
 				items.push_back(item);
 			}
+		}
+
+		items.push_back(header("Cloud"));
+		{
+			Item item = action(icon::Upload, "Cloud saves", "The memory cards (and the save states, if you want) kept in "
+					"your Google Drive or Dropbox too, so another console, or this one after a reinstall, has them. Signing "
+					"in takes a phone: no password is typed here.", [] { push(Page::Cloud); });
+			const cloud::Service service = cloud::service();
+			item.value = service == cloud::None ? "Off" : cloud::serviceName(service);
+			items.push_back(item);
 		}
 
 		items.push_back(header("More"));

@@ -250,6 +250,7 @@ set(frontend_sources
 	src/ftp.cpp
 	src/nfs.cpp
 	src/netfiles.cpp
+	src/cloud.cpp
 	src/covers.cpp
 	src/gamedb.cpp
 	src/history.cpp
@@ -335,6 +336,16 @@ target_include_directories(swanstation PRIVATE src ${ROOT}/src/libretro
 # which is filled from the RADV linked into the title.
 target_compile_definitions(swanstation PRIVATE VK_NO_PROTOTYPES
 	FE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+# Cloud saves (src/cloud.cpp): the app's registrations with Google (a client
+# of the "TVs and limited input devices" kind) and Dropbox (an app key, "App
+# folder" access), from the environment when the build is configured; none
+# built in leaves cloud saves offered only through <root>cloud-keys.cfg.
+set(PSS_GOOGLE_CLIENT_ID "$ENV{PSS_GOOGLE_CLIENT_ID}" CACHE STRING "Google OAuth client ID (TVs and limited input devices)")
+set(PSS_GOOGLE_CLIENT_SECRET "$ENV{PSS_GOOGLE_CLIENT_SECRET}" CACHE STRING "Its client secret")
+set(PSS_DROPBOX_APP_KEY "$ENV{PSS_DROPBOX_APP_KEY}" CACHE STRING "Dropbox app key")
+set_property(SOURCE src/cloud.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+	"PSS_GOOGLE_CLIENT_ID=\"${PSS_GOOGLE_CLIENT_ID}\"" "PSS_GOOGLE_CLIENT_SECRET=\"${PSS_GOOGLE_CLIENT_SECRET}\""
+	"PSS_DROPBOX_APP_KEY=\"${PSS_DROPBOX_APP_KEY}\"")
 # The fonts and the logo are assembled into ui_widgets.cpp's object.
 file(GLOB hui_fonts ${CMAKE_CURRENT_SOURCE_DIR}/assets/hui/fonts/*.huifont)
 set_source_files_properties(src/ui_widgets.cpp PROPERTIES OBJECT_DEPENDS

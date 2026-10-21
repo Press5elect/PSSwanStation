@@ -1,6 +1,26 @@
 PSSwanStation - what changed
 ============================
 
+Build 25 (not released yet)
+  Added
+  - GameShark codes typed in: "Add a GameShark code" in a game's Cheats
+    asks for a name, then the code on a keypad of the sixteen digits (a
+    line for each code). It is switched on at once and kept in the game's
+    own cheats/<serial>.cht; Square on one of your codes edits it, and
+    emptied it is removed.
+  - Cloud saves (Settings, Games and saving): the memory cards, and the
+    save states if wanted, kept in Google Drive or Dropbox too, both ways,
+    as on a network share. Signing in takes a phone: a code to type at
+    google.com/device, or a QR code for Dropbox and the code it shows, typed
+    on the console or pasted in Phone and web control.
+  - Sound delay (Settings, Sound): the game's sound kept 60, 32 or 16 ms
+    ahead of the speakers.
+  - MMPX, a scaling filter for pixel art: each pixel doubled the way an
+    artist draws pixel art larger, then grown with sharp bilinear.
+  - The PlayStation Mouse, for the games made for it: a finger on the touch
+    pad (or the right stick) moves it; the touch pad pressed, Cross or R1
+    is its left button, Circle or L1 its right.
+
 Build 24
   Added
   - HD texture packs for 3D games too, by the GPU's texture cache blocks:

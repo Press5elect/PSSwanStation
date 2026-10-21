@@ -437,6 +437,51 @@ netplay::Input localInput(int port)
 	return in;
 }
 
+// The PlayStation Mouse, on the pad: a finger sliding on the touch pad moves
+// it (as on a laptop's touch pad), and so does the right stick; the touch
+// pad pressed down, Cross or R1 is its left button, Circle or L1 its right.
+// Its movement this frame goes in aimX and aimY, its buttons in bits 0 and 1.
+struct MouseFinger
+{
+	bool touching = false;
+	float x = 0, y = 0;
+	float restX = 0, restY = 0;		// what was too small to send, kept for the next frame
+} fingers[platform::MaxPads];
+
+void mouseInput(int port, const platform::Pad& pad, recorder::PortInput& out)
+{
+	MouseFinger& finger = fingers[port];
+	float dx = 0, dy = 0;
+	// The touch pad is 1920 x 1080 points; across it is about 320 of the mouse's counts.
+	if (pad.touching && finger.touching)
+	{
+		dx = (pad.touchX - finger.x) * 320.f;
+		dy = (pad.touchY - finger.y) * 180.f;
+	}
+	finger.touching = pad.touching;
+	finger.x = pad.touchX;
+	finger.y = pad.touchY;
+	const float dead = options::frontend().deadZone;
+	if (std::fabs(pad.rx) > dead)
+		dx += pad.rx * 6.f;
+	if (std::fabs(pad.ry) > dead)
+		dy += pad.ry * 6.f;
+	dx += finger.restX;
+	dy += finger.restY;
+	const int sx = std::clamp((int)dx, -127, 127), sy = std::clamp((int)dy, -127, 127);
+	finger.restX = dx - (float)sx;
+	finger.restY = dy - (float)sy;
+	out.aimX = (int16_t)sx;
+	out.aimY = (int16_t)sy;
+	// The button that opens the menu is not the game's (a half of the touch pad, when it is).
+	uint32_t held = pad.buttons;
+	if (options::frontend().menuKey != 3)
+		held &= ~menuButton();
+	using namespace platform;
+	out.buttons = ((held & (TouchLeft | TouchRight | Cross | R1)) ? 1u : 0u)
+			| ((held & (Circle | L1)) ? 2u : 0u);
+}
+
 // What each port gives the emulator in the frame being run: taken once, as
 // the frame begins, so every question the emulator asks in it has the same
 // answer, and a recording keeps exactly that (recorder.cpp).
@@ -465,6 +510,8 @@ void takeFrameInput()
 			out.r2 = (int16_t)std::lround(pad.r2 * 32767.f);
 			out.aimX = (int16_t)std::lround(aims[port].x * 32767.f);
 			out.aimY = (int16_t)std::lround(aims[port].y * 32767.f);
+			if (options::frontend().controller[port] == 6)
+				mouseInput(port, pad, out);
 		}
 	}
 }
@@ -536,6 +583,17 @@ int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id)
 		default: return 0;
 		}
 	}
+	case RETRO_DEVICE_MOUSE:
+		if (!in.connected)
+			return 0;
+		switch (id)
+		{
+		case RETRO_DEVICE_ID_MOUSE_X: return in.aimX;
+		case RETRO_DEVICE_ID_MOUSE_Y: return in.aimY;
+		case RETRO_DEVICE_ID_MOUSE_LEFT: return (in.buttons & 1u) != 0 ? 1 : 0;
+		case RETRO_DEVICE_ID_MOUSE_RIGHT: return (in.buttons & 2u) != 0 ? 1 : 0;
+		default: return 0;
+		}
 	default:
 		return 0;
 	}
@@ -844,13 +902,14 @@ std::string timeText(time_t t)
 
 void applyControllerTypes()
 {
-	static const unsigned devices[6] = {
+	static const unsigned devices[7] = {
 		RETRO_DEVICE_JOYPAD,							// digital controller
 		RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 0),	// DualShock
 		RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1),	// analog joystick
 		RETRO_DEVICE_NONE,
 		RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 2),	// neGcon
 		RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_LIGHTGUN, 0),	// GunCon
+		RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_MOUSE, 0),	// PlayStation Mouse
 	};
 	// The emulator's controllers 1 to 4 are the four pads, one for each
 	// person logged in. Without a multitap it plugs in the first two; with
@@ -861,7 +920,7 @@ void applyControllerTypes()
 	{
 		// In netplay both consoles plug in what the hosting one has.
 		const int type = port < 2 && netController[port] >= 0 ? netController[port] : options::frontend().controller[port];
-		retro_set_controller_port_device(port, devices[std::clamp(type, 0, 5)]);
+		retro_set_controller_port_device(port, devices[std::clamp(type, 0, 6)]);
 	}
 	for (unsigned port = 4; port < 8; port++)
 		retro_set_controller_port_device(port, RETRO_DEVICE_NONE);
@@ -1070,7 +1129,7 @@ void netApply(const std::string& theirs)
 			continue;
 		const std::string key = line.substr(0, equals), value = line.substr(equals + 1);
 		if (key == "controller1" || key == "controller2")
-			netController[key == "controller1" ? 0 : 1] = std::clamp(atoi(value.c_str()), 0, 5);
+			netController[key == "controller1" ? 0 : 1] = std::clamp(atoi(value.c_str()), 0, 6);
 		else
 			for (const char *known : netKeys)
 				if (key == known)

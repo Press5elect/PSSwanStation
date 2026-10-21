@@ -24,6 +24,7 @@
 	also writes what the status answer says.
 */
 #include "web.h"
+#include "cloud.h"
 #include "fe.h"
 #include "speedrun.h"
 #include "ui_internal.h"
@@ -208,6 +209,7 @@ bool secret(const std::string& path)
 {
 	const std::string lower = lowercase(path);
 	return lower == "network.cfg" || lower == "data/retroachievements.cfg" || lower == "data/web.cfg"
+			|| lower == "data/cloud.cfg" || lower == "cloud-keys.cfg"
 			|| lower == "data/achievements-unsent.txt"
 			|| lower.find(".tmp") == lower.size() - 4;
 }
@@ -604,6 +606,19 @@ void handle(int fd)
 			answerJson(fd, "{\"ok\":true}");
 		}
 	}
+	else if (method == "POST" && path == "/api/cloudcode")
+	{
+		// The code Dropbox showed, for cloud saves' sign-in (cloud.cpp).
+		std::string code = body();
+		code.erase(std::remove_if(code.begin(), code.end(), [](char c) { return isspace((unsigned char)c) != 0; }), code.end());
+		if (code.empty() || code.size() > 200)
+			answerError(fd, 400, "No code.");
+		else
+		{
+			later([code] { cloud::dropboxCode(code); });
+			answerJson(fd, "{\"ok\":true}");
+		}
+	}
 	else if (method == "POST" && path == "/api/start")
 	{
 		const std::string game = body();
@@ -954,8 +969,10 @@ x.onerror=()=>{note.textContent=f.name+' did not arrive.';};x.send(f);}
 function loadSettings(){api('/api/settings').then(list=>{document.getElementById('settings').innerHTML='<div class="card">'+list.map(s=>{
 let c;if(s.values.length){c=`<select data-k="${s.key}">`+s.values.map((v,i)=>`<option value="${s.low+i}"${s.low+i===s.value?' selected':''}>${esc(v)}</option>`).join('')+'</select>';}
 else c=`<input type="range" data-k="${s.key}" min="${s.low}" max="${s.high}" step="${s.step}" value="${s.value}">`;
-return `<div class="row"><span class="grow">${esc(s.label)}</span>${c}</div>`;}).join('')+'</div>';
-document.querySelectorAll('#settings [data-k]').forEach(i=>i.onchange=()=>post('/api/settings?key='+i.dataset.k+'&value='+i.value));}).catch(e=>alert(e.message));}
+return `<div class="row"><span class="grow">${esc(s.label)}</span>${c}</div>`;}).join('')+'</div>'
++'<div class="card"><b>Dropbox code</b><div class="dim">Signing in to Dropbox for cloud saves (Settings, Games and saving, Cloud saves on the console): paste the code Dropbox showed.</div><div class="tools" style="margin-top:8px"><input id="dbcode" class="grow" placeholder="The code from Dropbox"><button id="dbsend">Send</button></div></div>';
+document.querySelectorAll('#settings [data-k]').forEach(i=>i.onchange=()=>post('/api/settings?key='+i.dataset.k+'&value='+i.value));
+document.getElementById('dbsend').onclick=()=>{const c=document.getElementById('dbcode').value.trim();if(c)post('/api/cloudcode',c).then(()=>{document.getElementById('dbcode').value='';alert('Sent: the console signs in.');}).catch(x=>alert(x.message));};}).catch(e=>alert(e.message));}
 poll();setInterval(poll,1500);
 </script></body></html>
 )HTML";

@@ -49,6 +49,8 @@
 	date now"). A share that does not answer leaves everything as it is.
 */
 #include "fe.h"
+#include "syncstore.h"
+#include "cloud.h"
 
 #include <xxhash.h>
 
@@ -340,26 +342,52 @@ struct Report
 // and has since removed goes; what it never sent is left).
 enum class Way { Both, Bring, Send };
 
+struct ShareStore : Store
+{
+	bool walk(const std::string& top, bool recurse, bool dataFolder, std::map<std::string, uint64_t>& out) override
+	{
+		return walkRemote(top + "/", "", 0, recurse, dataFolder, out);
+	}
+	bool read(const std::string& path, std::vector<uint8_t>& out) override { return smb::readWhole(path, out); }
+	bool write(const std::string& path, const void *data, size_t size, std::string& error) override
+	{
+		return smb::writeFile(path, data, size, error);
+	}
+	bool remove(const std::string& path) override { return smb::remove(path); }
+	std::string error() override { return smb::lastError(); }
+	std::string name() override { return "the share"; }
+};
+
 // Keeps the folder `local` (a path on this console, ending in '/') and
 // `remote` (a share's folder, without the trailing '/') the same.
-void syncPair(const std::string& name, const std::string& local, const std::string& remote, Way way, bool recurse,
-		bool dataFolder, Report& report)
+void syncPair(Store& store, const std::string& name, const std::string& local, const std::string& remote, Way way,
+		bool recurse, bool dataFolder, Report& report)
 {
 	makeDir(local);
 	const std::string statePath = rootDir + "data/sync/" + name + ".state";
 	std::map<std::string, Remembered> state = readState(statePath);
 	// The share.
 	std::map<std::string, uint64_t> remoteFiles;
-	if (!walkRemote(remote + "/", "", 0, recurse, dataFolder, remoteFiles))
+	if (!store.walk(remote, recurse, dataFolder, remoteFiles))
 	{
 		report.failed = true;
-		report.error = "the share could not be listed (" + smb::lastError() + ")";
+		report.error = store.name() + " could not be listed (" + store.error() + ")";
 		return;
+	}
+	// What is not the user's (the list itself, a half-written file), whatever the storage listed.
+	for (auto it = remoteFiles.begin(); it != remoteFiles.end();)
+	{
+		const size_t slash = it->first.find_last_of('/');
+		const std::string fileName = slash == std::string::npos ? it->first : it->first.substr(slash + 1);
+		if (skipped(fileName) || leftOut(it->first, dataFolder) || (!recurse && slash != std::string::npos))
+			it = remoteFiles.erase(it);
+		else
+			++it;
 	}
 	std::map<std::string, Listed> listed;
 	{
 		std::vector<uint8_t> bytes;
-		if (smb::readWhole(remote + "/" + ManifestName, bytes))
+		if (store.read(remote + "/" + ManifestName, bytes))
 			listed = parseManifest(bytes);
 	}
 	// This console.
@@ -410,10 +438,10 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 		const std::string base = state.count(rel) != 0 ? state[rel].base : "";
 		const auto pull = [&]() -> bool {
 			std::vector<uint8_t> bytes;
-			if (!smb::readWhole(remote + "/" + rel, bytes))
+			if (!store.read(remote + "/" + rel, bytes))
 			{
 				report.failed = true;
-				report.error = rel + " could not be read from the share";
+				report.error = rel + " could not be read from " + store.name();
 				return false;
 			}
 			const size_t slash = rel.find_last_of('/');
@@ -442,7 +470,7 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 		const auto push = [&]() -> bool {
 			std::vector<uint8_t> bytes;
 			std::string error;
-			if (!readFile(local + rel, bytes) || !smb::writeFile(remote + "/" + rel, bytes.data(), bytes.size(), error))
+			if (!readFile(local + rel, bytes) || !store.write(remote + "/" + rel, bytes.data(), bytes.size(), error))
 			{
 				report.failed = true;
 				report.error = rel + ": " + (error.empty() ? std::string("could not be read here") : error);
@@ -468,7 +496,7 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 			else if (onShare != remoteFiles.end() && !base.empty() && !unknown && rh == base)
 			{
 				// Sent from here once, and gone here since.
-				if (smb::remove(remote + "/" + rel))
+				if (store.remove(remote + "/" + rel))
 				{
 					listed.erase(rel);
 					manifestChanged = true;
@@ -515,7 +543,7 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 				if (localTime >= remoteTime)
 				{
 					std::vector<uint8_t> theirs;
-					if (smb::readWhole(remote + "/" + rel, theirs))
+					if (store.read(remote + "/" + rel, theirs))
 						writeFile(aside, theirs.data(), theirs.size());
 					ok = push();
 				}
@@ -548,7 +576,7 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 			// On the share only.
 			if (!base.empty() && !unknown && rh == base && way == Way::Both)
 			{
-				if (smb::remove(remote + "/" + rel))
+				if (store.remove(remote + "/" + rel))
 				{
 					listed.erase(rel);
 					manifestChanged = true;
@@ -573,7 +601,7 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 	{
 		const std::string text = manifestText(listed);
 		std::string error;
-		if (!smb::writeFile(remote + "/" + ManifestName, text.data(), text.size(), error) && !report.failed)
+		if (!store.write(remote + "/" + ManifestName, text.data(), text.size(), error) && !report.failed)
 		{
 			report.failed = true;
 			report.error = "the share's list could not be written: " + error;
@@ -583,21 +611,75 @@ void syncPair(const std::string& name, const std::string& local, const std::stri
 }
 
 // What to keep the same, as it is set now.
+bool shareWanted()
+{
+	const options::Frontend& f = options::frontend();
+	return !smb::filesFolder().empty() && (f.filesAt == 3 || f.cardsOnShare || f.coversFromShare);
+}
+
+// The cloud's part (cloud.cpp): the memory cards, and the save states when
+// asked, in folders of those names in the app's own folder there.
+std::string runCloud()
+{
+	std::unique_ptr<Store> store = cloud::openStore();
+	if (!store)
+		return "";
+	Report report;
+	say("Memory cards, " + store->name());
+	syncPair(*store, "cloud-memory-cards", rootDir + "data/saves/", "memory cards", Way::Both, false, false, report);
+	if (options::frontend().cloudStates && !report.failed)
+	{
+		say("Save states, " + store->name());
+		syncPair(*store, "cloud-save-states", rootDir + "data/states/", "save states", Way::Both, false, false, report);
+	}
+	std::string summary;
+	if (report.failed)
+		summary = store->name() + ": not brought up to date: " + report.error + ".";
+	else if (report.pulled + report.pushed + report.removed == 0)
+		summary = store->name() + ": up to date.";
+	else
+		summary = store->name() + format(": %d brought here, %d sent%s.", report.pulled, report.pushed,
+				report.removed > 0 ? format(", %d removed", report.removed).c_str() : "");
+	if (report.conflicts > 0)
+	{
+		summary += format(" %d file(s) had changed here and there: the newer is in use, the other kept beside it as "
+				".conflict-<date>.", report.conflicts);
+		conflictsSeen += report.conflicts;
+	}
+	return summary;
+}
+
 void runOnce(const char *why)
 {
 	std::lock_guard<std::mutex> lock(runMutex);
 	const std::string files = smb::filesFolder();
 	const options::Frontend& f = options::frontend();
-	if (files.empty() || (f.filesAt != 3 && !f.cardsOnShare && !f.coversFromShare))
+	const bool toShare = shareWanted(), toCloud = cloud::service() != cloud::None;
+	if (!toShare && !toCloud)
 		return;
 	busy = true;
+	std::string cloudSummary;
+	if (toCloud)
+	{
+		cloudSummary = runCloud();
+		diag::mark("files: %s (%s)", cloudSummary.c_str(), why);
+	}
+	if (!toShare)
+	{
+		std::lock_guard<std::mutex> l(statusMutex);
+		lastText = cloudSummary;
+		statusText.clear();
+		busy = false;
+		return;
+	}
 	say("Asking the share");
 	Report report;
+	ShareStore share;
 	if (f.filesAt == 3)
 		for (const char *folder : everyFolder)
 		{
 			say(std::string("Your ") + folder);
-			syncPair(std::string("all-") + folder, rootDir + folder + "/", files + "/" + folder, Way::Both, true,
+			syncPair(share, std::string("all-") + folder, rootDir + folder + "/", files + "/" + folder, Way::Both, true,
 					strcmp(folder, "data") == 0, report);
 			if (report.failed)
 				break;
@@ -607,19 +689,19 @@ void runOnce(const char *why)
 		if (f.cardsOnShare)
 		{
 			say("Memory cards");
-			syncPair("memory-cards", rootDir + "data/saves/", files + "/memory cards", Way::Both, false, false, report);
+			syncPair(share, "memory-cards", rootDir + "data/saves/", files + "/memory cards", Way::Both, false, false, report);
 		}
 		if (f.coversFromShare && !report.failed)
 		{
 			say("Covers");
-			syncPair("covers", rootDir + "covers/", files + "/covers", Way::Both, true, false, report);
+			syncPair(share, "covers", rootDir + "covers/", files + "/covers", Way::Both, true, false, report);
 		}
 	}
 	// The cards' backups, from wherever the cards are kept on the share.
 	if ((f.filesAt == 3 || f.cardsOnShare) && !report.failed)
 	{
 		say("Card backups");
-		syncPair("card-backups", rootDir + "data/saves/backups/", files + "/card backups/" + consoleName(), Way::Send,
+		syncPair(share, "card-backups", rootDir + "data/saves/backups/", files + "/card backups/" + consoleName(), Way::Send,
 				true, false, report);
 	}
 	std::string summary;
@@ -637,6 +719,8 @@ void runOnce(const char *why)
 		conflictsSeen += report.conflicts;
 	}
 	diag::mark("files: %s (%s)", summary.c_str(), why);
+	if (!cloudSummary.empty())
+		summary += " " + cloudSummary;
 	{
 		std::lock_guard<std::mutex> l(statusMutex);
 		lastText = summary;
@@ -661,8 +745,7 @@ void runAsync(const char *why)
 
 bool wanted()
 {
-	const options::Frontend& f = options::frontend();
-	return !smb::filesFolder().empty() && (f.filesAt == 3 || f.cardsOnShare || f.coversFromShare);
+	return shareWanted() || cloud::service() != cloud::None;
 }
 
 void startUp()
