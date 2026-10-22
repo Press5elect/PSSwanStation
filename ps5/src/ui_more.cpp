@@ -2824,53 +2824,78 @@ void startNotices()
 
 namespace
 {
-// The emulator settings a picture preset sets, for every game. Original: the
-// PlayStation's own picture on a picture tube. Sharp: eight times the
-// resolution, full colour, steady polygons, nothing smoothed. Enhanced: Sharp
-// with smoothed textures and edges. Speedrun: the PlayStation's picture as it
-// drew it, nothing added and nothing that changes its timing.
-constexpr int PresetCount = 4;
+// The emulator settings a picture preset sets. Original: the PlayStation's own
+// picture, as pSX (psxfin) shows it: drawn by the software renderer at the
+// console's resolution, its colours and dithering, its interlacing and
+// timing, its CPU, memory and CD speed, the edges a television hid cropped,
+// nothing added. Original on a TV: the same through a composite signal and a
+// curved picture tube. Fast, Normal, Enhanced, Beautiful: the hardware
+// renderer at 2x, 4x, 6x and 8x, with more of PGXP and full colour as they
+// go; edges are smoothed by the resolution, not MSAA, which (like the PGXP
+// depth buffer) would turn accurate blending off. Speedrun: the picture as
+// the PlayStation drew it, square pixels, nothing that changes its timing.
+constexpr int PresetCount = 7;
+const char *const presetNames[PresetCount + 1] = { "As set", "Original", "Original on a TV", "Fast", "Normal", "Enhanced",
+	"Beautiful", "Speedrun" };
 struct Preset
 {
 	const char *key;
-	const char *values[PresetCount];	// original, sharp, enhanced, speedrun; null leaves it as it is
+	// Original, on a TV, Fast, Normal, Enhanced, Beautiful, Speedrun; null leaves it as it is.
+	const char *values[PresetCount];
 };
 const Preset presetOptions[] = {
-	{ "swanstation_GPU_ResolutionScale", { "1", "8", "8", "1" } },
-	{ "swanstation_GPU_TextureFilter", { "Nearest", "Nearest", "xBR", "Nearest" } },
-	{ "swanstation_GPU_TrueColor", { "false", "true", "true", "false" } },
-	{ "swanstation_GPU_ScaledDithering", { "false", "true", "true", "false" } },
-	{ "swanstation_GPU_PGXPEnable", { "false", "true", "true", "false" } },
-	{ "swanstation_GPU_PGXPCulling", { "false", "true", "true", "false" } },
-	{ "swanstation_GPU_PGXPTextureCorrection", { "false", "true", "true", "false" } },
-	{ "swanstation_GPU_CloseGaps", { nullptr, "true", "true", "false" } },
-	{ "swanstation_GPU_MSAA", { "1", "1", "4", "1" } },
-	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled", "Disabled" } },
-	{ "swanstation_GPU_WidescreenHack", { nullptr, nullptr, nullptr, "false" } },
-	{ "swanstation_GPU_ForceNTSCTimings", { nullptr, nullptr, nullptr, "false" } },
-	{ "swanstation_GPU_AccurateBlending", { "true", "true", "true", "true" } },
-	{ "swanstation_GPU_ExactLines", { "true", "true", "true", "true" } },
+	{ "swanstation_GPU_Renderer", { "Software", "Software", "Vulkan", "Vulkan", "Vulkan", "Vulkan", nullptr } },
+	{ "swanstation_GPU_ResolutionScale", { "1", "1", "2", "4", "6", "8", "1" } },
+	{ "swanstation_GPU_TextureFilter", { "Nearest", "Nearest", "Nearest", "Nearest", "Nearest", "JINC2", "Nearest" } },
+	{ "swanstation_GPU_TrueColor", { "false", "false", "false", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_ScaledDithering", { "false", "false", "true", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_DisableInterlacing", { "false", "false", "true", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_ForceNTSCTimings", { "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_Display_Force4_3For24Bit", { "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_GPU_ChromaSmoothing24Bit", { "false", "false", "false", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_WidescreenHack", { "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_GPU_CloseGaps", { "false", "false", "false", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPEnable", { "false", "false", "true", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPCulling", { "false", "false", "true", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPTextureCorrection", { "false", "false", "false", "true", "true", "true", "false" } },
+	{ "swanstation_GPU_PGXPColorCorrection", { "false", "false", "false", "false", "false", "true", "false" } },
+	{ "swanstation_GPU_PGXPDepthBuffer", { "false", "false", "false", "false", "false", "false", "false" } },
+	{ "swanstation_GPU_MSAA", { "1", "1", "1", "1", "1", "1", "1" } },
+	{ "swanstation_GPU_DownsampleMode", { "Disabled", "Disabled", "Disabled", "Disabled", "Disabled", "Disabled", "Disabled" } },
+	{ "swanstation_GPU_AccurateBlending", { "true", "true", "true", "true", "true", "true", "true" } },
+	{ "swanstation_GPU_ExactLines", { "true", "true", "true", "true", "true", "true", "true" } },
+	{ "swanstation_TextureReplacements_EnableTextureBlocks", { "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_TextureReplacements_EnableVRAMWriteReplacements",
+		{ "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_CPU_Overclock", { "100", "100", nullptr, nullptr, nullptr, nullptr, "100" } },
+	{ "swanstation_Console_Enable8MBRAM", { "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
+	{ "swanstation_Main_RunaheadFrameCount", { "0", "0", nullptr, nullptr, nullptr, nullptr, "0" } },
+	{ "swanstation_CDROM_ReadSpeedup", { "1", "1", nullptr, nullptr, nullptr, nullptr, "1" } },
+	{ "swanstation_CDROM_SeekSpeedup", { "1", "1", nullptr, nullptr, nullptr, nullptr, "1" } },
+	{ "swanstation_Display_CropMode", { "Overscan", "Overscan", nullptr, nullptr, nullptr, nullptr, nullptr } },
+	{ "swanstation_Display_AspectRatio", { "4:3", "4:3", nullptr, nullptr, nullptr, nullptr, nullptr } },
 };
-// And the title's own picture settings each sets: the picture tube, the
-// scaling filter; for Speedrun also what the title adds (frame generation,
-// the signal, the colours, run-ahead). -1 leaves it as it is.
+// And the title's own picture settings each sets. -1 leaves it as it is.
 struct PresetLook
 {
 	const char *name;
+	const char *label;		// for "Differs from the original"
 	int values[PresetCount];
 };
 const PresetLook presetLook[] = {
-	{ "crt", { 2, 0, 0, 0 } },
-	{ "scaler", { 0, 0, 0, 1 } },
-	{ "frame_generation", { -1, -1, -1, 0 } },
-	{ "fg_runahead", { -1, -1, -1, 0 } },
-	{ "signal", { -1, -1, -1, 0 } },
-	{ "brightness", { -1, -1, -1, 10 } },
-	{ "contrast", { -1, -1, -1, 10 } },
-	{ "saturation", { -1, -1, -1, 10 } },
-	{ "gamma", { -1, -1, -1, 10 } },
-	{ "grain", { -1, -1, -1, 0 } },
-	{ "black_frames", { -1, -1, -1, 0 } },
+	{ "crt", "Picture tube", { 0, 5, 0, 0, 0, 0, 0 } },
+	{ "signal", "Signal", { 0, 3, -1, -1, -1, -1, 0 } },
+	{ "scaler", "Scaling filter", { 2, 0, 2, 2, 2, 5, 1 } },
+	{ "frame_generation", "Frame generation", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "fg_runahead", "Frame generation's run-ahead", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "dynamic_resolution", "Adaptive resolution", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "widescreen_patch", "The game's own widescreen", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "brightness", "Brightness", { 10, 10, -1, -1, -1, -1, 10 } },
+	{ "contrast", "Contrast", { 10, 10, -1, -1, -1, -1, 10 } },
+	{ "saturation", "Saturation", { 10, 10, -1, -1, -1, -1, 10 } },
+	{ "gamma", "Gamma", { 10, 10, -1, -1, -1, -1, 10 } },
+	{ "grain", "Film grain", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "black_frames", "Black frames", { 0, 0, -1, -1, -1, -1, 0 } },
 };
 
 // For every game, or for the loaded one alone.
@@ -2896,6 +2921,95 @@ void clearGamePreset()
 	options::clearGamePicture("preset");
 	for (const PresetLook& look : presetLook)
 		options::clearGamePicture(look.name);
+}
+
+// What is not as the PlayStation had it, in force now (the running game's own
+// values over everyone's): Original's settings that differ.
+struct Difference
+{
+	std::string label, now, original;
+	std::function<void()> reset;
+};
+std::vector<Difference> differences()
+{
+	std::vector<Difference> out;
+	const bool game = !options::gameSerial().empty();
+	const auto is = [](const char *key, const char *value) {
+		const char *have = options::own(key);
+		return have != nullptr && !strcmp(have, value);
+	};
+	// Only what changes something: the hardware renderer's own settings mean
+	// nothing to the software renderer, nor PGXP's parts while it is off.
+	const bool software = is("swanstation_GPU_Renderer", "Software");
+	const bool pgxp = is("swanstation_GPU_PGXPEnable", "true");
+	static const char *const hardwareOnly[] = { "swanstation_GPU_ResolutionScale", "swanstation_GPU_TextureFilter",
+		"swanstation_GPU_TrueColor", "swanstation_GPU_ScaledDithering", "swanstation_GPU_CloseGaps",
+		"swanstation_GPU_PGXPEnable", "swanstation_GPU_PGXPCulling", "swanstation_GPU_PGXPTextureCorrection",
+		"swanstation_GPU_PGXPColorCorrection", "swanstation_GPU_PGXPDepthBuffer", "swanstation_GPU_MSAA",
+		"swanstation_GPU_DownsampleMode", "swanstation_GPU_AccurateBlending", "swanstation_GPU_ExactLines",
+		"swanstation_GPU_ChromaSmoothing24Bit", "swanstation_TextureReplacements_EnableTextureBlocks",
+		"swanstation_TextureReplacements_EnableVRAMWriteReplacements" };
+	for (const Preset& option : presetOptions)
+	{
+		const char *want = option.values[0];
+		const options::Option *o = options::find(option.key);
+		const char *have = options::own(option.key);
+		if (want == nullptr || o == nullptr || o->hidden || have == nullptr || !strcmp(have, want))
+			continue;
+		if (software && std::any_of(std::begin(hardwareOnly), std::end(hardwareOnly),
+				[&](const char *key) { return !strcmp(key, option.key); }))
+			continue;
+		if (!pgxp && strncmp(option.key, "swanstation_GPU_PGXP", 20) == 0 && strcmp(option.key, "swanstation_GPU_PGXPEnable") != 0)
+			continue;
+		const std::string key = option.key, value = want;
+		out.push_back({ o->name, options::label(*o, have), options::label(*o, want), [key, value, game] {
+			options::set(key, value, game && options::hasGameValue(key));
+		} });
+	}
+	// The title's own settings, by their names as the settings pages give them.
+	const auto lookName = [](const std::string& name, int value) -> std::string {
+		if (name == "crt")
+		{
+			static const char *const simple[4] = { "Off", "Soft scanlines", "Scanlines", "Scanlines and mask" };
+			if (value >= 0 && value < 4)
+				return simple[value];
+			const std::vector<std::string> names = display::crtPresetNames();
+			return value - 4 < (int)names.size() ? names[(size_t)(value - 4)] : format("%d", value);
+		}
+		if (name == "signal")
+		{
+			static const char *const names[4] = { "As it is", "The dither undone", "S-Video", "Composite" };
+			return value >= 0 && value < 4 ? names[value] : format("%d", value);
+		}
+		if (name == "scaler")
+		{
+			static const char *const names[7] = { "Smooth", "Square pixels", "Sharp bilinear", "FSR 1", "NIS", "CAS", "MMPX" };
+			return value >= 0 && value < 7 ? names[value] : format("%d", value);
+		}
+		if (name == "frame_generation")
+			return value == 0 ? "Off" : "On";
+		if (name == "brightness" || name == "contrast" || name == "saturation" || name == "gamma")
+			return format("%d%%", 50 + value * 5);
+		if (name == "grain")
+		{
+			static const char *const names[4] = { "Off", "Light", "Medium", "Strong" };
+			return value >= 0 && value < 4 ? names[value] : format("%d", value);
+		}
+		return value == 0 ? "Off" : "On";
+	};
+	// The game's own widescreen does something only with the picture set wide.
+	const bool wide = !is("swanstation_Display_AspectRatio", "4:3");
+	for (const PresetLook& look : presetLook)
+	{
+		const int want = look.values[0], have = options::picture(look.name, true);
+		if (want < 0 || have == want || (!wide && !strcmp(look.name, "widescreen_patch")))
+			continue;
+		const std::string name = look.name;
+		out.push_back({ look.label, lookName(name, have), lookName(name, want), [name, want, game] {
+			options::setPicture(name, want, game && options::hasGamePicture(name));
+		} });
+	}
+	return out;
 }
 
 // A row for one of the picture settings a game can have of its own
@@ -2974,21 +3088,32 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		items.push_back(item);
 	}
 	{
-		Item item = pictureChoice(forGame, "preset", "Picture preset", { "As set", "Original", "Sharp", "Enhanced", "Speedrun" },
+		Item item = pictureChoice(forGame, "preset", "Picture preset",
+				std::vector<std::string>(std::begin(presetNames), std::end(presetNames)),
 				std::string(forGame ? "Sets the emulator's picture settings for this game alone, at once."
 				: "Sets the emulator's picture settings for every game at once.") + " Original: the PlayStation's own "
-				"resolution and colours, with the lines of a picture tube. Sharp: eight times the resolution, full "
-				"colour, steadier polygons (PGXP), nothing smoothed. Enhanced: as Sharp, with smoothed textures (xBR) "
-				"and smoothed edges (4x MSAA), which costs speed. Speedrun: the picture as the PlayStation drew it, "
-				"with nothing added: its own resolution and colours, square pixels, no PGXP, no picture tube or "
-				"signal, no frame generation or run-ahead, no widescreen or NTSC timing hack. Each setting can still be changed "
-				"by itself (Display, Enhancement)" + (forGame ? "." : "; a game's own settings stay above these."));
+				"picture, as the console drew it: its resolution (the software renderer), colours and dithering, its "
+				"interlacing, timing and speed, the edges a television hid cropped, the cracks between polygons left as "
+				"they were; nothing added. Original on a TV: the same through a composite signal and a curved picture "
+				"tube. Fast: twice the resolution, steady polygons (PGXP). Normal: four times, full colour, straight "
+				"textures, gaps closed. Enhanced: six times. Beautiful: eight times, smoothed textures (JINC2), sharpened "
+				"(CAS). Edges are smoothed by the resolution rather than MSAA, which would turn accurate blending off. "
+				"Speedrun: as the PlayStation drew it, square pixels, nothing that changes its timing. Each setting can "
+				"still be changed by itself; \"Differs from the original\" lists what is not as the console had it"
+				+ (forGame ? "." : ", and a game's own settings stay above these."));
 		item.choose = [forGame](int i) { applyPreset(i, forGame); };
 		if (forGame && item.alt)
 		{
 			item.alt = [] { clearGamePreset(); };
 			item.altHint = "Use the general values";
 		}
+		items.push_back(item);
+	}
+	{
+		const size_t n = differences().size();
+		Item item = action(icon::List, "Differs from the original", "What is not as the PlayStation had it: each "
+				"enhancement in force, to put back one by one or all at once.", [] { push(Page::Original); });
+		item.value = n == 0 ? std::string("Nothing") : format("%zu setting%s", n, n == 1 ? "" : "s");
 		items.push_back(item);
 	}
 	{
@@ -3700,6 +3825,42 @@ void detailsMoreItems(std::vector<Item>& items)
 				"drive, in " + std::string(storage::UsbFolder) + "/textures/" + serial + "/. \"Write Out Texture "
 				"Blocks\" (Options) puts the pictures a pack replaces in its dump folder."));
 	}
+}
+
+// ------------------------------------------------- what is not the original
+
+void originalPage(Frame& f)
+{
+	std::vector<Item> items;
+	const std::vector<Difference> list = differences();
+	const bool game = !options::gameSerial().empty();
+	if (list.empty())
+		items.push_back(fact("Nothing", "", "Every setting that shapes the picture, its timing and its speed is as the "
+				"PlayStation had it."));
+	else
+	{
+		items.push_back(action(icon::Undo, "Put it all back", "Every setting below as the PlayStation had it (the "
+				"Original preset)" + std::string(game ? ", for every game; this game's own values too." : "."), [game] {
+			applyPreset(1, false);
+			if (game)
+				applyPreset(1, true);
+		}));
+		items.push_back(header(format("NOT AS THE PLAYSTATION HAD IT  \xc2\xb7  %zu", list.size())));
+	}
+	for (const Difference& d : list)
+	{
+		Item item = action(icon::Sliders, d.label, "Now: " + d.now + ".  The PlayStation: " + d.original + ".\n\nCross "
+				"puts it back" + std::string(game ? " (for this game where it has its own value, else for every game)." : "."),
+				d.reset);
+		item.value = d.now;
+		items.push_back(item);
+	}
+	standardHints(menuPage(f, "Differs from the original", game ? host::game().title : std::string(), items, 1100));
+}
+
+size_t originalDifferences()
+{
+	return differences().size();
 }
 
 void pauseMoreItems(std::vector<Item>& items)

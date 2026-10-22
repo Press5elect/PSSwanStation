@@ -274,11 +274,12 @@ The console keeps only the sign-in (in `data/cloud.cfg`, never given out by the 
 
 ## The picture
 
-Games are drawn at 8x the PlayStation's resolution at first. Lower it under Settings, Emulator, "Internal Resolution Scale" (Enhancement) if a game does not hold its speed; "Show frame rate" (Picture) tells you. Every Picture setting except Display output can be a game's own (its details, Options; or Game settings, Picture while it runs).
+At first a game looks and runs as on the PlayStation (the Original preset): drawn by the software renderer at the console's own resolution, with its colours, dithering and interlacing, its timing and speed, the edges a television hid cropped, and nothing added. Enhancements are yours to choose: a preset below, or each setting under Settings, Emulator (Enhancement) and Picture. "Differs from the original" (Picture, and "Look" in the menu over a game) lists every setting that is not as the console had it, to put back one by one or all at once. An install from before build 25 keeps the settings it had. "Show frame rate" (Picture) tells you whether a game holds its speed. Every Picture setting except Display output can be a game's own (its details, Options; or Game settings, Picture while it runs).
 
 | Setting (Settings, Picture) | Choices |
 | --- | --- |
-| Picture preset | Original (its own resolution, with a picture tube's lines), Sharp (8x, full colour, PGXP), Enhanced (Sharp with xBR textures and 4x MSAA), Speedrun (the picture as the PlayStation drew it) |
+| Picture preset | Original (as the PlayStation drew it: the software renderer, its resolution, colours, dithering, interlacing, timing and speed, a TV's cropped edges; at first), Original on a TV (the same through a composite signal and a curved picture tube), Fast (2x, PGXP geometry), Normal (4x, full colour, PGXP with straight textures, gaps closed), Enhanced (6x), Beautiful (8x, JINC2 textures, CAS sharpening), Speedrun (as the PlayStation drew it, square pixels, nothing that changes its timing). The enhanced presets smooth edges by resolution, not MSAA, which would turn accurate blending off |
+| Differs from the original | Every setting in force that is not as the PlayStation had it, each put back by itself or all at once (also "Look" in the menu over a game) |
 | Picture size | Fit the screen, whole multiples, or stretch |
 | Scaling filter | Smooth, square pixels, sharp bilinear, FSR 1, NIS, CAS, MMPX; "Sharpening" for FSR 1, NIS and CAS |
 | Picture tube | Scanlines (soft or full), a shadow mask, or crt-guest-advanced in five kinds; and presets brought in from USB |

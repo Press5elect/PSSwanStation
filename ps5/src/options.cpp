@@ -121,19 +121,29 @@ void drop(Option& option, const char *unwanted)
 void adapt(Option& option)
 {
 	const std::string& key = option.key;
+	// At first the game is as the PlayStation had it (the Original preset,
+	// ui_more.cpp): drawn by the software renderer at the console's own
+	// resolution, interlaced as the game has it, the cracks between polygons
+	// left, no texture pack, the edges a television hid cropped. Enhancements
+	// are chosen, not given. (Installs from before build 25 keep what they had:
+	// keepEarlierDefaults.)
 	if (key == "swanstation_GPU_Renderer")
 	{
 		// The title has one graphics API, Vulkan (RADV), and the software
 		// renderer.
 		keepOnly(option, { "Vulkan", "Software" });
-		option.defaultValue = "Vulkan";
+		option.defaultValue = "Software";
 	}
 	else if (key == "swanstation_GPU_ResolutionScale")
-	{
-		// 8x: 2560 x 1920 for a 320 x 240 game, the closest to the display's
-		// 2160 lines below it. Not measured on a console yet (README).
-		option.defaultValue = "8";
-	}
+		option.defaultValue = "1";
+	else if (key == "swanstation_GPU_DisableInterlacing")
+		option.defaultValue = "false";
+	else if (key == "swanstation_GPU_CloseGaps")
+		option.defaultValue = "false";
+	else if (key == "swanstation_TextureReplacements_EnableTextureBlocks")
+		option.defaultValue = "false";
+	else if (key == "swanstation_Display_CropMode")
+		option.defaultValue = "Overscan";
 	else if (key == "swanstation_MemoryCards_Card1Type")
 	{
 		// "Libretro" hands the card to a frontend as save RAM; here the
@@ -287,7 +297,7 @@ std::vector<Field> fields()
 		{ "fg_debug", nullptr, &c.fgDebug, 0, 1 },
 		{ "crt", &c.crt, nullptr, 0, 72 },
 		{ "border", &c.border, nullptr, 0, 4 },
-		{ "preset", &c.preset, nullptr, 0, 4 },
+		{ "preset", &c.preset, nullptr, 0, 7 },
 		{ "auto_save", nullptr, &c.autoSaveOnExit, 0, 1 },
 		{ "auto_load", nullptr, &c.autoLoadOnStart, 0, 1 },
 		{ "sleep_safe", nullptr, &c.sleepSafe, 0, 1 },
@@ -607,6 +617,10 @@ void loadFrontend()
 		current.frameGeneration = 1;
 		current.fgQuality = 0;
 	}
+	// The presets of before build 25 (Original, Sharp, Enhanced, Speedrun): only
+	// Speedrun is still what it was; the others' settings stay, under "As set".
+	if (current.seenBuild < 25)
+		current.preset = current.preset == 4 ? 7 : 0;
 	std::lock_guard<std::mutex> lock(mutex);
 	takeGeneral();
 }
@@ -776,10 +790,34 @@ bool hasGameValue(const std::string& key)
 	return gameValues.count(key) != 0;
 }
 
+// The defaults of before build 25, which was when the game began as the
+// PlayStation had it: an install from before keeps them as its own values,
+// once, so nothing it shows changes by itself.
+void keepEarlierDefaults()
+{
+	if (current.seenBuild >= 25)
+		return;
+	static const std::pair<const char *, const char *> earlier[] = {
+		{ "swanstation_GPU_Renderer", "Vulkan" },
+		{ "swanstation_GPU_ResolutionScale", "8" },
+		{ "swanstation_GPU_DisableInterlacing", "true" },
+		{ "swanstation_GPU_CloseGaps", "true" },
+		{ "swanstation_TextureReplacements_EnableTextureBlocks", "true" },
+		{ "swanstation_Display_CropMode", "Borders" },
+	};
+	bool any = false;
+	for (const auto& [key, value] : earlier)
+		if (globalValues.emplace(key, value).second)
+			any = true;
+	if (any)
+		writeValues(globalFile(), globalValues);
+}
+
 void loadGlobal()
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	readValues(globalFile(), globalValues);
+	keepEarlierDefaults();
 	changed = true;
 	changes++;
 }
