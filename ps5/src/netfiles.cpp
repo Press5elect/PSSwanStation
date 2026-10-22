@@ -54,6 +54,7 @@
 
 #include <xxhash.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cerrno>
@@ -348,6 +349,19 @@ struct ShareStore : Store
 	{
 		return walkRemote(top + "/", "", 0, recurse, dataFolder, out);
 	}
+	bool walkUnder(const std::string& top, const std::string& under, bool recurse, bool dataFolder,
+			std::map<std::string, uint64_t>& out) override
+	{
+		// Only that folder is listed: first whether it is there at all.
+		const std::string name = under.substr(0, under.size() - 1);
+		const unsigned before = smb::failures();
+		const std::vector<smb::Entry> entries = smb::list(top + "/");
+		if (smb::failures() != before)
+			return false;
+		if (std::none_of(entries.begin(), entries.end(), [&](const smb::Entry& e) { return e.directory && e.name == name; }))
+			return true;
+		return walkRemote(top + "/", under, 1, recurse, dataFolder, out);
+	}
 	bool read(const std::string& path, std::vector<uint8_t>& out) override { return smb::readWhole(path, out); }
 	bool write(const std::string& path, const void *data, size_t size, std::string& error) override
 	{
@@ -360,15 +374,27 @@ struct ShareStore : Store
 
 // Keeps the folder `local` (a path on this console, ending in '/') and
 // `remote` (a share's folder, without the trailing '/') the same.
+// With `only`, just the files below those of its folders ("saves/"): the rest
+// of the pair, its list and what this console remembers of it, stay as they are.
 void syncPair(Store& store, const std::string& name, const std::string& local, const std::string& remote, Way way,
-		bool recurse, bool dataFolder, Report& report)
+		bool recurse, bool dataFolder, Report& report, const std::vector<std::string>& only = {})
 {
 	makeDir(local);
 	const std::string statePath = rootDir + "data/sync/" + name + ".state";
 	std::map<std::string, Remembered> state = readState(statePath);
+	const auto inScope = [&only](const std::string& rel) {
+		return only.empty() || std::any_of(only.begin(), only.end(),
+				[&rel](const std::string& under) { return rel.compare(0, under.size(), under) == 0; });
+	};
 	// The share.
 	std::map<std::string, uint64_t> remoteFiles;
-	if (!store.walk(remote, recurse, dataFolder, remoteFiles))
+	bool listedAll = true;
+	if (only.empty())
+		listedAll = store.walk(remote, recurse, dataFolder, remoteFiles);
+	else
+		for (const std::string& under : only)
+			listedAll = listedAll && store.walkUnder(remote, under, recurse, dataFolder, remoteFiles);
+	if (!listedAll)
 	{
 		report.failed = true;
 		report.error = store.name() + " could not be listed (" + store.error() + ")";
@@ -392,7 +418,11 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 	}
 	// This console.
 	std::map<std::string, std::pair<uint64_t, int64_t>> localFiles;
-	walkLocal(local, "", 0, recurse, dataFolder, localFiles);
+	if (only.empty())
+		walkLocal(local, "", 0, recurse, dataFolder, localFiles);
+	else
+		for (const std::string& under : only)
+			walkLocal(local, under, 1, recurse, dataFolder, localFiles);
 	const auto localHash = [&](const std::string& rel) -> std::string {
 		const auto it = localFiles.find(rel);
 		if (it == localFiles.end())
@@ -414,7 +444,8 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 	for (const auto& [rel, info] : localFiles)
 		names.insert(rel);
 	for (const auto& [rel, r] : state)
-		names.insert(rel);
+		if (inScope(rel))
+			names.insert(rel);
 	bool manifestChanged = false;
 	int done = 0;
 	const int total = (int)names.size();
@@ -649,7 +680,10 @@ std::string runCloud()
 	return summary;
 }
 
-void runOnce(const char *why)
+// `quick`: after a game, only what a game changes, its memory card and save
+// states; everything else (covers, the other folders, the cards' backups)
+// waits for the next start or "Bring my files up to date now".
+void runOnce(const char *why, bool quick)
 {
 	std::lock_guard<std::mutex> lock(runMutex);
 	const std::string files = smb::filesFolder();
@@ -675,7 +709,16 @@ void runOnce(const char *why)
 	say("Asking the share");
 	Report report;
 	ShareStore share;
-	if (f.filesAt == 3)
+	if (quick)
+	{
+		say("Memory cards and states");
+		if (f.filesAt == 3)
+			syncPair(share, "all-data", rootDir + "data/", files + "/data", Way::Both, true, true, report,
+					{ "saves/", "states/" });
+		else if (f.cardsOnShare)
+			syncPair(share, "memory-cards", rootDir + "data/saves/", files + "/memory cards", Way::Both, false, false, report);
+	}
+	else if (f.filesAt == 3)
 		for (const char *folder : everyFolder)
 		{
 			say(std::string("Your ") + folder);
@@ -698,7 +741,7 @@ void runOnce(const char *why)
 		}
 	}
 	// The cards' backups, from wherever the cards are kept on the share.
-	if ((f.filesAt == 3 || f.cardsOnShare) && !report.failed)
+	if (!quick && (f.filesAt == 3 || f.cardsOnShare) && !report.failed)
 	{
 		say("Card backups");
 		syncPair(share, "card-backups", rootDir + "data/saves/backups/", files + "/card backups/" + consoleName(), Way::Send,
@@ -729,14 +772,14 @@ void runOnce(const char *why)
 	busy = false;
 }
 
-void runAsync(const char *why)
+void runAsync(const char *why, bool quick = false)
 {
 	if (busy.exchange(true))
 		return;
 	if (worker.joinable())
 		worker.join();
-	worker = std::thread([why] {
-		runOnce(why);
+	worker = std::thread([why, quick] {
+		runOnce(why, quick);
 		busy = false;
 	});
 }
@@ -757,7 +800,7 @@ void startUp()
 void gameClosed()
 {
 	if (wanted())
-		runAsync("a game closed");
+		runAsync("a game closed", true);
 }
 
 void now()

@@ -24,6 +24,19 @@ struct Store
 	// when it could not be listed (then nothing is decided from what is
 	// missing); a folder that is not there yet is an empty one.
 	virtual bool walk(const std::string& top, bool recurse, bool dataFolder, std::map<std::string, uint64_t>& out) = 0;
+	// The same for the files below `top`/`under` alone (`under` ends in '/'),
+	// still by path relative to `top`; a folder not there yet is an empty one.
+	virtual bool walkUnder(const std::string& top, const std::string& under, bool recurse, bool dataFolder,
+			std::map<std::string, uint64_t>& out)
+	{
+		std::map<std::string, uint64_t> all;
+		if (!walk(top, recurse, dataFolder, all))
+			return false;
+		for (const auto& [rel, size] : all)
+			if (rel.compare(0, under.size(), under) == 0)
+				out[rel] = size;
+		return true;
+	}
 	virtual bool read(const std::string& path, std::vector<uint8_t>& out) = 0;
 	virtual bool write(const std::string& path, const void *data, size_t size, std::string& error) = 0;
 	virtual bool remove(const std::string& path) = 0;
