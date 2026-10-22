@@ -20,6 +20,20 @@ Build 25 (not released yet)
   - The PlayStation Mouse, for the games made for it: a finger on the touch
     pad (or the right stick) moves it; the touch pad pressed, Cross or R1
     is its left button, Circle or L1 its right.
+  - "Differs from the original" (Settings, Picture; "Look" in the menu over
+    a game, which says Original or how many changes): every setting in
+    force that is not as the PlayStation had it, put back one by one or all
+    at once.
+  Changed
+  - A new install looks and runs as the PlayStation did: the software
+    renderer at the console's resolution, its interlacing, the cracks
+    between polygons, the edges a television hid cropped, no texture pack,
+    sharp bilinear scaling. An install from before keeps its settings.
+  - The picture presets: Original (all of the above, and the CPU, memory
+    and CD speed as the console's, nothing added), Original on a TV (with a
+    composite signal and a curved picture tube), Fast (2x), Normal (4x),
+    Enhanced (6x), Beautiful (8x) and Speedrun. The enhanced ones smooth
+    edges by their resolution, not MSAA, so accurate blending stays on.
 
 Build 24
   Added

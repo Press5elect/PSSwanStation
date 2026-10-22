@@ -3034,6 +3034,13 @@ void pausePage(Frame& f)
 	items.push_back(action(icon::Sliders, "Game settings", "The picture's and the emulator's settings for this game "
 			"alone: what is set there is kept with the game and used whenever it runs.",
 			[] { push(Page::Settings, 0, 1); }, !game.serial.empty()));
+	{
+		const size_t changes = originalDifferences();
+		Item item = action(icon::Picture, "Look", "Whether the game looks and runs as on the PlayStation, or with "
+				"enhancements: this lists them, to put back one by one or all at once.", [] { push(Page::Original); });
+		item.value = changes == 0 ? std::string("Original") : format("Enhanced  (%zu change%s)", changes, changes == 1 ? "" : "s");
+		items.push_back(item);
+	}
 
 	items.push_back(header("Extras"));
 	pauseMoreItems(items);
@@ -5279,6 +5286,7 @@ void frame()
 		case Page::Speedrun: speedrunPage(f); break;
 		case Page::Web: webPage(f); break;
 		case Page::Cloud: cloudPage(f); break;
+		case Page::Original: originalPage(f); break;
 		case Page::Shaders: shadersPage(f); break;
 		case Page::WhatsNew: whatsNewPage(f); break;
 		case Page::DiscDrive: discDrivePage(f); break;

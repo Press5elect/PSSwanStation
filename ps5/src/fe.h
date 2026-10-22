@@ -352,7 +352,7 @@ struct Frontend
 	int scaling = 0;			// 0 fit (keep aspect), 1 integer, 2 stretch (3, before build 15: fit with FSR 1)
 	// How the picture is grown to the screen: 0 smooth (bilinear), 1 square
 	// pixels (nearest), 2 sharp bilinear, 3 FSR 1, 4 NIS, 5 CAS.
-	int scaler = 0;				// 0 smooth, 1 square pixels, 2 sharp bilinear, 3 FSR 1, 4 NIS, 5 CAS, 6 MMPX
+	int scaler = 2;				// 0 smooth, 1 square pixels, 2 sharp bilinear (at first), 3 FSR 1, 4 NIS, 5 CAS, 6 MMPX
 	int fsrSharpness = 1;		// the sharpening of FSR, NIS and CAS: 0 soft, 1 normal, 2 sharp
 	bool linearFilter = true;	// before build 15: square pixels when false (scaler took its place)
 	int signal = 0;				// 0 as it is, 1 the dither undone, 2 S-Video, 3 composite
@@ -386,7 +386,9 @@ struct Frontend
 	// kinds, then the presets brought in from a USB drive)
 	int crt = 0;
 	int border = 0;				// beside a 4:3 picture: 0 black, 1 the picture's own light, 2 a gradient, 3 a picture file
-	int preset = 0;				// the picture preset last chosen: 0 none, 1 original, 2 sharp, 3 enhanced, 4 speedrun
+	// The picture preset last chosen: 0 none, 1 original, 2 original on a TV, 3 fast, 4 normal, 5 enhanced,
+	// 6 beautiful, 7 speedrun. A new install starts on the original.
+	int preset = 1;
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
 	bool autoLoadOnStart = false;	// and start from it
 	// Sleep-safe saving: the resume state is saved every five minutes of play

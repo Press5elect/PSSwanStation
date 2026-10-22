@@ -70,6 +70,7 @@ enum class Page
 	Speedrun,		// the speedrun timer and the game's splits
 	Web,			// the web panel: its switch, the address and the QR code
 	Cloud,			// cloud saves: the account, signing in (a QR code), what is kept
+	Original,		// what is not as the PlayStation had it, to put back
 	Shaders,		// shader presets brought in from a USB drive
 	WhatsNew,		// what changed: a: the build the console had before (0: every build)
 	DiscDrive,		// how to play the disc in a drive (the game in `chosen`); a: state slot
@@ -269,6 +270,9 @@ void memoryPage(Frame& f);
 void speedrunPage(Frame& f);
 void webPage(Frame& f);
 void cloudPage(Frame& f);
+void originalPage(Frame& f);
+// How many settings in force are not as the PlayStation had them.
+size_t originalDifferences();
 void shadersPage(Frame& f);
 void whatsNewPage(Frame& f);
 void discDrivePage(Frame& f);
