@@ -34,6 +34,11 @@ Build 25 (not released yet)
     composite signal and a curved picture tube), Fast (2x), Normal (4x),
     Enhanced (6x), Beautiful (8x) and Speedrun. The enhanced ones smooth
     edges by their resolution, not MSAA, so accurate blending stays on.
+  Fixed
+  - Closing a game no longer brings every file up to date with the network
+    share (thousands of covers, every folder): only what a game changes,
+    its memory card and save states. The rest is brought up to date when
+    PSSwanStation starts, or with "Bring my files up to date now".
 
 Build 24
   Added
