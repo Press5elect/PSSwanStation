@@ -27,6 +27,7 @@
 	    <root>data/shaders/<name>/, which a later start finds again.
 */
 #include "slangimport.h"
+#include "tuning.h"
 #include "fe.h"
 
 #include <glslang/Public/ResourceLimits.h>
@@ -841,6 +842,7 @@ bool start(const Found& preset)
 		worker.join();
 	say("Bringing in " + preset.name + "\xe2\x80\xa6");
 	worker = std::thread([preset] {
+		tuning::setThread(tuning::Role::Background);
 		std::string error;
 		const bool ok = importNow(preset.path, preset.name, error);
 		say(ok ? preset.name + " is brought in: choose it under Picture tube." : preset.name + " was not brought in: " + error);

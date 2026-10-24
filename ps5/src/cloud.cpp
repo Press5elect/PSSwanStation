@@ -35,6 +35,7 @@
 	one of its own; the storage is used by netfiles.cpp's thread.
 */
 #include "cloud.h"
+#include "tuning.h"
 #include "fe.h"
 #include "json.h"
 #include "tls_client.h"
@@ -737,7 +738,7 @@ void runSigning(std::function<void()> job)
 	if (signThread.joinable())
 		signThread.join();
 	signCancel = false;
-	signThread = std::thread(std::move(job));
+	signThread = std::thread(tuning::background(std::move(job)));
 }
 }
 

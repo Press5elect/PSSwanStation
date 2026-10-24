@@ -45,6 +45,7 @@
 #include "memsearch.h"
 #include "recorder.h"
 #include "speedrun.h"
+#include "tuning.h"
 
 #include <libretro.h>
 #include <libretro_vulkan.h>
@@ -122,6 +123,7 @@ double pacing;
 uint64_t runaheadEarly;
 // Frames the emulator ran in the last second.
 int ranThisSecond;
+uint64_t ranTotal;		// the game's frames run since the title started (tuning.cpp's speed)
 double secondStarted;
 float fpsMeasured;
 
@@ -1568,6 +1570,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 	diag::mark("game: running, serial %s, disc %d of %d, %.2f fps, %u x %u; the start took %.1f s", current.serial.c_str(),
 			discIndex() + 1, std::max(discCount(), 1), av.timing.fps, av.geometry.base_width, av.geometry.base_height,
 			now() - startBegan);
+	tuning::gameStarted();
 	rememberSerial(discdrive::keptPath(path), current.serial);
 	if (!path.empty())
 	{
@@ -1624,6 +1627,7 @@ void stop()
 	if (!isRunning)
 		return;
 	diag::mark("game: stopping");
+	tuning::gameEnded();
 	netEnd();
 	stopRecorder("the game was closed");
 	waitForResume();
@@ -2096,6 +2100,7 @@ void runFrame()
 				cadence.gapRefreshes, genPhase, (int)genOn);
 #endif
 	ranThisSecond += ran;
+	ranTotal += (uint64_t)std::max(ran, 0);
 	const double t = now();
 	if (t - secondStarted >= 1.0)
 	{
@@ -2340,6 +2345,11 @@ double coreFps()
 float measuredFps()
 {
 	return fpsMeasured;
+}
+
+uint64_t ranFrames()
+{
+	return ranTotal;
 }
 
 std::string statePath(int slot)

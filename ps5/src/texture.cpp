@@ -18,6 +18,7 @@
 	for, by nanosvg.
 */
 #include "ui.h"
+#include "tuning.h"
 #include "fe.h"
 #include "display.h"
 
@@ -247,7 +248,7 @@ Image lookup(const std::string& key, const std::string& path, int side, bool pad
 		if (!workerStarted)
 		{
 			workerStarted = true;
-			worker = std::thread(work);
+			worker = std::thread(tuning::background(work));
 			worker.detach();
 		}
 		{

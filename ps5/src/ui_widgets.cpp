@@ -25,6 +25,7 @@
 	on files beside it.
 */
 #include "ui.h"
+#include "tuning.h"
 #include "display.h"
 #include "fe.h"
 
@@ -1862,6 +1863,7 @@ int fontFile(const std::string& path)
 	FileFace *f = fresh.get();
 	fileFaces.push_back(std::move(fresh));
 	std::thread([f] {
+		tuning::setThread(tuning::Role::Background);
 		std::vector<uint8_t> file;
 		bool ok = readFile(f->path, file) && fontbake::bake(file, f->blob, f->why);
 		if (!ok)

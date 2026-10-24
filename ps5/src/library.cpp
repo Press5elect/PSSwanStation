@@ -26,6 +26,7 @@
 	discs are there themselves and are grouped the same way.
 */
 #include "fe.h"
+#include "tuning.h"
 
 #include <algorithm>
 #include <atomic>
@@ -534,7 +535,7 @@ void scan(int source, bool force)
 		std::lock_guard<std::mutex> lock(state.mutex);
 		state.status.clear();
 	}
-	state.thread = std::thread(run, source, force);
+	state.thread = std::thread(tuning::background(run), source, force);
 }
 
 bool scanning(int source)

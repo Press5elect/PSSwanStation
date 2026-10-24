@@ -237,6 +237,7 @@ set(frontend_sources
 	src/chain.cpp
 	src/host.cpp
 	src/pacing_wait.cpp
+	src/tuning.cpp
 	src/options.cpp
 	src/ui.cpp
 	src/ui_widgets.cpp

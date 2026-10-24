@@ -36,6 +36,7 @@
 	Which entries are on is kept per game in <root>data/cheats/<serial>.txt.
 */
 #include "fe.h"
+#include "tuning.h"
 #include "netplay.h"
 
 #include <libretro.h>
@@ -481,6 +482,7 @@ void refresh()
 		return;
 	say("Fetching the cheat database\xe2\x80\xa6");
 	std::thread([] {
+		tuning::setThread(tuning::Role::Background);
 		// The chtdb project's release that always holds the newest of both.
 		static const char *const base = "https://github.com/duckstation/chtdb/releases/download/latest/";
 		std::vector<uint8_t> cheatData, patchData;

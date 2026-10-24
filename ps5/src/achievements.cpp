@@ -31,6 +31,7 @@
 	request's URL, which carries them.
 */
 #include "achievements.h"
+#include "tuning.h"
 #include "fe.h"
 
 #include "rc_api_request.h"
@@ -227,7 +228,7 @@ template <typename Function>
 void startThread(std::thread& thread, Function function, State& s)
 {
 	if (!thread.joinable())
-		thread = std::thread(function, &s);
+		thread = std::thread(tuning::background(function), &s);
 }
 
 void callWorker(State *s)

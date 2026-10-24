@@ -14,6 +14,7 @@
 	stop it.
 */
 #include "fe.h"
+#include "tuning.h"
 
 #include <libretro.h>
 
@@ -281,6 +282,7 @@ void startPrecache(const std::string& gamePath)
 	precache = PrecacheRunning;
 	clearError();
 	precacheThread = std::thread([gamePath] {
+		tuning::setThread(tuning::Role::Background);
 		beginLoad();
 		std::vector<std::string> files;
 		collect(gamePath, files, 0);

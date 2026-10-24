@@ -27,7 +27,9 @@ The PS5 frontend (ps5/)      GPL-3.0-or-later GPL-3.0.txt,             Copyright
 Lapy helper (lapy.elf)       MIT              Lapy-MIT.txt             PS5-Lapy-JB-Daemon, the exact-title helper
                                                                        built unchanged (lapy-manifest.json is
                                                                        that build's record)
-Mesa RADV (Vulkan driver)    MIT and others   Mesa-license.rst         the PS5 Mesa port
+Mesa RADV (Vulkan driver)    MIT and others   Mesa-license.rst         the PS5 Mesa port (Mesa 27.0-devel),
+                                                                       with Crux2's patches (Crux2 by Press5elect);
+                                                                       two from PS5CEMU-HAR, GPL-3.0 (GPL-3.0.txt)
 PS5 platform layer           GPL-3.0-or-later GPL-3.0.txt              the payload SDK fork
 (libps5platform.a), with                                               (github.com/mihawk-99/PS5_PayloadSDK);
 musl's regex and dlmalloc                                              musl's regex is MIT, dlmalloc public domain

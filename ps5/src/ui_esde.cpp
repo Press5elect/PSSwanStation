@@ -33,6 +33,7 @@
 	list ES-DE's own theme downloader reads.
 */
 #include "ui_internal.h"
+#include "tuning.h"
 #include "esde.h"
 #include "display.h"
 #include "json.h"
@@ -2421,7 +2422,7 @@ void themeDownloadPage(Frame& f)
 		if (fetcher.listState == 0 || fetcher.listState == 3)
 		{
 			fetcher.listState = 1;
-			std::thread(fetchList).detach();
+			std::thread(tuning::background(fetchList)).detach();
 		}
 	}
 	std::vector<Item> items;
@@ -2447,7 +2448,7 @@ void themeDownloadPage(Frame& f)
 					fetcher.done = fetcher.total = 0;
 				}
 				fetcher.stop = false;
-				std::thread(fetchTheme, o).detach();
+				std::thread(tuning::background(fetchTheme), o).detach();
 			}, !busy && httpAvailable());
 			item.value = have ? "Installed" : o.author;
 			item.confirmHint = have ? "Fetch again" : "Fetch";

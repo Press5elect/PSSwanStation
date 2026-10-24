@@ -38,6 +38,7 @@
 	weaker drive (or a console that refuses the SCSI commands) does not give.
 */
 #include "fe.h"
+#include "tuning.h"
 #include "discdrive_io.h"
 
 #include "common/cd_image.h"
@@ -1461,7 +1462,7 @@ void startJob(const Disc& disc, int destination)
 	}
 	releaseRam();
 	job = JobRunning;
-	jobThread = std::thread(runJob, disc, destination);
+	jobThread = std::thread(tuning::background(runJob), disc, destination);
 }
 
 // ------------------------------------------------------- the open hook

@@ -59,6 +59,7 @@
 #include "chain.h"
 #include "slangimport.h"
 #include "fe.h"
+#include "tuning.h"
 
 #include "common/vulkan/context.h"
 #include "common/vulkan/staging_buffer.h"
@@ -442,7 +443,10 @@ bool createSwapchain()
 			chosen = format;
 	swapFormat = chosen.format;
 
-	uint32_t imageCount = std::max<uint32_t>(3, caps.minImageCount);
+	// Four when the driver can be told how many may wait to be shown (two
+	// while the game keeps up, three while it is behind: tuning.h), three
+	// otherwise.
+	uint32_t imageCount = std::max<uint32_t>(tuning::queueDepthAvailable() ? 4 : 3, caps.minImageCount);
 	if (caps.maxImageCount != 0)
 		imageCount = std::min(imageCount, caps.maxImageCount);
 	canReadBack = (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
@@ -470,6 +474,7 @@ bool createSwapchain()
 	vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr);
 	images.resize(count);
 	vkGetSwapchainImagesKHR(device, swapchain, &count, images.data());
+	tuning::swapchainMade();
 
 	VkAttachmentDescription attachment{};
 	attachment.format = swapFormat;
