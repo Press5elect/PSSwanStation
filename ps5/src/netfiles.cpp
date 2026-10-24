@@ -49,6 +49,7 @@
 	date now"). A share that does not answer leaves everything as it is.
 */
 #include "fe.h"
+#include "tuning.h"
 #include "syncstore.h"
 #include "cloud.h"
 
@@ -779,6 +780,7 @@ void runAsync(const char *why, bool quick = false)
 	if (worker.joinable())
 		worker.join();
 	worker = std::thread([why, quick] {
+		tuning::setThread(tuning::Role::Background);
 		runOnce(why, quick);
 		busy = false;
 	});

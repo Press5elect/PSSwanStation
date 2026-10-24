@@ -11,6 +11,7 @@
 	ring plays silence rather than stalling the port.
 */
 #include "fe.h"
+#include "../tuning.h"
 
 #include <atomic>
 #include <thread>
@@ -50,6 +51,7 @@ bool audioOpen()
 		return false;
 	stop = false;
 	thread = std::thread([] {
+		tuning::setThread(tuning::Role::Sound);
 		alignas(64) int16_t grain[Grain * 2];
 		while (!stop)
 		{

@@ -26,6 +26,7 @@
 	fetched for a game is added to it at once.
 */
 #include "fe.h"
+#include "tuning.h"
 
 #include <algorithm>
 #include <atomic>
@@ -291,7 +292,7 @@ void rescan()
 	if (!started)
 	{
 		started = true;
-		std::thread(worker).detach();
+		std::thread(tuning::background(worker)).detach();
 	}
 	wake.notify_one();
 }

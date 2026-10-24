@@ -12,6 +12,7 @@
 #include "fe.h"
 #include "cloud.h"
 #include "display.h"
+#include "tuning.h"
 #include "update.h"
 #include "web.h"
 #if defined(SWANSTATION_HOST)
@@ -196,6 +197,8 @@ constexpr const char *ReleasesUrl = "https://api.github.com/repos/Press5elect/PS
 int main(int argc, char **argv)
 {
 	platform::earlyInit();
+	// Before the graphics driver is started: its own settings.
+	tuning::applyDriverSettings();
 	// A home-screen forwarder starts the title with --rom <game> (and
 	// --exit-after-game): PS5 Forwarder Format, section 10.
 	std::string launchRom;
@@ -342,6 +345,7 @@ int main(int argc, char **argv)
 		at[5] = now();
 		display::endFrame();
 		at[6] = now();
+		tuning::frame(at, playing);
 #ifdef SWANSTATION_HOST
 		// A test: what each refresh's frame of the game took.
 		static FILE *times = getenv("SWANSTATION_TIMES") != nullptr ? fopen(getenv("SWANSTATION_TIMES"), "w") : nullptr;

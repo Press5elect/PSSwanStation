@@ -24,7 +24,25 @@ Build 25 (not released yet)
     a game, which says Original or how many changes): every setting in
     force that is not as the PlayStation had it, put back one by one or all
     at once.
+  - Console tuning (Settings, System), as Crux2 measured on this console:
+    sound and the USB controllers ahead of the emulator and the background
+    jobs after it; the graphics driver on its own thread; how long the
+    driver checks and sleeps while it waits for the GPU. All off, or the
+    driver's own, unless chosen.
+  - The boot log measures the game: with "Measure the game in the boot log"
+    a line every five seconds of play (speed, worst frame, what each part
+    of a frame took, draws, render passes, barriers, copies and clears per
+    frame); always, a line when a game has run under 95 % for two seconds,
+    and its average speed when it closes.
   Changed
+  - The graphics driver is Mesa 27 (its development branch), with Crux2's
+    fixes for this console: the GPU's GFX10.1 hardware workarounds (against
+    wrong shader results and GPU hangs), memory kept until the GPU is done
+    with it (against a whole-console hang), a shader cache that stays on,
+    cheaper draw calls and fewer cache flushes.
+  - While a game falls behind the screen, a third frame may wait to be
+    shown (four swapchain images), so a late frame no longer holds the next
+    one back; two again once it keeps up, as close to the controls as before.
   - A new install looks and runs as the PlayStation did: the software
     renderer at the console's resolution, its interlacing, the cracks
     between polygons, the edges a television hid cropped, no texture pack,

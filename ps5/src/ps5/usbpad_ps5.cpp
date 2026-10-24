@@ -36,6 +36,7 @@
 	controller sends.
 */
 #include "fe.h"
+#include "../tuning.h"
 
 #include "OrbisUsbPadDecode.h"
 
@@ -747,6 +748,7 @@ Pad toPad(const Common& c)
 
 void *thread(void *)
 {
+	tuning::setThread(tuning::Role::Input);
 	Device d;
 	std::vector<std::string> seen;
 	bool first = true;

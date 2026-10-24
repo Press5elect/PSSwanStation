@@ -24,6 +24,7 @@
 	also writes what the status answer says.
 */
 #include "web.h"
+#include "tuning.h"
 #include "cloud.h"
 #include "fe.h"
 #include "speedrun.h"
@@ -741,6 +742,7 @@ void serve()
 		}
 		connections++;
 		std::thread([fd] {
+			tuning::setThread(tuning::Role::Background);
 			handle(fd);
 			::shutdown(fd, SHUT_RDWR);
 			close(fd);
@@ -778,7 +780,7 @@ void start()
 	statusText = address.empty() ? format("Listening on port %d (this console's address is not known)", Port)
 			: format("Listening on %s:%d", address.c_str(), Port);
 	diag::mark("web: %s", statusText.c_str());
-	server = std::thread(serve);
+	server = std::thread(tuning::background(serve));
 }
 
 void stop()

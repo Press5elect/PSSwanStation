@@ -40,6 +40,7 @@
 	    backup/       the old files while the journal is there
 */
 #include "update.h"
+#include "tuning.h"
 
 #include "fe.h"
 
@@ -672,7 +673,7 @@ template <typename Function>
 void startWorker(Function&& function)
 {
 	worker.join();
-	worker.thread = std::thread(std::forward<Function>(function));
+	worker.thread = std::thread(tuning::background(std::forward<Function>(function)));
 }
 
 // ------------------------------------------------------------------ check

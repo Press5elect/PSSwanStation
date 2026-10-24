@@ -2655,6 +2655,31 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"Lets PSSwanStation use the console's pop-up notices for things that matter outside its screen (a "
 				"start-up problem).",
 				[] { diag::setNotifications(options::frontend().notifications); }));
+		items.push_back(header("Console tuning"));
+		items.push_back(toggle("Sound and controls before the emulator", &f.threadPriorities,
+				"The console runs the sound and the USB controllers ahead of the emulator, and downloads, covers, "
+				"videos and copies after it: no crackle or late buttons while the emulator is busy. Off: every "
+				"thread is equal, as before. Used from the next start of PSSwanStation; still being tried on the "
+				"console, so it is off unless you turn it on.", {}));
+		items.push_back(toggle("Graphics driver on its own thread", &f.driverThread,
+				"The graphics driver records its work on a thread of its own, beside the emulator's. It helps when "
+				"the picture is heavy (a high resolution, the hardware renderer's extras). Used from the next "
+				"start of PSSwanStation.", {}));
+		items.push_back(choice("Wait for the GPU: checks", f.gpuWaitSpin,
+				{ "1500 \xc2\xb5s (the driver's)", "500 \xc2\xb5s", "250 \xc2\xb5s", "3000 \xc2\xb5s" },
+				"How long the graphics driver keeps checking whether the GPU has finished before it sleeps. "
+				"Longer wakes sooner and keeps a processor busier. Used from the next start of PSSwanStation.",
+				[](int i) { options::frontend().gpuWaitSpin = i; }));
+		items.push_back(choice("Wait for the GPU: sleeps", f.gpuWaitSleep,
+				{ "1000 \xc2\xb5s (the driver's)", "500 \xc2\xb5s", "250 \xc2\xb5s", "100 \xc2\xb5s" },
+				"How long the graphics driver sleeps between checks once it has stopped checking. Shorter wakes "
+				"up to that much sooner after the GPU finishes. Used from the next start of PSSwanStation.",
+				[](int i) { options::frontend().gpuWaitSleep = i; }));
+		items.push_back(toggle("Measure the game in the boot log", &f.measure,
+				"Every five seconds of play, a line in " + shownRoot() + "psswanstation-boot.log: the speed, "
+				"the worst frame, what each part of a frame took, and the draws, render passes, barriers, copies "
+				"and clears per frame. For finding where a slow game loses its time; a line about a slow stretch, "
+				"and one about each game's speed when it closes, are written either way.", {}));
 		items.push_back(header("Debug"));
 		moreSettings(7, items);
 		break;

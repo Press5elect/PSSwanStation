@@ -22,6 +22,7 @@
 	until they are read.
 */
 #include "fe.h"
+#include "tuning.h"
 
 #include <algorithm>
 #include <cmath>
@@ -584,7 +585,7 @@ void play(Id id)
 	if (!banksAsked)
 	{
 		banksAsked = true;
-		std::thread(loadBanks).detach();
+		std::thread(tuning::background(loadBanks)).detach();
 	}
 	// The set chosen, or the theme's (the title's own theme: its own sounds).
 	const int set = settings.soundSet != 0 ? settings.soundSet : ui::themeSounds();

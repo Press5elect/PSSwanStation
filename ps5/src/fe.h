@@ -396,6 +396,15 @@ struct Frontend
 	// console (rest mode) can be continued at the next start.
 	bool sleepSafe = false;
 	bool verboseLog = false;
+	// The console's tuning (tuning.h): sound and controls ahead of the
+	// emulator's thread, the graphics driver on its own thread, the GPU wait's
+	// spin and sleep (choices of tuning::SpinChoices, SleepChoices: 0 the
+	// driver's own), and the boot log's measuring of the game.
+	bool threadPriorities = false;
+	bool driverThread = false;
+	int gpuWaitSpin = 0;
+	int gpuWaitSleep = 0;
+	bool measure = false;
 	bool watchOverlay = true;	// the values watched (memsearch) shown over the game
 	bool web = false;			// the web panel for a phone or a computer (web.cpp), on port 3311
 	bool speedrun = false;		// the speedrun timer over the game, its shortcuts and its conditions
@@ -628,6 +637,8 @@ void frameSize(int& width, int& height, float& aspect);
 void frameUv(float& u, float& v);
 double coreFps();
 float measuredFps();
+// The game's frames run since the title started (fast forward and rewind included).
+uint64_t ranFrames();
 
 // Save states: slots 0..9, and the resume state (slot -2).
 constexpr int StateSlots = 10;

@@ -25,6 +25,7 @@
 	them in, when a theme asks for them and downloads are on.
 */
 #include "fe.h"
+#include "tuning.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -293,7 +294,7 @@ void request(const std::string& base, int kind = BoxArt)
 	if (!started)
 	{
 		started = true;
-		std::thread(worker).detach();
+		std::thread(tuning::background(worker)).detach();
 	}
 	wake.notify_one();
 }
@@ -358,6 +359,7 @@ void choose(const library::Game& game, int kind)
 		return;
 	const std::string base = game.fileTitle;
 	std::thread([base, kind] {
+		tuning::setThread(tuning::Role::Background);
 		std::vector<uint8_t> data;
 		const int result = fetchKind(base, kind, data);
 		if (result == 1)
