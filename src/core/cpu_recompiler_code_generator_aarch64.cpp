@@ -1792,7 +1792,7 @@ void CodeGenerator::EmitICacheCheckAndUpdate()
 
     VirtualMemoryAddress current_pc = m_pc & ICACHE_TAG_ADDRESS_MASK;
     m_emit->Ldr(ticks_reg, a64::MemOperand(GetCPUPtrReg(), offsetof(State, pending_ticks)));
-    m_emit->Mov(current_tag_reg, current_pc);
+    m_emit->Mov(current_tag_reg, GetICacheTagForAddress(current_pc));
 
     for (uint32_t i = 0; i < m_block->icache_line_count; i++, current_pc += ICACHE_LINE_SIZE)
     {

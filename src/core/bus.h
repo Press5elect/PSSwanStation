@@ -31,6 +31,13 @@ inline constexpr uint32_t RAM_2MB_SIZE = 0x200000, RAM_2MB_MASK = RAM_2MB_SIZE -
 inline constexpr uint32_t MEMCTRL_REG_COUNT = 9;
 
 inline constexpr TickCount RAM_READ_TICKS = 6;
+// Filling `words` (1 to 4) of an i-cache line from RAM takes 3 + words cycles:
+// 4, 5, 6 and 7 for one to four words (PlayStation Hardware, Sony, 1998,
+// "Memory Access Timing", main memory to i-cache, the cycles it takes).
+inline constexpr TickCount GetICacheRAMFillTicks(uint32_t words)
+{
+  return static_cast<TickCount>(3 + words);
+}
 
 inline constexpr size_t
   // Our memory arena contains storage for RAM.

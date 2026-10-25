@@ -986,7 +986,7 @@ ALWAYS_INLINE_RELEASE bool DoInstructionRead(PhysicalMemoryAddress address, void
   {
     std::memcpy(data, &g_ram[address & g_ram_mask], sizeof(uint32_t) * word_count);
     if constexpr (add_ticks)
-      g_state.pending_ticks += (icache_read ? 1 : RAM_READ_TICKS) * word_count;
+      g_state.pending_ticks += icache_read ? GetICacheRAMFillTicks(word_count) : RAM_READ_TICKS * word_count;
 
     return true;
   }
@@ -1025,7 +1025,7 @@ TickCount GetICacheFillTicks(VirtualMemoryAddress address)
   address &= PHYSICAL_MEMORY_ADDRESS_MASK;
 
   if (address < RAM_MIRROR_END)
-    return 1 * ((ICACHE_LINE_SIZE - (address & (ICACHE_LINE_SIZE - 1))) / sizeof(uint32_t));
+    return GetICacheRAMFillTicks((ICACHE_LINE_SIZE - (address & (ICACHE_LINE_SIZE - 1))) / sizeof(uint32_t));
   else if (address >= BIOS_BASE && address < (BIOS_BASE + BIOS_SIZE))
     return m_bios_access_time[static_cast<uint32_t>(MemoryAccessSize::Word)] *
            ((ICACHE_LINE_SIZE - (address & (ICACHE_LINE_SIZE - 1))) / sizeof(uint32_t));
@@ -1042,9 +1042,10 @@ void CheckAndUpdateICacheTags(uint32_t line_count, TickCount uncached_ticks)
     for (uint32_t i = 0; i < line_count; i++, current_pc += ICACHE_LINE_SIZE)
     {
       const uint32_t line = GetICacheLine(current_pc);
-      if (g_state.icache_tags[line] != current_pc)
+      const uint32_t tag = GetICacheTagForAddress(current_pc);
+      if (g_state.icache_tags[line] != tag)
       {
-        g_state.icache_tags[line] = current_pc;
+        g_state.icache_tags[line] = tag;
         ticks += cached_ticks_per_line;
       }
     }
@@ -1060,7 +1061,11 @@ uint32_t FillICache(VirtualMemoryAddress address)
   const uint32_t line = GetICacheLine(address);
   uint8_t* line_data = &g_state.icache_data[line * ICACHE_LINE_SIZE];
   uint32_t line_tag;
-  switch ((address >> 2) & 0x03u)
+  // A miss fills from the word asked for to the end of the line; a miss on a
+  // word not yet valid in a line whose tag matches refills the whole line
+  // (psx-spx, Memory Map, i-Cache, "Fill behavior").
+  const bool tag_matches = (g_state.icache_tags[line] & ICACHE_TAG_ADDRESS_MASK) == GetICacheTagForAddress(address);
+  switch (tag_matches ? 0u : ((address >> 2) & 0x03u))
   {
     case 0:
       DoInstructionRead<true, true, 4, false>(address & ~(ICACHE_LINE_SIZE - 1u), line_data);
@@ -1108,6 +1113,15 @@ ALWAYS_INLINE_RELEASE static void WriteICache(VirtualMemoryAddress address, uint
 {
   const uint32_t line = GetICacheLine(address);
   const uint32_t offset = GetICacheLineOffset(address);
+  if (g_state.cache_control.tag_test_mode)
+  {
+    // With the cache isolated and TAG set, a store writes the line's tag: the
+    // address part from where it is written, the four valid bits from the low
+    // bits of the data; the code words stay (psx-spx, Memory Control, BCC).
+    // The tags here keep invalid bits, the inverse of valid ones.
+    g_state.icache_tags[line] = GetICacheTagForAddress(address) | (~value & ICACHE_INVALID_BITS);
+    return;
+  }
   g_state.icache_tags[line] = GetICacheTagForAddress(address) | ICACHE_INVALID_BITS;
   std::memcpy(&g_state.icache_data[line * ICACHE_LINE_SIZE + offset], &value, sizeof(value));
 }
