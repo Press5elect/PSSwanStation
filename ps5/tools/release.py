@@ -242,7 +242,11 @@ def main():
                         help="the release page carries the ZIP and its .sha256 alone (as Crux2's): no source "
                              "archives; every part's source is its public revision, which {{SOURCES}} in the "
                              "notes lists, so every revision must be on GitHub before publishing")
+    parser.add_argument("--source-at", action="append", default=[], metavar="ID=URL",
+                        help="with --zip-only: a part whose revision is no longer on GitHub, published at URL "
+                             "instead (an archive attached to an earlier release); named so in {{SOURCES}}")
     args = parser.parse_args()
+    elsewhere = dict(item.split("=", 1) for item in args.source_at)
     if args.zip_only and args.unpublished:
         refuse("--zip-only attaches no archives: every part must be on GitHub, none unpublished")
 
@@ -254,7 +258,8 @@ def main():
     parts = json.loads((folder / "licenses/components.json").read_text())
     head = check_folder(folder, parts)
     unpublished = tuple(filter(None, args.unpublished.split(",")))
-    not_yet, allowed = ([], {}) if args.offline else check_pins(parts, unpublished, args.zip_only)
+    not_yet, allowed = ([], {}) if args.offline else check_pins(
+        [p for p in parts if p["id"] not in elsewhere], unpublished, args.zip_only)
 
     out = Path(args.out) if args.out else SRC / "build-ps5" / ("release-build%d" % build)
     shutil.rmtree(out, ignore_errors=True)
@@ -275,7 +280,7 @@ def main():
     print("==> %s: %d files, %.1f MB, tested and compared with the folder" % (zip_path.name, len(files), zip_path.stat().st_size / 1e6))
 
     if args.zip_only:
-        finish_zip_only(args, out, zip_path, parts, head, build, not_yet)
+        finish_zip_only(args, out, zip_path, parts, head, build, not_yet, elsewhere)
         return
 
     sources = []
@@ -364,12 +369,14 @@ def main():
     print("==> %s" % out)
 
 
-def sources_list(parts):
+def sources_list(parts, elsewhere):
     """The notes' list of where each part's source is: its public revision."""
     lines = []
     for p in parts:
         src = p["source"]
-        if src["kind"] == "git":
+        if p["id"] in elsewhere:
+            where = "`%s`, no longer on GitHub: [its archive](%s)" % (src["revision"][:12], elsewhere[p["id"]])
+        elif src["kind"] == "git":
             url = "%s/tree/%s" % (src["remote"], src["revision"])
             where = "[`%s`](%s)" % (src["revision"][:12], url)
             if src.get("paths"):
@@ -380,14 +387,14 @@ def sources_list(parts):
     return "\n".join(lines)
 
 
-def finish_zip_only(args, out, zip_path, parts, head, build, not_yet):
+def finish_zip_only(args, out, zip_path, parts, head, build, not_yet, elsewhere):
     zip_sum = sha256(zip_path)
     (out / "SHA256SUMS").write_text("%s  %s\n" % (zip_sum, zip_path.name))
     shutil.rmtree(out / "source", ignore_errors=True)
     if args.notes:
         text = Path(args.notes).read_text()
         for key, value in (("COMMIT", head), ("ZIP", zip_path.name), ("ZIP_SHA256", zip_sum), ("BUILD", str(build)),
-                           ("SOURCES", sources_list(parts))):
+                           ("SOURCES", sources_list(parts, elsewhere))):
             text = text.replace("{{%s}}" % key, value)
         left = re.findall(r"\{\{[A-Z_0-9]+\}\}", text)
         if left:
