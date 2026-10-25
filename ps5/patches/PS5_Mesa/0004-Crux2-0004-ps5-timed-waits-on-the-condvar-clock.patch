@@ -1,0 +1,167 @@
+From 7011ff0375addc3ed83dbd3a6e57fb4bf7fa0a22 Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:29 +0000
+Subject: [PATCH 04/12] Crux2: 0004-ps5-timed-waits-on-the-condvar-clock
+
+---
+ src/amd/vulkan/winsys/ps5/radv_ps5_sync.c | 10 +--
+ src/util/ps5_timed_wait.h                 | 85 +++++++++++++++++++++++
+ src/vulkan/wsi/wsi_common_videoout.c      | 14 ++--
+ 3 files changed, 98 insertions(+), 11 deletions(-)
+ create mode 100644 src/util/ps5_timed_wait.h
+
+diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c b/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c
+index a01b3bcc055..065db71920a 100644
+--- a/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c
++++ b/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c
+@@ -7,6 +7,7 @@
+ #include "radv_ps5_winsys.h"
+ 
+ #include "util/os_time.h"
++#include "util/ps5_timed_wait.h"
+ #include "vk_sync.h"
+ 
+ /* A binary sync object on the console's one queue. It is signalled by the
+@@ -157,12 +158,11 @@ radv_ps5_sync_wait_many(struct vk_device *device, uint32_t wait_count, const str
+          continue;
+       }
+       /* A signal still has to be submitted: sleep until one is, or a
+-       * millisecond passes so running work is polled too. */
+-      struct timespec until;
++       * millisecond passes so running work is polled too. The deadline is on
++       * the clock the condition variable keeps (util/ps5_timed_wait.h): a
++       * monotonic one came back at once and this loop spun. */
+       const uint64_t wake = MIN2(abs_timeout_ns, now + 1000000);
+-      until.tv_sec = wake / 1000000000;
+-      until.tv_nsec = wake % 1000000000;
+-      cnd_timedwait(&queue->sync_cond, &queue->sync_lock, &until);
++      ps5_cnd_wait_ns(&queue->sync_cond, &queue->sync_lock, wake - now);
+    }
+ }
+ 
+diff --git a/src/util/ps5_timed_wait.h b/src/util/ps5_timed_wait.h
+new file mode 100644
+index 00000000000..23fb5d2f5bc
+--- /dev/null
++++ b/src/util/ps5_timed_wait.h
+@@ -0,0 +1,85 @@
++/*
++ * Copyright 2026 Crux2
++ * SPDX-License-Identifier: MIT
++ *
++ * A timed wait on a condition variable made by cnd_init, for the PS5 (Crux2 0004).
++ *
++ * cnd_init makes a condition variable whose timed waits keep time on the clock POSIX gives it by
++ * default: the realtime clock, on FreeBSD. The PS5 WSI and winsys built their deadlines from
++ * os_time_get_nano(), the monotonic clock, which counts from start-up: on the realtime clock
++ * that is decades in the past, so each wait came back at once and the loop around it spun,
++ * reading the clock and taking the lock again (PS5_Vulkan's B5 events test saw 2,000 such waits
++ * take 67 us). Which clock the condition variable keeps is found once, by a wait for a monotonic
++ * deadline 2 ms ahead on a private condition variable: one that comes back in under a
++ * millisecond keeps the realtime clock. The answer is printed once.
++ */
++#ifndef PS5_TIMED_WAIT_H
++#define PS5_TIMED_WAIT_H
++
++#include <stdint.h>
++#include <stdio.h>
++#include <time.h>
++
++#include "c11/threads.h"
++#include "util/os_time.h"
++
++enum { PS5_WAIT_CLOCK_UNKNOWN, PS5_WAIT_CLOCK_REALTIME, PS5_WAIT_CLOCK_MONOTONIC };
++
++static inline struct timespec
++ps5_timed_wait_deadline(uint64_t from_ns, uint64_t ns)
++{
++   const uint64_t at = from_ns + ns;
++   struct timespec deadline;
++   deadline.tv_sec = (time_t)(at / UINT64_C(1000000000));
++   deadline.tv_nsec = (long)(at % UINT64_C(1000000000));
++   return deadline;
++}
++
++static inline uint64_t
++ps5_timed_wait_realtime_ns(void)
++{
++   struct timespec now;
++   if (timespec_get(&now, TIME_UTC) != TIME_UTC)
++      return 0;
++   return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
++}
++
++static inline int
++ps5_timed_wait_clock(void)
++{
++   static int clock = PS5_WAIT_CLOCK_UNKNOWN; /* the same answer from any thread that asks */
++   if (clock != PS5_WAIT_CLOCK_UNKNOWN)
++      return clock;
++   cnd_t cond;
++   mtx_t lock;
++   int found = PS5_WAIT_CLOCK_REALTIME;
++   if (cnd_init(&cond) == thrd_success) {
++      if (mtx_init(&lock, mtx_plain) == thrd_success) {
++         const uint64_t start = (uint64_t)os_time_get_nano();
++         const struct timespec deadline = ps5_timed_wait_deadline(start, 2000000);
++         mtx_lock(&lock);
++         (void)cnd_timedwait(&cond, &lock, &deadline);
++         mtx_unlock(&lock);
++         const uint64_t took = (uint64_t)os_time_get_nano() - start;
++         found = took >= 1000000 ? PS5_WAIT_CLOCK_MONOTONIC : PS5_WAIT_CLOCK_REALTIME;
++         fprintf(stderr, "ps5: timed waits keep time on the %s clock (a monotonic deadline 2 ms ahead came back after %.3f ms)\n",
++                 found == PS5_WAIT_CLOCK_MONOTONIC ? "monotonic" : "realtime", (double)took / 1e6);
++         mtx_destroy(&lock);
++      }
++      cnd_destroy(&cond);
++   }
++   clock = found;
++   return found;
++}
++
++/* Waits on cond (mtx held) for a broadcast, or ns at most. */
++static inline int
++ps5_cnd_wait_ns(cnd_t *cond, mtx_t *mtx, uint64_t ns)
++{
++   const uint64_t from = ps5_timed_wait_clock() == PS5_WAIT_CLOCK_MONOTONIC ? (uint64_t)os_time_get_nano()
++                                                                           : ps5_timed_wait_realtime_ns();
++   const struct timespec deadline = ps5_timed_wait_deadline(from, ns);
++   return cnd_timedwait(cond, mtx, &deadline);
++}
++
++#endif
+diff --git a/src/vulkan/wsi/wsi_common_videoout.c b/src/vulkan/wsi/wsi_common_videoout.c
+index 3e9c9e59fda..47477c8a34a 100644
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -49,6 +49,7 @@
+ #include "c11/threads.h"
+ #include "util/macros.h"
+ #include "util/os_time.h"
++#include "util/ps5_timed_wait.h"
+ #include "util/u_math.h"
+ #include "vk_device.h"
+ #include "vk_instance.h"
+@@ -1053,12 +1054,13 @@ videoout_swapchain_acquire_next_image(struct wsi_swapchain *wsi_chain, const VkA
+          sceVideoOutWaitVblank(handle);
+          mtx_lock(&out->lock);
+       } else {
+-         /* A flip waiting for its frame, or an image held: wait for either. */
+-         struct timespec until;
+-         const uint64_t wake = MIN2(deadline, os_time_get_nano() + UINT64_C(20000000));
+-         until.tv_sec = wake / 1000000000;
+-         until.tv_nsec = wake % 1000000000;
+-         cnd_timedwait(&out->changed, &out->lock, &until);
++         /* A flip waiting for its frame, or an image held: wait for either.
++          * The deadline is on the clock the condition variable keeps
++          * (util/ps5_timed_wait.h): a monotonic one came back at once, and
++          * this loop spun while the flip thread waited for the frame. */
++         const uint64_t now = os_time_get_nano();
++         const uint64_t wake = MIN2(deadline, now + UINT64_C(20000000));
++         ps5_cnd_wait_ns(&out->changed, &out->lock, wake > now ? wake - now : 0);
+       }
+    }
+ }
+-- 
+2.43.0
+

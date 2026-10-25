@@ -1,0 +1,85 @@
+From c8f6c948846f7cbec4518319f674be34f5b259ef Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 18 Oct 2026 11:11:33 +0000
+Subject: [PATCH 1/2] build-radv: PS5 Mesa 14c2f44, the 120 Hz settling and
+ timed waits on the barycentrics pin
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
+---
+ NOTICE.md           |  2 +-
+ docs/RADV_PHASE.md  | 27 +++++++++++++++++++++++++++
+ tools/build-radv.sh |  2 +-
+ 3 files changed, 29 insertions(+), 2 deletions(-)
+
+diff --git a/NOTICE.md b/NOTICE.md
+index be90b03..203e20d 100644
+--- a/NOTICE.md
++++ b/NOTICE.md
+@@ -129,7 +129,7 @@ LGPL-2.1-or-later. They are a license exception to the project-owned GPL code
+ above. Mesa's completion packet and RADV overlays derive from MIT Mesa code.
+ The optional overlay and the Zink presentation fix live in PS5_Mesa commit
+ `f7ce91ac4c3697990bf89d79fdc61ae7cb98570b`. The native release archive is built
+-from a later commit, `47e9eb61ee7e1112194557e1e047178562827bc6`, and builds
++from a later commit, `14c2f449851276a3e04a0593afe76195178a3972`, and builds
+ neither the overlay nor Zink. The WGL build takes Zink from
+ the next PS5_Mesa commit, `b3588f78dd7fd46fbadc7ecd487e5f14d4213e4b`, which
+ fixes persistently mapped buffers on a device without host-visible
+diff --git a/docs/RADV_PHASE.md b/docs/RADV_PHASE.md
+index ff77397..0b258bb 100644
+--- a/docs/RADV_PHASE.md
++++ b/docs/RADV_PHASE.md
+@@ -1028,6 +1028,26 @@ Console: PS5_FrameGen's FrameGen Lab on a base PS5, on a 1440p display.
+ 
+ The release archive was rebuilt at the new pin (sha256 9563ad5d...).
+ 
++## 2026-10-11 — the 120 Hz mode measured until it settles, and kept under VRR (PS5 Mesa 08ba193)
++
++The WSI measured the vblank period once, right after configuring the 120 Hz
++mode. The output changes mode after that, and a display that re-syncs gives
++slow vblanks for a while. PSSwanStation on 120 Hz came up at 59.94 Hz at some
++starts and at 119.88 Hz at others. With VRR (attribute3 0x40000) it reported
++59.94 Hz while the display ran at 120: under VRR the display refreshes as
++flips come, and there was none yet.
++
++PS5_Mesa 08ba193, on 47e9eb6:
++
++- measures the period again for up to 1.5 s, until it is 120 Hz's;
++- still never counts a failed wait;
++- keeps 119.88 Hz for a title that declares VRR, even with slow vblanks
++  before its first flip.
++
++Console: PSSwanStation build 20 on the tester's PS5 with the same change on
++b3588f7. It came up at 119.88 Hz at every start, and with VRR reported
++119.88 Hz.
++
+ ## 2026-10-12 — fragment shader barycentrics, in order
+ 
+ `VK_KHR_fragment_shader_barycentric` is reported again, now put in order by the compiler instead of by hardware that does
+@@ -1043,3 +1063,10 @@ not do it. Mesa fork 1ba9874f478 (`radv/ps5: per-vertex fragment inputs in the p
+ 4. The smoke title's survey is now a set of checks (triangle list, strip, fan, lines in both provoking modes, `gl_BaryCoord`).
+    The full smoke on this archive: 127 passed, 1 failed (display: its modes, which counts 2 modes since the console's
+    resolution is 1440p, the 2026-10-10 entry).
++
++## 2026-10-18 — the 120 Hz settling and timed waits on the barycentrics pin (PS5 Mesa 14c2f44)
++
++PS5_Mesa 0ffa07e and 14c2f44 are 08ba193 (the 120 Hz mode measured until it
++settles, kept under VRR) and 5e99244 (timed waits on the clock the condition
++variable keeps, from Crux2) put on 1ba9874f478 unchanged; the pin moves to
++14c2f449851. Not yet run on the console.
+diff --git a/tools/build-radv.sh b/tools/build-radv.sh
+index 143eff01..85b4bcb 100644
+--- a/tools/build-radv.sh
++++ b/tools/build-radv.sh
+@@ -26,7 +26,7 @@ set -euo pipefail
+ 
+ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+ mesa_fork="${PS5_MESA_FORK:-$root/../PS5_Mesa}"
+-mesa_revision=${PS5_MESA_REVISION:-1ba9874f478657ccf6da72ce55f0260164cc0bd0}
++mesa_revision=${PS5_MESA_REVISION:-14c2f449851276a3e04a0593afe76195178a3972}
+ variant=${1:-debug}
+ sdk="$root/.deps/native/ps5-payload-sdk"
+ source_tree="$root/.deps/work/radv-src"
+-- 
+2.43.0
+

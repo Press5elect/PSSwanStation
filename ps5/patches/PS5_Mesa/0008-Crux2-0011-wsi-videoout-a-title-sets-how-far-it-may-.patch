@@ -1,0 +1,82 @@
+From e7a55437b579b800b67d960f0f1db999f82bdf73 Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:30 +0000
+Subject: [PATCH 08/12] Crux2:
+ 0011-wsi-videoout-a-title-sets-how-far-it-may-run-ahead-of-the-screen
+
+---
+ src/vulkan/wsi/wsi_common_videoout.c | 44 ++++++++++++++++++++++++++++
+ 1 file changed, 44 insertions(+)
+
+diff --git a/src/vulkan/wsi/wsi_common_videoout.c b/src/vulkan/wsi/wsi_common_videoout.c
+index 47477c8a34a..f11f6b0b284 100644
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -294,6 +294,10 @@ static once_flag videoout_once = ONCE_FLAG_INIT;
+ /* sceVideoOutSetFlipRate's rate for the output: a flip shows for at least
+  * rate + 1 vblanks. Under the output's lock. */
+ static int videoout_flip_rate;
++/* The most of a swapchain's images presented and not yet on screen (waiting
++ * for their frame, or flipped and waiting for the vblank) before an acquire
++ * waits; 0 for no limit but the images (wsi_videoout_set_queue_depth). */
++static int videoout_queue_depth;
+ 
+ static void
+ videoout_output_init_once(void)
+@@ -432,6 +436,28 @@ videoout_open_locked(void)
+ }
+ 
+ PUBLIC int wsi_videoout_set_flip_rate(int rate);
++PUBLIC int wsi_videoout_set_queue_depth(int depth);
++
++/* How far the application may run ahead of the screen: an acquire waits while
++ * `depth` of the swapchain's images are presented and not yet on screen (0:
++ * only for a free image, as without the call). A title that paces itself by
++ * the screen keeps it short while it keeps up, so what is shown follows the
++ * controls closely, and lets it grow while its frames come late, so a late
++ * frame does not hold the next one back (an image is free while one waits for
++ * its vblank). Returns 0, or -1 for a depth above the images a swapchain can
++ * have. */
++PUBLIC int
++wsi_videoout_set_queue_depth(int depth)
++{
++   if (depth < 0 || depth > VIDEOOUT_BUFFERS)
++      return -1;
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&videoout_output.lock);
++   videoout_queue_depth = depth;
++   cnd_broadcast(&videoout_output.changed);
++   mtx_unlock(&videoout_output.lock);
++   return 0;
++}
+ 
+ /* Frame pacing for the title: each flip shows for at least rate + 1 vblanks
+  * (0 every vblank, 1 every second, 2 every third), on the open output at once
+@@ -1004,6 +1030,24 @@ videoout_free_buffer_locked(uint32_t first, uint32_t count, bool *vblank)
+ 
+    uint32_t best = UINT32_MAX;
+    *vblank = false;
++   if (videoout_queue_depth > 0) {
++      uint32_t queued = 0;
++      bool flipped = false;
++      for (uint32_t i = first; i < first + count; i++) {
++         if (out->buffer[i].pending) {
++            queued++;
++         } else if (out->buffer[i].argument > shown) {
++            queued++;
++            flipped = true;
++         }
++      }
++      if (queued >= (uint32_t)videoout_queue_depth) {
++         /* A flip to show frees one at a vblank; a present waiting for its
++          * frame, when its flip is made. */
++         *vblank = flipped;
++         return UINT32_MAX;
++      }
++   }
+    for (uint32_t i = first; i < first + count; i++) {
+       if (out->buffer[i].held || out->buffer[i].pending || i == on_screen)
+          continue;
+-- 
+2.43.0
+

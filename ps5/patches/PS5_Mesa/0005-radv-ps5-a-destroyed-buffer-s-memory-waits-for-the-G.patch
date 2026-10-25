@@ -1,0 +1,104 @@
+From 981725bf1597fe1a31bae9617beddec2ae94aa23 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Sat, 3 Oct 2026 16:30:49 +0000
+Subject: [PATCH 05/12] radv/ps5: a destroyed buffer's memory waits for the
+ GPU's work
+
+amdgpu keeps a buffer that submitted work names alive in the kernel until
+that work has run, and RADV and applications rely on it. The PS5 winsys
+unmapped and released a buffer's direct memory as soon as it was destroyed,
+so work already submitted could reach unmapped memory, and the PS5's GPU
+stops on such a fault: the whole console hangs (Breath of the Wild's runes
+and scope under Cemu).
+
+A destroyed buffer's memory now waits, with the newest submission's
+sequence number, until the queue has run that far; what the GPU is done
+with is freed at each later destroy.
+---
+ src/amd/vulkan/winsys/ps5/radv_ps5_bo.c | 61 +++++++++++++++++++++++--
+ 1 file changed, 58 insertions(+), 3 deletions(-)
+
+diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_bo.c b/src/amd/vulkan/winsys/ps5/radv_ps5_bo.c
+index 084c8bbc90a..90a92ae309d 100644
+--- a/src/amd/vulkan/winsys/ps5/radv_ps5_bo.c
++++ b/src/amd/vulkan/winsys/ps5/radv_ps5_bo.c
+@@ -12,7 +12,51 @@
+ #include <string.h>
+ 
+ #include "util/os_time.h"
++#include "util/simple_mtx.h"
+ #include "util/u_atomic.h"
++#include "util/u_dynarray.h"
++
++/* The memory of a destroyed buffer, kept until the GPU has run every submission made before the
++ * destroy. amdgpu keeps a buffer that submitted work names alive in the kernel until that work is
++ * done, and RADV and applications rely on it; freed at once here, a later read or write of the
++ * GPU's reached unmapped memory, and the PS5's GPU stops on such a fault (the console hangs). */
++struct radv_ps5_zombie {
++   struct radv_ps5_memory memory;
++   void *placed;
++   uint64_t seq;
++};
++
++static simple_mtx_t radv_ps5_zombie_lock = SIMPLE_MTX_INITIALIZER;
++static struct util_dynarray radv_ps5_zombies; /* of struct radv_ps5_zombie, under the lock */
++
++static void
++radv_ps5_zombie_free(struct radv_ps5_zombie *zombie)
++{
++   if (zombie->placed)
++      radv_ps5_memory_unmap_at(zombie->placed, zombie->memory.bytes, false);
++   radv_ps5_memory_free(&zombie->memory);
++}
++
++/* Frees what the GPU is done with: everything when there is no queue. */
++static void
++radv_ps5_zombies_reap(struct radv_ps5_winsys *ws)
++{
++   const uint64_t done = ws->queue ? radv_ps5_queue_poll(ws->queue) : UINT64_MAX;
++   simple_mtx_lock(&radv_ps5_zombie_lock);
++   unsigned count = util_dynarray_num_elements(&radv_ps5_zombies, struct radv_ps5_zombie);
++   for (unsigned i = 0; i < count;) {
++      struct radv_ps5_zombie *zombie = util_dynarray_element(&radv_ps5_zombies, struct radv_ps5_zombie, i);
++      if (zombie->seq > done) {
++         i++;
++         continue;
++      }
++      radv_ps5_zombie_free(zombie);
++      *zombie = *util_dynarray_top_ptr(&radv_ps5_zombies, struct radv_ps5_zombie);
++      (void)util_dynarray_pop(&radv_ps5_zombies, struct radv_ps5_zombie);
++      count--;
++   }
++   simple_mtx_unlock(&radv_ps5_zombie_lock);
++}
+ 
+ /* A buffer is one direct-memory allocation, mapped for the CPU and the GPU at
+  * the same address for as long as it lives, so it is always resident, its GPU
+@@ -124,10 +168,21 @@ radv_ps5_buffer_destroy(struct radeon_winsys *rws, struct radeon_winsys_bo *base
+       p_atomic_add(&ws->allocated_vram, -(int64_t)bo->memory.bytes);
+    else
+       p_atomic_add(&ws->allocated_gtt, -(int64_t)bo->memory.bytes);
+-   if (bo->placed)
+-      radv_ps5_memory_unmap_at(bo->placed, bo->memory.bytes, false);
+-   radv_ps5_memory_free(&bo->memory);
++   struct radv_ps5_zombie zombie = {.memory = bo->memory, .placed = bo->placed};
+    free(bo);
++   /* Work submitted before now may still use it: kept until the GPU has run it. */
++   if (ws->queue) {
++      zombie.seq = p_atomic_read(&ws->queue->submitted_seq);
++      if (radv_ps5_queue_poll(ws->queue) < zombie.seq) {
++         simple_mtx_lock(&radv_ps5_zombie_lock);
++         util_dynarray_append_typed(&radv_ps5_zombies, struct radv_ps5_zombie, zombie);
++         simple_mtx_unlock(&radv_ps5_zombie_lock);
++         radv_ps5_zombies_reap(ws);
++         return;
++      }
++   }
++   radv_ps5_zombie_free(&zombie);
++   radv_ps5_zombies_reap(ws);
+ }
+ 
+ static void *
+-- 
+2.43.0
+

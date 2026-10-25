@@ -32,6 +32,16 @@ def at(repo, remote=None):
                 dirty=bool(git(repo, "status", "--porcelain", "--untracked-files=no")))
 
 
+def patched(source, folder, src):
+    """A part whose newest commits are kept as patches in ps5/patches/<folder>
+    (patches/README.md): its source is the base on GitHub and those patches."""
+    base_file = src / "ps5/patches" / folder / "BASE"
+    if base_file.exists():
+        source["base"] = base_file.read_text().strip()
+        source["patches"] = "ps5/patches/" + folder
+    return source
+
+
 def main():
     app, src, vulkan, sdk, hui, libsmb2, rcheevos, lapy, database = (Path(a) for a in sys.argv[1:10])
     libnfs = Path(sys.argv[10]) if len(sys.argv) > 10 else src.parent / "deps-src/libnfs"
@@ -57,7 +67,8 @@ def main():
         source=title))
     parts.append(dict(
         id="ps5-vulkan", name="PS5_Vulkan: the RADV link recipe, the packaging tool and sce_module/libc.prx",
-        licence="GPL-3.0-or-later", artifacts=["eboot.bin", "sce_module/libc.prx"], source=at(vulkan)))
+        licence="GPL-3.0-or-later", artifacts=["eboot.bin", "sce_module/libc.prx"],
+        source=patched(at(vulkan), "PS5_Vulkan", src)))
     revision = (sdk / ".ps5-sdk-revision").read_text().strip() if (sdk / ".ps5-sdk-revision").exists() else "unknown"
     parts.append(dict(
         id="platform", name="the PS5 platform layer (libps5platform.a) and the SDK headers, from the payload SDK fork, "
@@ -71,8 +82,9 @@ def main():
     parts.append(dict(
         id="radv", name="RADV, Mesa's Vulkan driver (with ACO, NIR and Mesa's Vulkan runtime), from the PS5_Mesa fork",
         licence="MIT, with other licences stated per file (licenses/Mesa-license.rst)", artifacts=["eboot.bin"],
-        source=dict(kind="git", remote="https://github.com/mihawk-99/PS5_Mesa", revision=mesa.group(1) if mesa else "unknown",
-                    dirty=False, built_with_sdk=radv_sdk.group(1) if radv_sdk else None)))
+        source=patched(dict(kind="git", remote="https://github.com/mihawk-99/PS5_Mesa",
+                            revision=mesa.group(1) if mesa else "unknown", dirty=False,
+                            built_with_sdk=radv_sdk.group(1) if radv_sdk else None), "PS5_Mesa", src)))
     parts.append(dict(
         id="llvm-runtime", name="LLVM libc++, libc++abi, libunwind and compiler-rt builtins (linked into eboot.bin)",
         licence="Apache-2.0 WITH LLVM-exception", artifacts=["eboot.bin"],
@@ -86,7 +98,8 @@ def main():
              "SIL OFL 1.1, DejaVu Sans Mono under the Bitstream Vera licence), and its recorded sounds and songs "
              "in assets/hui",
         licence="GPL-3.0-or-later; the fonts OFL-1.1 and Bitstream Vera (licenses/README.txt)",
-        artifacts=["eboot.bin", "assets/hui/"], source=at(hui, "https://github.com/mihawk-99/PS5_VKHomebrewUI")))
+        artifacts=["eboot.bin", "assets/hui/"],
+        source=patched(at(hui, "https://github.com/mihawk-99/PS5_VKHomebrewUI"), "PS5_VKHomebrewUI", src)))
     parts.append(dict(id="libsmb2", name="libsmb2 (network shares)", licence="LGPL-2.1-or-later", artifacts=["eboot.bin"],
                       source=at(libsmb2)))
     parts.append(dict(id="libnfs", name="libnfs (NFS shares)", licence="LGPL-2.1-or-later; its protocol files BSD-2-Clause",

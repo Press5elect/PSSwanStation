@@ -1,0 +1,35 @@
+From 8a45c72f0093d673f6f7ec5a9e36ba4007c1c3de Mon Sep 17 00:00:00 2001
+From: Press5elect <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:58:29 +0000
+Subject: [PATCH 2/2] build-radv: PS5 Mesa 8bbcea3, Mesa 27.0-devel with
+ Crux2's RADV patches
+
+PS5 Mesa branch ps5-mesa-27: main (1ba9874) with Crux2's ps5/patches/mesa-27 applied
+in order (0001-0004, 0007, 0009-0014: the GFX10.1 hardware workarounds, a destroyed
+buffer's memory kept until the GPU is past it, the GPU wait's spin and sleep at run
+time, the threaded recorder's clock, wsi_videoout_set_queue_depth, the Mesa 27.0-devel
+merge, the shader cache index without MAP_FIXED), then 0ffa07e's 119.88 Hz settle that
+keeps the mode under VRR, which Crux2's 0003 lacks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
+---
+ tools/build-radv.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/build-radv.sh b/tools/build-radv.sh
+index 85b4bcb..bc5c41b 100644
+--- a/tools/build-radv.sh
++++ b/tools/build-radv.sh
+@@ -26,7 +26,7 @@ set -euo pipefail
+ 
+ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+ mesa_fork="${PS5_MESA_FORK:-$root/../PS5_Mesa}"
+-mesa_revision=${PS5_MESA_REVISION:-14c2f449851276a3e04a0593afe76195178a3972}
++mesa_revision=${PS5_MESA_REVISION:-8bbcea366d65e0fd0e26dfa3c948dec18d93dbfc}
+ variant=${1:-debug}
+ sdk="$root/.deps/native/ps5-payload-sdk"
+ source_tree="$root/.deps/work/radv-src"
+-- 
+2.43.0
+

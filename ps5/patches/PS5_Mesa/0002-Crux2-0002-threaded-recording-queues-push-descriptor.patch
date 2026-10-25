@@ -1,0 +1,246 @@
+From 0cef416e4e188800c4c4c423183a6e859a65e2e9 Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:29 +0000
+Subject: [PATCH 02/12] Crux2: 0002-threaded-recording-queues-push-descriptors
+
+---
+ src/amd/vulkan/layers/radv_threaded_layer.c   | 137 ++++++++++++++++++
+ src/amd/vulkan/layers/radv_threaded_layer.h   |   6 +
+ .../vulkan/layers/radv_threaded_layer_gen.py  |  23 ++-
+ 3 files changed, 165 insertions(+), 1 deletion(-)
+
+diff --git a/src/amd/vulkan/layers/radv_threaded_layer.c b/src/amd/vulkan/layers/radv_threaded_layer.c
+index 7a7e3a2082d..23f43ded0e8 100644
+--- a/src/amd/vulkan/layers/radv_threaded_layer.c
++++ b/src/amd/vulkan/layers/radv_threaded_layer.c
+@@ -63,6 +63,12 @@ struct radv_threaded_recorder {
+ 
+ static thread_local bool radv_threaded_on_worker;
+ 
++#ifdef RADV_PS5
++/* A title that wants to know the worker defines this (PCSX2 for PS5 samples
++ * the thread in its profiled test runs); the worker calls it as it starts. */
++extern void ps5_title_thread_named(const char *name) __attribute__((weak));
++#endif
++
+ bool
+ radv_threaded_recording_enabled(void)
+ {
+@@ -90,6 +96,11 @@ radv_threaded_worker(void *opaque)
+    struct radv_threaded_recorder *rec = device->threaded;
+    radv_threaded_on_worker = true;
+ 
++#ifdef RADV_PS5
++   if (ps5_title_thread_named)
++      ps5_title_thread_named("RADV recorder");
++#endif
++
+    mtx_lock(&rec->lock);
+    for (;;) {
+       if (list_is_empty(&rec->batches)) {
+@@ -366,6 +377,132 @@ radv_threaded_queue_CmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLa
+    list_addtail(&cmd->cmd_link, &queue->cmds);
+ }
+ 
++/* vkCmdPushDescriptorSet. Recorded directly, each one first waits for the
++ * worker to record everything queued before it, and a program that pushes its
++ * textures before most draws (PCSX2's renderer does) then waits once a draw:
++ * its thread and the worker take turns, which is slower than no worker.
++ *
++ * The runtime's own enqueue cannot be used: it takes a reference on the
++ * layout as the runtime's vk_pipeline_layout, which RADV's is not. The layout
++ * is named by its handle here, as vkCmdBindDescriptorSets' is above: a layout
++ * outlives the command buffers recorded with it, and the layer's destroys
++ * wait for the worker.
++ *
++ * The writes are copied as the runtime copies them: the array, and for each
++ * write the image, buffer or texel buffer view array its type reads. A write
++ * with a pNext chain (inline uniform blocks, acceleration structures), of a
++ * type not listed, or of more descriptors than a push set can have, is not
++ * queued.
++ *
++ * What the writes name (image views, samplers, buffers) is read when the
++ * worker records the command, not when the application calls it, as with
++ * every queued command: valid usage keeps those objects alive while the
++ * command buffer records. */
++bool
++radv_threaded_queue_CmdPushDescriptorSet(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
++                                         VkPipelineLayout layout, uint32_t set, uint32_t descriptorWriteCount,
++                                         const VkWriteDescriptorSet *pDescriptorWrites)
++{
++   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
++   struct vk_cmd_queue *queue = &cmd_buffer->vk.cmd_queue;
++
++   for (uint32_t i = 0; i < descriptorWriteCount; i++) {
++      if (pDescriptorWrites[i].pNext || pDescriptorWrites[i].descriptorCount > MAX_PUSH_DESCRIPTORS)
++         return false;
++
++      switch (pDescriptorWrites[i].descriptorType) {
++      case VK_DESCRIPTOR_TYPE_SAMPLER:
++      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
++      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
++      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
++      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
++      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
++      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
++      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
++      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
++      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
++      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
++         break;
++      default:
++         return false;
++      }
++   }
++
++   if (vk_command_buffer_has_error(&cmd_buffer->vk))
++      return true;
++
++   struct vk_cmd_queue_entry *cmd = linear_alloc_child(queue->ctx, vk_cmd_queue_type_sizes[VK_CMD_PUSH_DESCRIPTOR_SET]);
++   VkWriteDescriptorSet *writes =
++      descriptorWriteCount ? linear_alloc_child(queue->ctx, sizeof(*writes) * descriptorWriteCount) : NULL;
++   if (!cmd || (descriptorWriteCount && !writes))
++      goto fail;
++
++   for (uint32_t i = 0; i < descriptorWriteCount; i++) {
++      const VkWriteDescriptorSet *src = &pDescriptorWrites[i];
++      VkWriteDescriptorSet *dst = &writes[i];
++      const uint32_t count = src->descriptorCount;
++
++      /* Only the array the type reads is the application's to fill in; the
++       * other two pointers may hold anything. */
++      *dst = *src;
++      dst->pImageInfo = NULL;
++      dst->pBufferInfo = NULL;
++      dst->pTexelBufferView = NULL;
++      if (!count)
++         continue;
++
++      switch (src->descriptorType) {
++      case VK_DESCRIPTOR_TYPE_SAMPLER:
++      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
++      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
++      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
++      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
++         VkDescriptorImageInfo *infos = linear_alloc_child(queue->ctx, sizeof(*infos) * count);
++         if (!infos)
++            goto fail;
++         memcpy(infos, src->pImageInfo, sizeof(*infos) * count);
++         dst->pImageInfo = infos;
++         break;
++      }
++      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
++      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: {
++         VkBufferView *views = linear_alloc_child(queue->ctx, sizeof(*views) * count);
++         if (!views)
++            goto fail;
++         memcpy(views, src->pTexelBufferView, sizeof(*views) * count);
++         dst->pTexelBufferView = views;
++         break;
++      }
++      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
++      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
++      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
++      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: {
++         VkDescriptorBufferInfo *infos = linear_alloc_child(queue->ctx, sizeof(*infos) * count);
++         if (!infos)
++            goto fail;
++         memcpy(infos, src->pBufferInfo, sizeof(*infos) * count);
++         dst->pBufferInfo = infos;
++         break;
++      }
++      default:
++         UNREACHABLE("a type the loop above lets through");
++      }
++   }
++
++   cmd->type = VK_CMD_PUSH_DESCRIPTOR_SET;
++   cmd->u.push_descriptor_set.pipeline_bind_point = pipelineBindPoint;
++   cmd->u.push_descriptor_set.layout = layout;
++   cmd->u.push_descriptor_set.set = set;
++   cmd->u.push_descriptor_set.descriptor_write_count = descriptorWriteCount;
++   cmd->u.push_descriptor_set.descriptor_writes = writes;
++   list_addtail(&cmd->cmd_link, &queue->cmds);
++   return true;
++
++fail:
++   vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
++   return true;
++}
++
+ /* The command buffer lifecycle: an end records what is queued first; a
+  * begin, a reset or a free drops it (radv_threaded_discard). */
+ 
+diff --git a/src/amd/vulkan/layers/radv_threaded_layer.h b/src/amd/vulkan/layers/radv_threaded_layer.h
+index 9dce550ef45..340f3b72538 100644
+--- a/src/amd/vulkan/layers/radv_threaded_layer.h
++++ b/src/amd/vulkan/layers/radv_threaded_layer.h
+@@ -49,4 +49,10 @@ void radv_threaded_queue_CmdPushConstants(VkCommandBuffer commandBuffer, VkPipel
+                                           VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size,
+                                           const void *pValues);
+ 
++/* False when a write cannot be queued (it carries a pNext chain, or is of a
++ * type whose data is in one): the caller then records the command directly. */
++bool radv_threaded_queue_CmdPushDescriptorSet(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
++                                              VkPipelineLayout layout, uint32_t set, uint32_t descriptorWriteCount,
++                                              const VkWriteDescriptorSet *pDescriptorWrites);
++
+ #endif /* RADV_THREADED_LAYER_H */
+diff --git a/src/amd/vulkan/layers/radv_threaded_layer_gen.py b/src/amd/vulkan/layers/radv_threaded_layer_gen.py
+index 1a82c45475b..aa5a9852096 100644
+--- a/src/amd/vulkan/layers/radv_threaded_layer_gen.py
++++ b/src/amd/vulkan/layers/radv_threaded_layer_gen.py
+@@ -34,8 +34,13 @@ LAYER_QUEUED_COMMANDS = [
+     'CmdPushConstants',
+ ]
+ 
+-DIRECT_COMMANDS = [
++# Queued by the layer itself when its writes can be copied, recorded directly
++# when they cannot (radv_threaded_queue_CmdPushDescriptorSet says which).
++LAYER_QUEUED_OR_DIRECT_COMMANDS = [
+     'CmdPushDescriptorSet',
++]
++
++DIRECT_COMMANDS = [
+     'CmdPushDescriptorSetWithTemplate',
+     'CmdSetDescriptorBufferOffsetsEXT',
+     'CmdBindDescriptorBufferEmbeddedSamplersEXT',
+@@ -93,6 +98,13 @@ threaded_${c.name}(${c.decl_params()})
+ % elif c.name in layer_queued_commands:
+    radv_threaded_queue_${c.name}(${c.call_params()});
+    radv_threaded_note(cmd_buffer, false);
++% elif c.name in layer_queued_or_direct_commands:
++   if (radv_threaded_queue_${c.name}(${c.call_params()})) {
++      radv_threaded_note(cmd_buffer, false);
++   } else {
++      radv_threaded_drain(cmd_buffer);
++      device->layer_dispatch.threaded.${c.name}(${c.call_params()});
++   }
+ % else:
+    vk_cmd_enqueue_${c.name}(${c.call_params()});
+    radv_threaded_note(cmd_buffer, ${'true' if c.name in kick_commands else 'false'});
+@@ -154,12 +166,21 @@ def main():
+             continue
+         commands.append(e)
+ 
++    # A name in the lists that matches no command (a rename in the registry)
++    # would silently get the runtime's enqueue, wrong for these commands.
++    known = set(c.name for c in commands) | set(NO_ENQUEUE_COMMANDS)
++    for name in LAYER_QUEUED_COMMANDS + LAYER_QUEUED_OR_DIRECT_COMMANDS + DIRECT_COMMANDS + KICK_COMMANDS:
++        if name not in known:
++            print('radv_threaded_layer_gen.py: no command named ' + name, file=sys.stderr)
++            sys.exit(1)
++
+     environment = {
+         "filename": os.path.basename(__file__),
+         "commands": commands,
+         "destroys": destroys,
+         "direct_commands": DIRECT_COMMANDS,
+         "layer_queued_commands": LAYER_QUEUED_COMMANDS,
++        "layer_queued_or_direct_commands": LAYER_QUEUED_OR_DIRECT_COMMANDS,
+         "kick_commands": KICK_COMMANDS,
+     }
+ 
+-- 
+2.43.0
+

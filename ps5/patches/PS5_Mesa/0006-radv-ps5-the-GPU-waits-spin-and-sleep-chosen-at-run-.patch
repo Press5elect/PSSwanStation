@@ -1,0 +1,106 @@
+From 7cf295ba177d9ccf30d510934016310012dc9550 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Tue, 13 Oct 2026 18:52:14 +0000
+Subject: [PATCH 06/12] radv/ps5: the GPU waits' spin and sleep chosen at run
+ time, and fence status without the clock
+
+A wait for the GPU checks the marker in a loop for 1.5 ms, then sleeps a
+millisecond between looks, so it wakes up to a millisecond after the GPU
+got there. Cemu waits so for the previous frame at every swap, and the
+flip thread for each frame before its flip. RADV_PS5_WAIT_SPIN_US and
+RADV_PS5_WAIT_SLEEP_US now choose the two (1500 and 1000 by default, as
+before), so an A/B on a console can try shorter sleeps without a new
+driver. This replaces patch 0003's fixed 200 us.
+
+vkGetFenceStatus waits with an absolute timeout of 0, and every one that
+found its fence not yet signalled read the monotonic clock to learn so, a
+system call on the console. Cemu asks after every submission. A zero
+timeout now answers VK_TIMEOUT without reading it, as 0003 did; the
+answer is the same.
+---
+ src/amd/vulkan/winsys/ps5/radv_ps5_sync.c   |  7 ++++++
+ src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c | 28 ++++++++++++++++++---
+ 2 files changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c b/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c
+index 065db71920a..46d823b325c 100644
+--- a/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c
++++ b/src/amd/vulkan/winsys/ps5/radv_ps5_sync.c
+@@ -141,6 +141,13 @@ radv_ps5_sync_wait_many(struct vk_device *device, uint32_t wait_count, const str
+          mtx_unlock(&queue->sync_lock);
+          return VK_SUCCESS;
+       }
++      /* A status query (vkGetFenceStatus, which Cemu makes after every
++       * submission) asks with no time at all: the answer needs no clock,
++       * which can be a system call on the console. */
++      if (abs_timeout_ns == 0) {
++         mtx_unlock(&queue->sync_lock);
++         return VK_TIMEOUT;
++      }
+       const uint64_t now = os_time_get_nano();
+       if (now >= abs_timeout_ns) {
+          mtx_unlock(&queue->sync_lock);
+diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c b/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c
+index 1141aff00c2..d642799fbcf 100644
+--- a/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c
++++ b/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c
+@@ -20,6 +20,7 @@ extern void ps5_title_breadcrumb(const char *text) __attribute__((weak));
+ #include "tools/radv_debug.h"
+ #include "util/os_time.h"
+ #include "util/u_atomic.h"
++#include "util/u_debug.h"
+ #include "util/u_math.h"
+ #include "ac_linux_drm.h"
+ #include "sid.h"
+@@ -94,8 +95,26 @@ radv_ps5_queue_poll(struct radv_ps5_queue *queue)
+  * a conformance run's heaviest cases need more). */
+ #define RADV_PS5_STALL_NS (UINT64_C(10) * 1000000000)
+ /* Before sleeping, the marker is checked in a loop for this long: most waits
+- * end well inside a millisecond (PS5_Vulkan R36). */
+-#define RADV_PS5_SPIN_NS UINT64_C(1500000)
++ * end well inside a millisecond (PS5_Vulkan R36). After that it is checked
++ * between sleeps, and a wait wakes up to a sleep late after the GPU got there:
++ * the flip thread waits so for each frame before its flip, and Cemu for the
++ * previous frame at every swap. RADV_PS5_WAIT_SPIN_US and
++ * RADV_PS5_WAIT_SLEEP_US change them (1500 and 1000 by default). */
++static uint64_t radv_ps5_wait_spin_ns = UINT64_C(1500000);
++static unsigned radv_ps5_wait_sleep_us = 1000;
++static once_flag radv_ps5_wait_once = ONCE_FLAG_INIT;
++
++static void
++radv_ps5_wait_configure(void)
++{
++   const int64_t spin_us = debug_get_num_option("RADV_PS5_WAIT_SPIN_US", 1500);
++   const int64_t sleep_us = debug_get_num_option("RADV_PS5_WAIT_SLEEP_US", 1000);
++   radv_ps5_wait_spin_ns = (uint64_t)CLAMP(spin_us, 0, 100000) * 1000;
++   radv_ps5_wait_sleep_us = (unsigned)CLAMP(sleep_us, 50, 10000);
++   if (spin_us != 1500 || sleep_us != 1000)
++      fprintf(stderr, "radv/ps5: a wait for the GPU spins %" PRIu64 " us, then sleeps %u us between looks\n",
++              radv_ps5_wait_spin_ns / 1000, radv_ps5_wait_sleep_us);
++}
+ 
+ bool
+ radv_ps5_queue_wait_seq(struct radv_ps5_queue *queue, uint64_t seq, uint64_t abs_timeout_ns)
+@@ -103,8 +122,9 @@ radv_ps5_queue_wait_seq(struct radv_ps5_queue *queue, uint64_t seq, uint64_t abs
+    uint64_t completed = radv_ps5_queue_poll(queue);
+    if (completed >= seq)
+       return true;
++   call_once(&radv_ps5_wait_once, radv_ps5_wait_configure);
+    uint64_t now = os_time_get_nano();
+-   const uint64_t spin_until = now + RADV_PS5_SPIN_NS;
++   const uint64_t spin_until = now + radv_ps5_wait_spin_ns;
+    uint64_t progress_at = now;
+    uint64_t last = completed;
+    for (;;) {
+@@ -125,7 +145,7 @@ radv_ps5_queue_wait_seq(struct radv_ps5_queue *queue, uint64_t seq, uint64_t abs
+       if (now < spin_until)
+          __builtin_ia32_pause();
+       else
+-         radv_ps5_sleep_us(1000);
++         radv_ps5_sleep_us(radv_ps5_wait_sleep_us);
+    }
+ }
+ 
+-- 
+2.43.0
+
