@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Build 25 (not released yet)
+Build 25
   Added
   - GameShark codes typed in: "Add a GameShark code" in a game's Cheats
     asks for a name, then the code on a keypad of the sixteen digits (a
@@ -57,7 +57,13 @@ Build 25 (not released yet)
     composite signal and a curved picture tube), Fast (2x), Normal (4x),
     Enhanced (6x), Beautiful (8x) and Speedrun. The enhanced ones smooth
     edges by their resolution, not MSAA, so accurate blending stays on.
+  - Newer parts: SwanStation's newest (libretro/swanstation 631f0fb),
+    libsmb2 (727feaa: replies checked against their requests and the
+    packet's length, nothing sent in the clear that must be sealed) and
+    libnfs (371333f: a lost connection tried again with a pause between).
   Fixed
+  - A save state with a timing event, an MDEC command or a video timing
+    that cannot be is refused, instead of running on in a broken state.
   - Closing a game no longer brings every file up to date with the network
     share (thousands of covers, every folder): only what a game changes,
     its memory card and save states. The rest is brought up to date when

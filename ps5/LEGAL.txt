@@ -11,8 +11,8 @@ not ask for help with it.
 Licences: PSSwanStation is SwanStation, the libretro fork of DuckStation as
 it was under the GNU General Public License, with a PS5 frontend of its own.
 The title as distributed is under the GNU General Public License, version 3,
-as a whole, WITHOUT ANY WARRANTY, and its complete source is offered with
-it. The PS5 title's own code is Copyright (C) 2026 Press5elect, with
+as a whole, WITHOUT ANY WARRANTY, and its complete source is public, every
+part at the revision it was built from. The PS5 title's own code is Copyright (C) 2026 Press5elect, with
 an additional term under section 7(b) of the licence: copies and works based
 on it, however they are made (AI tools included), must keep its author's
 attributions (licenses/ADDITIONAL-TERMS.txt). Every part, its licence and
