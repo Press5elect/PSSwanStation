@@ -7,6 +7,13 @@
 #   icache                            the instruction cache's line fills timed, physical tags
 #   regfuzz [first] [last] [frames]   register fuzzer, one run per seed (default 1 20 120)
 #   statefuzz [first] [last] [iters]  corrupted save states loaded into a fuzzed system (default 1 3 150)
+#   mdecstate                         MDEC states with table commands short of parameters, unknown
+#                                     states and a block write-out with nothing scheduled must be
+#                                     rejected, valid pending table commands loaded; all must save again
+#   eventstate                        timing events already due or that would run with negative elapsed
+#                                     time, and a GPU CRTC event postponed past a CPU slice or with
+#                                     another period or interval, must be rejected; in-range ones and
+#                                     real states loaded at the lowest and highest clocks; all must save
 #   rollback                          every byte of the CPU section head set to 0xFF in turn and
 #                                     loaded as a netplay rollback (no fallback copy); frames still run
 #                                     after each rejected load
@@ -20,6 +27,10 @@
 #                                     path/label queries with missing, empty and short buffers
 #   reload                            the core re-initialized under a new environment, with a
 #                                     second logger and then none; no call reaches a replaced logger
+#   vulkan                            the Vulkan renderer's device negotiated as RetroArch does (v2,
+#                                     made through the frontend's wrapper) and as a frontend without
+#                                     v2 does (v1), under the validation layer; needs a Vulkan
+#                                     driver, e.g. lavapipe
 #
 # UPDATE_EXPECTED=1 rewrites an expected file from the core under test.
 # Needs clang, ld.lld and llvm-objcopy for the MIPS test ROMs, python3, and a
@@ -190,6 +201,83 @@ PY
     echo "statefuzz: seeds $first-$last passed"
     ;;
 
+  mdecstate)
+    build_rom mdec_state
+    # MDEC section with both FIFOs empty: status (4), DMA in/out (1+1), FIFO sizes (4+4),
+    # state (1) at 14, remaining halfwords (4) at 15. States: 2 WritingMacroblock,
+    # 3 SetIqTable, 4 SetScaleTable, 5 NoCommand (last).
+    for c in 3:32:loaded 3:64:loaded 4:64:loaded 3:0:rejected 3:2:rejected 3:66:rejected \
+      4:0:rejected 4:32:rejected 2:0:rejected 6:0:rejected; do
+      state=${c%%:*}
+      rest=${c#*:}
+      halfwords=${rest%%:*}
+      expect=${rest#*:}
+      patch=$(printf 'MDEC+14:%x,MDEC+15:%x,MDEC+16:0,MDEC+17:0,MDEC+18:0' "$state" "$halfwords")
+      if ! STATEFUZZ=1 STATEFUZZ_PATCH="$patch" run_rom mdec_state 1 0 10; then
+        echo "mdecstate: state $state, $halfwords halfwords failed"
+        exit 1
+      fi
+      if ! grep -q "patched state $expect" "$WORK/run.log" || ! grep -q "patched state saved" "$WORK/run.log"; then
+        cat "$WORK/run.log"
+        echo "mdecstate: state $state, $halfwords halfwords: expected $expect and saved"
+        exit 1
+      fi
+    done
+    echo "mdecstate: passed"
+    ;;
+
+  eventstate)
+    build_rom mdec_state
+    # Each event record is its name (u32 length, bytes) then downcount, time since
+    # last run, period and interval, each a little-endian s32 at +0, +4, +8, +12.
+    le32()
+    {
+      v=$(( $3 & 0xFFFFFFFF ))
+      printf '%s+%d:%x,%s+%d:%x,%s+%d:%x,%s+%d:%x' "$1" "$2" $((v & 255)) "$1" $(($2 + 1)) $(((v >> 8) & 255)) \
+        "$1" $(($2 + 2)) $(((v >> 16) & 255)) "$1" $(($2 + 3)) $(((v >> 24) & 255))
+    }
+    crtc="GPU CRTC Tick"
+    spu="SPU Sample"
+    for c in \
+      "loaded 100 $(le32 "$crtc" 0 1),$(le32 "$crtc" 4 0)" \
+      "loaded 50 $(le32 "$crtc" 0 1),$(le32 "$crtc" 4 0)" \
+      "loaded 100 $(le32 "$spu" 0 1),$(le32 "$spu" 4 -1)" \
+      "rejected 100 $(le32 "$spu" 0 0),$(le32 "$spu" 4 0)" \
+      "rejected 100 $(le32 "$spu" 0 -1000),$(le32 "$spu" 4 2000)" \
+      "rejected 100 $(le32 "$crtc" 0 -1000),$(le32 "$crtc" 4 2000)" \
+      "rejected 100 $(le32 "$spu" 0 1),$(le32 "$spu" 4 -2)" \
+      "rejected 100 $(le32 "$crtc" 0 0x3FFFFFFF)" \
+      "rejected 160 $(le32 "$crtc" 0 0x3FFFFFFF)" \
+      "rejected 100 $(le32 "$crtc" 4 0x3FFFFFFF)" \
+      "rejected 100 $(le32 "$crtc" 8 2)" \
+      "rejected 100 $(le32 "$crtc" 12 2)"; do
+      expect=${c%% *}
+      rest=${c#* }
+      clock=${rest%% *}
+      patch=${rest#* }
+      if ! FE_OVERCLOCK=$clock STATEFUZZ=1 STATEFUZZ_PATCH="$patch" run_rom mdec_state 1 0 10; then
+        echo "eventstate: $patch at $clock% failed"
+        exit 1
+      fi
+      if ! grep -q "patched state $expect" "$WORK/run.log" || ! grep -q "patched state saved" "$WORK/run.log"; then
+        cat "$WORK/run.log"
+        echo "eventstate: $patch at $clock%: expected $expect and saved"
+        exit 1
+      fi
+    done
+    # States saved at frame ends across a run at the lowest and highest clocks load again.
+    build_rom gpu_polyline
+    for clock in 50 160; do
+      for frames in 1 17 60 121; do
+        if ! FE_OVERCLOCK=$clock STATEFUZZ=0 run_rom gpu_polyline 1 0 $frames; then
+          echo "eventstate: state saved after $frames frames at $clock% failed"
+          exit 1
+        fi
+      done
+    done
+    echo "eventstate: passed"
+    ;;
+
   rollback)
     build_rom regfuzz
     python3 "$TESTS/make_disc.py" "$WORK"
@@ -239,6 +327,31 @@ PY
       exit 1
     fi
     grep "reload test:" "$WORK/run.log"
+    ;;
+
+  vulkan)
+    build_rom gpu_polyline
+    python3 "$TESTS/make_disc.py" "$WORK"
+    "$CC" -O1 -g ${FRONTEND_CFLAGS:-} -I"$TESTS/../dep/libretro-common/include" -I"$TESTS/../dep/vulkan-loader/include" \
+      "$TESTS/harness/vk_negotiate.c" -o "$WORK/vk_negotiate" -ldl
+    # Each frontend: RetroArch's (negotiation v2: the device must be made through
+    # its wrapper), and one that predates v2.
+    for offer in 2 1; do
+      dir="$WORK/bios-vk"
+      rm -rf "$dir"
+      mkdir -p "$dir"
+      python3 "$TESTS/guest/mkrom.py" "$WORK/gpu_polyline.rom" "$dir/bios.bin" 1 0
+      expect=0
+      [ "$offer" -ge 2 ] && expect=1
+      if ! VKN_OFFER=$offer VKN_EXPECT_WRAPPER=$expect VKN_DIR="$dir" timeout "$TIMEOUT" "$WORK/vk_negotiate" "$CORE" "$WORK/disc.cue" \
+        swanstation_GPU_Renderer=Vulkan swanstation_CPU_ExecutionMode="$FE_CPU" \
+        swanstation_CPU_FastmemMode="$FE_FASTMEM" > "$WORK/run.log" 2>&1; then
+        cat "$WORK/run.log"
+        echo "vulkan: negotiation v$offer failed"
+        exit 1
+      fi
+      cat "$WORK/run.log"
+    done
     ;;
 
   *)

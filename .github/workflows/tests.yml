@@ -17,10 +17,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install test ROM toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang lld llvm
+        run: sudo apt-get update && sudo apt-get install -y clang lld llvm mesa-vulkan-drivers vulkan-validationlayers
 
       - name: Build
         run: make -f Makefile.libretro -j$(nproc)
+
+      - name: Vulkan device negotiation (lavapipe, validation layer)
+        run: VK_DRIVER_FILES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1) tests/run_tests.sh swanstation_libretro.so vulkan
 
       - name: MDEC decode and poly-lines
         run: |
@@ -34,6 +37,11 @@ jobs:
 
       - name: Save state fuzzer
         run: tests/run_tests.sh swanstation_libretro.so statefuzz 1 4 150
+
+      - name: MDEC and timing event save state checks
+        run: |
+          tests/run_tests.sh swanstation_libretro.so mdecstate
+          tests/run_tests.sh swanstation_libretro.so eventstate
 
   sanitizers:
     name: ASan and UBSan
@@ -68,6 +76,11 @@ jobs:
           FE_CPU=Recompiler tests/run_tests.sh swanstation_libretro.so statefuzz 1 4 150
           FE_CPU=Interpreter tests/run_tests.sh swanstation_libretro.so statefuzz 5 8 150
 
+      - name: MDEC and timing event save state checks
+        run: |
+          tests/run_tests.sh swanstation_libretro.so mdecstate
+          tests/run_tests.sh swanstation_libretro.so eventstate
+
   thread-sanitizer:
     name: TSan
     runs-on: ubuntu-24.04
@@ -88,3 +101,5 @@ jobs:
           tests/run_tests.sh swanstation_libretro.so mdec
           tests/run_tests.sh swanstation_libretro.so regfuzz 1 10 200
           tests/run_tests.sh swanstation_libretro.so statefuzz 1 2 100
+          tests/run_tests.sh swanstation_libretro.so mdecstate
+          tests/run_tests.sh swanstation_libretro.so eventstate
