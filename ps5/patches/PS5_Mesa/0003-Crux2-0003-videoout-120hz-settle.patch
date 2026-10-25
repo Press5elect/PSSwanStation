@@ -1,0 +1,76 @@
+From 01a910ba280caa6c3730d5718ed32c29459065ba Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:29 +0000
+Subject: [PATCH 03/12] Crux2: 0003-videoout-120hz-settle
+
+---
+ src/vulkan/wsi/wsi_common_videoout.c | 31 ++++++++++++++++++++++------
+ 1 file changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/src/vulkan/wsi/wsi_common_videoout.c b/src/vulkan/wsi/wsi_common_videoout.c
+index 1f59ac2120e..3e9c9e59fda 100644
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -74,6 +74,10 @@
+  * went on refreshing at 60 Hz, as a tester's did (PS5_Vulkan, R31). */
+ #define VIDEOOUT_HIGH_REFRESH_LIMIT_NS UINT64_C(12500000)
+ #define VIDEOOUT_PERIOD_INTERVALS 6
++/* How long a display switching to 119.88 Hz is given to settle before 59.94 Hz
++ * is restored: some televisions keep their old rate for a moment after the
++ * mode is taken (Crux2 0003). */
++#define VIDEOOUT_HIGH_REFRESH_SETTLE_NS UINT64_C(1500000000)
+ /* param.json's attribute3 bit for 120 Hz output. PS5_Vulkan R31/R92 declared it with 0x80000
+  * (a 120 Hz mode that requires VRR), which turns the system's VRR off; retail titles with VRR
+  * declare 0x40 with 0x40000. VideoOut itself grants mode 15 or refuses it. */
+@@ -334,10 +338,10 @@ videoout_title_declares_high_frame_rate(void)
+    return (value & VIDEOOUT_ATTRIBUTE3_HIGH_FRAME_RATE) == VIDEOOUT_ATTRIBUTE3_HIGH_FRAME_RATE;
+ }
+ 
+-/* The refresh period: the median of a few intervals between vblank waits,
+- * the first wait finding the phase. 0 when a wait fails. */
++/* The refresh period: the median (or the shortest) of a few intervals between
++ * vblank waits, the first wait finding the phase. 0 when a wait fails. */
+ static uint64_t
+-videoout_vblank_period_ns(int handle)
++videoout_vblank_period_ns(int handle, bool shortest)
+ {
+    uint64_t intervals[VIDEOOUT_PERIOD_INTERVALS];
+    if (sceVideoOutWaitVblank(handle) != 0)
+@@ -356,7 +360,7 @@ videoout_vblank_period_ns(int handle)
+          intervals[j] = intervals[j - 1];
+          intervals[j - 1] = swap;
+       }
+-   return intervals[VIDEOOUT_PERIOD_INTERVALS / 2];
++   return intervals[shortest ? 0 : VIDEOOUT_PERIOD_INTERVALS / 2];
+ }
+ 
+ /* Opens VideoOut once per process, in the high-frame-rate mode where the
+@@ -388,8 +392,23 @@ videoout_open_locked(void)
+             : -1;
+       out->high_frame_rate = supported > 0 && configured == 0;
+       if (out->high_frame_rate) {
+-         /* A period of 0 is a failed wait: never taken for 119.88 Hz */
+-         const uint64_t period = videoout_vblank_period_ns(out->handle);
++         /* A period of 0 is a failed wait: never taken for 119.88 Hz. The
++          * display is measured again until it settles or 1.5 s pass; each
++          * round keeps its shortest interval, so a variable-refresh display
++          * that stretches some vblanks is still seen at its rate. */
++         const uint64_t settle_from = os_time_get_nano();
++         uint64_t period = 0;
++         unsigned rounds = 0;
++         for (;;) {
++            period = videoout_vblank_period_ns(out->handle, true);
++            rounds++;
++            if (period == 0 || period <= VIDEOOUT_HIGH_REFRESH_LIMIT_NS ||
++                os_time_get_nano() - settle_from >= VIDEOOUT_HIGH_REFRESH_SETTLE_NS)
++               break;
++         }
++         if (period != 0 && period <= VIDEOOUT_HIGH_REFRESH_LIMIT_NS && rounds > 1)
++            fprintf(stderr, "wsi/videoout: 119.88 Hz settled after %.0f ms\n",
++                    (double)(os_time_get_nano() - settle_from) / 1e6);
+          if (period == 0 || period > VIDEOOUT_HIGH_REFRESH_LIMIT_NS) {
+             sceVideoOutConfigureOutput(out->handle, PS5_VIDEO_OUT_MODE_RESTORE, NULL, NULL, NULL);
+             out->high_frame_rate = false;
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From 0599e8985e39b871ed29c76b8b913b3fbc33b8c4 Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:39 +0000
+Subject: [PATCH 10/12] Crux2: 0013-disk-cache-index-without-map-fixed
+
+---
+ src/util/disk_cache_os.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/util/disk_cache_os.c b/src/util/disk_cache_os.c
+index 611e59feade..4b848e1bf10 100644
+--- a/src/util/disk_cache_os.c
++++ b/src/util/disk_cache_os.c
+@@ -1268,7 +1268,7 @@ disk_cache_mmap_cache_index(void *mem_ctx, struct disk_cache *cache)
+     * unlikely to ever match a real cache key).
+     */
+    const size_t page_size = sysconf(_SC_PAGESIZE);
+-   const size_t reserve_size = ALIGN_POT(size, page_size) + 2 * page_size;
++   size_t reserve_size = ALIGN_POT(size, page_size) + 2 * page_size;
+    uint8_t *reserve = mmap(NULL, reserve_size, PROT_NONE,
+                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (reserve == MAP_FAILED)
+@@ -1277,8 +1277,15 @@ disk_cache_mmap_cache_index(void *mem_ctx, struct disk_cache *cache)
+    cache->index_mmap = mmap(reserve + page_size, size, PROT_READ | PROT_WRITE,
+                             MAP_SHARED | MAP_FIXED, fd, 0);
+    if (cache->index_mmap == MAP_FAILED) {
++      /* A system that does not map a file over a reserved range (MAP_FIXED; the PS5's
++       * kernel may refuse it) gets the index mapped where the system chooses, without the
++       * guard pages, rather than no disk cache at all. */
+       munmap(reserve, reserve_size);
+-      goto path_fail;
++      cache->index_mmap = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++      if (cache->index_mmap == MAP_FAILED)
++         goto path_fail;
++      reserve = (uint8_t *) cache->index_mmap;
++      reserve_size = size;
+    }
+    cache->index_reserve = reserve;
+    cache->index_reserve_size = reserve_size;
+-- 
+2.43.0
+

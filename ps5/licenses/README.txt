@@ -5,7 +5,8 @@ The title as a whole is distributed under the GNU General Public License,
 version 3 (GPL-3.0.txt), WITHOUT ANY WARRANTY. Its source is the SwanStation
 source at the revision BUILD.txt names, plus the ps5 folder; components.json
 in this folder names every part's source and the revision it was built from,
-each public on GitHub at that revision (a release's notes list them). LEGAL.txt beside eboot.bin says
+each public on GitHub at that revision, or as patches in this repository's
+ps5/patches on a revision GitHub has (a release's notes list them). LEGAL.txt beside eboot.bin says
 what the title may be used with.
 
 Part                         Licence          Text                     Origin

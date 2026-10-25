@@ -1,0 +1,48 @@
+From ed78a153384b58919dbdb0afbc67a47b8a6ccf4e Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:30 +0000
+Subject: [PATCH 07/12] Crux2:
+ 0010-radv-threaded-recording-the-worker-reads-the-clock-once-in-64-pauses
+
+---
+ src/amd/vulkan/layers/radv_threaded_layer.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/amd/vulkan/layers/radv_threaded_layer.c b/src/amd/vulkan/layers/radv_threaded_layer.c
+index 23f43ded0e8..d2198e4b7de 100644
+--- a/src/amd/vulkan/layers/radv_threaded_layer.c
++++ b/src/amd/vulkan/layers/radv_threaded_layer.c
+@@ -40,6 +40,8 @@
+ #define RADV_THREADED_MAX_COMMANDS 512
+ /* How long the worker looks for more work before it sleeps. */
+ #define RADV_THREADED_SPIN_NS 50000
++/* Pauses between two reads of the clock while it looks (about 64 x 40 ns on a Zen 2). */
++#define RADV_THREADED_SPIN_CHECK 64
+ 
+ struct radv_threaded_batch {
+    struct list_head link;
+@@ -110,9 +112,20 @@ radv_threaded_worker(void *opaque)
+          /* Look for more for a while before sleeping: the application's thread
+           * hands over batches every few draws and waking a sleeper costs it. */
+          mtx_unlock(&rec->lock);
++         /* The clock is read once in RADV_THREADED_SPIN_CHECK pauses: a read is a call
++          * and, on the PS5, a compare-and-swap on a line every thread's clock reads
++          * share, so a loop reading it at every pause slowed the threads that render
++          * and emulate (Crux2's profile of the worker: half its time in the clock). */
+          const uint64_t until = radv_threaded_now_ns() + RADV_THREADED_SPIN_NS;
+-         while (!p_atomic_read(&rec->queued) && radv_threaded_now_ns() < until)
++         unsigned pauses = 0;
++         while (!p_atomic_read(&rec->queued)) {
+             __builtin_ia32_pause();
++            if (++pauses == RADV_THREADED_SPIN_CHECK) {
++               pauses = 0;
++               if (radv_threaded_now_ns() >= until)
++                  break;
++            }
++         }
+          mtx_lock(&rec->lock);
+ 
+          if (list_is_empty(&rec->batches) && !rec->stop) {
+-- 
+2.43.0
+

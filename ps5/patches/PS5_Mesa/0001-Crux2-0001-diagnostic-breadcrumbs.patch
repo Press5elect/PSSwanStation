@@ -1,0 +1,226 @@
+From 2572f8078d3800692bb8fa6a595c26d723190fb2 Mon Sep 17 00:00:00 2001
+From: Crux2 <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 20:34:28 +0000
+Subject: [PATCH 01/12] Crux2: 0001-diagnostic-breadcrumbs
+
+---
+ src/amd/vulkan/radv_physical_device.c         | 22 +++++++++++++++++++
+ src/amd/vulkan/winsys/ps5/radv_ps5_platform.c | 16 +++++++++++++-
+ src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c   |  9 ++++++++
+ 3 files changed, 46 insertions(+), 1 deletion(-)
+
+diff --git a/src/amd/vulkan/radv_physical_device.c b/src/amd/vulkan/radv_physical_device.c
+index c0826e5ec9e..ca22cfb267e 100644
+--- a/src/amd/vulkan/radv_physical_device.c
++++ b/src/amd/vulkan/radv_physical_device.c
+@@ -43,6 +43,10 @@ typedef void *drmDevicePtr;
+ #endif
+ #ifdef RADV_PS5
+ #include "winsys/ps5/radv_ps5_winsys_public.h"
++
++/* PCSX2 for PS5 diagnostics: the title's boot log, written at once. */
++extern void ps5_title_breadcrumb(const char *text) __attribute__((weak));
++#define PS5_CRUMB(text) do { if (ps5_title_breadcrumb) ps5_title_breadcrumb(text); } while (0)
+ #endif
+ #include "git_sha1.h"
+ 
+@@ -2642,10 +2646,12 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+    vk_physical_device_dispatch_table_from_entrypoints(&dispatch_table, &radv_physical_device_entrypoints, true);
+    vk_physical_device_dispatch_table_from_entrypoints(&dispatch_table, &wsi_physical_device_entrypoints, false);
+ 
++   PS5_CRUMB("pdev: vk_physical_device_init");
+    result = vk_physical_device_init(&pdev->vk, &instance->vk, NULL, NULL, NULL, &dispatch_table);
+    if (result != VK_SUCCESS) {
+       goto fail_alloc;
+    }
++   PS5_CRUMB("pdev: querying the GPU (winsys)");
+ 
+    struct radeon_winsys_info winsys_info;
+ 
+@@ -2664,6 +2670,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+       goto fail_base;
+    }
+ 
++   PS5_CRUMB("pdev: GPU info read");
+    memcpy(&pdev->info, &winsys_info.base, sizeof(pdev->info));
+    memcpy(&pdev->syncobj_sync_type, &winsys_info.syncobj_sync_type, sizeof(pdev->syncobj_sync_type));
+    pdev->has_external_fd = winsys_info.has_external_fd;
+@@ -2717,7 +2724,9 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+       goto fail_wsi;
+    }
+ 
++   PS5_CRUMB("pdev: creating addrlib");
+    pdev->addrlib = ac_addrlib_create(&pdev->info, &pdev->info.max_alignment);
++   PS5_CRUMB("pdev: addrlib created");
+    if (!pdev->addrlib) {
+       result = VK_ERROR_INITIALIZATION_FAILED;
+       goto fail_wsi;
+@@ -2834,7 +2843,9 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+    radv_probe_video_decode(pdev);
+    radv_probe_video_encode(pdev);
+ 
++   PS5_CRUMB("pdev: memory types");
+    radv_physical_device_init_mem_types(pdev);
++   PS5_CRUMB("pdev: extensions and features");
+ 
+    radv_physical_device_get_supported_extensions(pdev, &pdev->vk.supported_extensions);
+    radv_physical_device_get_features(pdev, &pdev->vk.supported_features);
+@@ -2862,6 +2873,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+    pdev->render_devid = render_stat.st_rdev;
+ #endif
+ 
++   PS5_CRUMB("pdev: cache uuid");
+    if (radv_device_get_cache_uuid(pdev, pdev->cache_uuid)) {
+       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED, "cannot generate UUID");
+       goto fail_wsi;
+@@ -2872,12 +2884,16 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+     */
+    char buf[VK_UUID_SIZE * 2 + 1];
+    mesa_bytes_to_hex(buf, pdev->cache_uuid, VK_UUID_SIZE);
++   PS5_CRUMB("pdev: creating the shader cache (disk_cache_create)");
+    pdev->vk.disk_cache = disk_cache_create("RADV", buf, 0);
+ 
++   PS5_CRUMB("pdev: creating the built-in shader cache");
+    pdev->disk_cache_meta =
+       disk_cache_create_custom("RADV", buf, 0, "radv_builtin_shaders", 1024 * 1024 * 32 /* 32MiB */);
+ 
++   PS5_CRUMB("pdev: properties");
+    radv_get_physical_device_properties(pdev);
++   PS5_CRUMB("pdev: decoder, encoder, queue table, perf counters");
+ 
+    if ((instance->debug_flags & RADV_DEBUG_INFO))
+       ac_print_gpu_info(stdout, &pdev->info, fd);
+@@ -2894,11 +2910,14 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+     * to be the last part of initialization (at least until we get other
+     * semi-layers).
+     */
++   PS5_CRUMB("pdev: radv_init_wsi");
+    result = radv_init_wsi(pdev);
+    if (result != VK_SUCCESS) {
++      PS5_CRUMB("pdev: radv_init_wsi FAILED");
+       vk_error(instance, result);
+       goto fail_perfcounters;
+    }
++   PS5_CRUMB("pdev: wsi ready");
+ 
+    pdev->gs_table_depth = ac_get_gs_table_depth(pdev->info.gfx_level, pdev->info.family);
+ 
+@@ -2915,6 +2934,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
+    }
+ 
+    simple_mtx_init(&pdev->drm_device_mtx, mtx_plain);
++   PS5_CRUMB("pdev: created");
+ 
+    *pdev_out = pdev;
+ 
+@@ -2951,7 +2971,9 @@ VkResult
+ radv_ps5_enumerate_physical_devices(struct vk_instance *vk_instance)
+ {
+    struct radv_physical_device *pdev;
++   PS5_CRUMB("enumerate: creating the physical device");
+    VkResult result = radv_physical_device_try_create((struct radv_instance *)vk_instance, NULL, &pdev);
++   PS5_CRUMB(result == VK_SUCCESS ? "enumerate: physical device created" : "enumerate: physical device creation FAILED");
+    if (result == VK_ERROR_INCOMPATIBLE_DRIVER || result == VK_ERROR_INITIALIZATION_FAILED)
+       return VK_SUCCESS;
+    if (result != VK_SUCCESS)
+diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c b/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c
+index 98783e37036..5725b684fbb 100644
+--- a/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c
++++ b/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c
+@@ -6,6 +6,10 @@
+ 
+ #include "radv_ps5_platform.h"
+ 
++/* PCSX2 for PS5 diagnostics: the title's boot log, written at once. */
++extern void ps5_title_breadcrumb(const char *text) __attribute__((weak));
++#define PS5_CRUMB(text) do { if (ps5_title_breadcrumb) ps5_title_breadcrumb(text); } while (0)
++
+ #include <assert.h>
+ #include <errno.h>
+ #include <inttypes.h>
+@@ -251,15 +255,19 @@ radv_ps5_platform_once(void)
+    setenv("MESA_SHADER_CACHE_DIR", "/app0/radv-shader-cache", 0);
+    setenv("MESA_DISK_CACHE_DATABASE", "1", 0);
+ 
++   PS5_CRUMB("platform: calling sceAgcInit");
+    radv_ps5_agc_result = sceAgcInit(PS5_AGC_INIT_VERSION);
++   PS5_CRUMB(radv_ps5_agc_result == 0 ? "platform: sceAgcInit returned 0" : "platform: sceAgcInit FAILED");
+    if (radv_ps5_agc_result != 0)
+       fprintf(stderr, "radv/ps5: sceAgcInit(%u) failed: 0x%08x\n", PS5_AGC_INIT_VERSION,
+               (unsigned)radv_ps5_agc_result);
+    radv_ps5_ready = radv_ps5_agc_result == 0 &&
+                     radv_ps5_granules_init(&radv_ps5_region, RADV_PS5_REGION_BASE, RADV_PS5_REGION_BYTES,
+                                            RADV_PS5_LARGE_BYTES);
++   PS5_CRUMB(radv_ps5_ready ? "platform: region table ready" : "platform: NOT ready");
+    if (radv_ps5_ready)
+       radv_ps5_window_replay_init();
++   PS5_CRUMB(radv_ps5_window_replay_ready ? "platform: replay window reserved" : "platform: no replay window");
+ }
+ 
+ bool
+@@ -298,8 +306,10 @@ radv_ps5_memory_alloc(uint64_t bytes, uint64_t alignment, bool window32, struct
+ 
+    int64_t physical = -1;
+    if (sceKernelAllocateDirectMemory(0, sceKernelGetDirectMemorySize(), bytes, alignment,
+-                                     RADV_PS5_DIRECT_TYPE, &physical) != 0)
++                                     RADV_PS5_DIRECT_TYPE, &physical) != 0) {
++      PS5_CRUMB("memory: sceKernelAllocateDirectMemory FAILED");
+       return false;
++   }
+ 
+    /* A window buffer goes where the kernel puts a mapping it is given no
+     * address for, which is the window (PS5_Vulkan R86); anything else goes in
+@@ -334,6 +344,10 @@ radv_ps5_memory_alloc(uint64_t bytes, uint64_t alignment, bool window32, struct
+                        (window32 ? radv_ps5_window_contains(va, bytes)
+                                  : va < RADV_PS5_GPU_ADDRESS_LIMIT && bytes <= RADV_PS5_GPU_ADDRESS_LIMIT - va);
+    if (!placed) {
++      char crumb[160];
++      snprintf(crumb, sizeof(crumb), "memory: NOT placed (%s, %llu bytes: result 0x%08x, address %p)",
++               window32 ? "window" : "region", (unsigned long long)bytes, (unsigned)result, address);
++      PS5_CRUMB(crumb);
+       if (result == 0 && address != NULL)
+          sceKernelMunmap(address, bytes);
+       radv_ps5_granules_give(&radv_ps5_region, granule, granules);
+diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c b/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c
+index ba3e1816529..1141aff00c2 100644
+--- a/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c
++++ b/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c
+@@ -6,6 +6,10 @@
+ 
+ #include "radv_ps5_winsys.h"
+ 
++/* PCSX2 for PS5 diagnostics: the title's boot log, written at once. */
++extern void ps5_title_breadcrumb(const char *text) __attribute__((weak));
++#define PS5_CRUMB(text) do { if (ps5_title_breadcrumb) ps5_title_breadcrumb(text); } while (0)
++
+ #include <assert.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -30,19 +34,24 @@ static void
+ radv_ps5_queue_create(void)
+ {
+    struct radv_ps5_queue *const queue = &radv_ps5_queue_storage;
++   PS5_CRUMB("queue: platform init");
+    if (!radv_ps5_platform_init())
+       return;
++   PS5_CRUMB("queue: allocating the ring (16 MiB in the GPU window)");
+    /* The words the GPU runs and the marker it writes live in the window, where
+     * ps5vk's submission buffer has always been. */
+    if (!radv_ps5_memory_alloc(RADV_PS5_RING_BYTES, RADV_PS5_LARGE_BYTES, true, &queue->ring))
+       return;
++   PS5_CRUMB("queue: allocating the marker page");
+    if (!radv_ps5_memory_alloc(RADV_PS5_PAGE_BYTES, RADV_PS5_PAGE_BYTES, true, &queue->marker_memory)) {
+       radv_ps5_memory_free(&queue->ring);
+       return;
+    }
+    queue->marker = (volatile uint32_t *)queue->marker_memory.cpu;
++   PS5_CRUMB("queue: writing the marker");
+    *queue->marker = 0;
+    radv_ps5_cpu_flush((const void *)queue->marker, sizeof(*queue->marker));
++   PS5_CRUMB("queue: ready");
+    simple_mtx_init(&queue->submit_lock, mtx_plain);
+    mtx_init(&queue->sync_lock, mtx_plain);
+    cnd_init(&queue->sync_cond);
+-- 
+2.43.0
+

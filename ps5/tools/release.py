@@ -191,7 +191,8 @@ def check_pins(parts, unpublished=(), zip_only=False):
         if not re.match(r"https://github.com/[^/]+/[^/]+$", src["remote"]):
             missing.append("%s: %s is not a GitHub address" % (p["id"], src["remote"]))
             continue
-        for revision in filter(None, (src["revision"], src.get("built_with_sdk"))):
+        # A part kept as patches in this repository (ps5/patches) needs only its base on GitHub.
+        for revision in filter(None, (src.get("base") or src["revision"], src.get("built_with_sdk"))):
             remote = "https://github.com/mihawk-99/PS5_PayloadSDK" if revision == src.get("built_with_sdk") else src["remote"]
             if not has_commit(remote, revision):
                 if p["id"] in unpublished and revision == src["revision"]:
@@ -376,6 +377,11 @@ def sources_list(parts, elsewhere):
         src = p["source"]
         if p["id"] in elsewhere:
             where = "`%s`, no longer on GitHub: [its archive](%s)" % (src["revision"][:12], elsewhere[p["id"]])
+        elif src.get("base"):
+            title = next(q["source"] for q in parts if q["id"] == "psswanstation")
+            where = ("[`%s`](%s/tree/%s) with the patches in [`%s`](%s/tree/%s/%s), which make `%s`"
+                     % (src["base"][:12], src["remote"], src["base"], src["patches"], title["remote"],
+                        title["revision"], src["patches"], src["revision"][:12]))
         elif src["kind"] == "git":
             url = "%s/tree/%s" % (src["remote"], src["revision"])
             where = "[`%s`](%s)" % (src["revision"][:12], url)
