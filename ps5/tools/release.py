@@ -177,10 +177,12 @@ def has_commit(remote, revision):
         return done.returncode == 0
 
 
-def check_pins(parts, unpublished=()):
+def check_pins(parts, unpublished=(), zip_only=False):
     """Every revision the title was built from is one GitHub has, but for the
     parts named in `unpublished`, whose archive is then their published copy
-    (SOURCES.txt says so)."""
+    (SOURCES.txt says so). With `zip_only` nothing is attached but the ZIP, so
+    every revision must be on GitHub before publishing: what is not yet is
+    listed to push, not refused."""
     missing, not_yet, allowed = [], [], {}
     for p in parts:
         src = p["source"]
@@ -195,7 +197,8 @@ def check_pins(parts, unpublished=()):
                 if p["id"] in unpublished and revision == src["revision"]:
                     allowed[p["id"]] = remote
                     continue
-                (not_yet if p["id"] == "psswanstation" else missing).append("%s: %s at %s" % (p["id"], remote, revision[:12]))
+                (not_yet if zip_only or p["id"] == "psswanstation" else missing).append(
+                    "%s: %s at %s" % (p["id"], remote, revision[:12]))
     if missing:
         refuse("GitHub does not have:\n  - " + "\n  - ".join(missing))
     return not_yet, allowed
@@ -235,7 +238,13 @@ def main():
     parser.add_argument("--attach-limit", type=int, default=0, metavar="MIB",
                         help="also write attach/: every file the release page carries, in one folder, an archive "
                              "larger than this many MiB cut into parts (0: no parts)")
+    parser.add_argument("--zip-only", action="store_true",
+                        help="the release page carries the ZIP and its .sha256 alone (as Crux2's): no source "
+                             "archives; every part's source is its public revision, which {{SOURCES}} in the "
+                             "notes lists, so every revision must be on GitHub before publishing")
     args = parser.parse_args()
+    if args.zip_only and args.unpublished:
+        refuse("--zip-only attaches no archives: every part must be on GitHub, none unpublished")
 
     title_id = json.loads((PS5 / "sce_sys/param.json").read_text())["titleId"]
     build = int(re.search(r"^const int BuildNumber = (\d+);", (PS5 / "src/main.cpp").read_text(), re.M).group(1))
@@ -245,7 +254,7 @@ def main():
     parts = json.loads((folder / "licenses/components.json").read_text())
     head = check_folder(folder, parts)
     unpublished = tuple(filter(None, args.unpublished.split(",")))
-    not_yet, allowed = ([], {}) if args.offline else check_pins(parts, unpublished)
+    not_yet, allowed = ([], {}) if args.offline else check_pins(parts, unpublished, args.zip_only)
 
     out = Path(args.out) if args.out else SRC / "build-ps5" / ("release-build%d" % build)
     shutil.rmtree(out, ignore_errors=True)
@@ -264,6 +273,10 @@ def main():
         if len(files) != sum(1 for p in unpacked.rglob("*") if p.is_file()):
             refuse("the ZIP holds other files than the folder")
     print("==> %s: %d files, %.1f MB, tested and compared with the folder" % (zip_path.name, len(files), zip_path.stat().st_size / 1e6))
+
+    if args.zip_only:
+        finish_zip_only(args, out, zip_path, parts, head, build, not_yet)
+        return
 
     sources = []
     for p in parts:
@@ -344,6 +357,48 @@ def main():
     listed = sorted(p for p in attach.iterdir() if p.name.endswith((".zip", ".tar.gz")) or ".tar.gz.part" in p.name)
     (attach / "SHA256SUMS").write_text("".join("%s  %s\n" % (sha256(p), p.name) for p in listed))
     print("==> attach/: %d files for the release page" % sum(1 for _ in attach.iterdir()))
+    print("==> sha256 %s  %s" % (zip_sum, zip_path.name))
+    print("==> built from %s" % head)
+    for line in not_yet:
+        print("==> not on GitHub yet (push before publishing): " + line)
+    print("==> %s" % out)
+
+
+def sources_list(parts):
+    """The notes' list of where each part's source is: its public revision."""
+    lines = []
+    for p in parts:
+        src = p["source"]
+        if src["kind"] == "git":
+            url = "%s/tree/%s" % (src["remote"], src["revision"])
+            where = "[`%s`](%s)" % (src["revision"][:12], url)
+            if src.get("paths"):
+                where += " (%s)" % ", ".join("`%s`" % path for path in src["paths"])
+        else:
+            where = "%s, %s" % (src["revision"], src["url"])
+        lines.append("- %s: %s" % (p["name"], where))
+    return "\n".join(lines)
+
+
+def finish_zip_only(args, out, zip_path, parts, head, build, not_yet):
+    zip_sum = sha256(zip_path)
+    (out / "SHA256SUMS").write_text("%s  %s\n" % (zip_sum, zip_path.name))
+    shutil.rmtree(out / "source", ignore_errors=True)
+    if args.notes:
+        text = Path(args.notes).read_text()
+        for key, value in (("COMMIT", head), ("ZIP", zip_path.name), ("ZIP_SHA256", zip_sum), ("BUILD", str(build)),
+                           ("SOURCES", sources_list(parts))):
+            text = text.replace("{{%s}}" % key, value)
+        left = re.findall(r"\{\{[A-Z_0-9]+\}\}", text)
+        if left:
+            refuse("the notes still hold %s" % ", ".join(sorted(set(left))))
+        (out / "NOTES.md").write_text(text)
+        print("==> NOTES.md")
+    attach = out / "attach"
+    attach.mkdir()
+    shutil.copy2(zip_path, attach)
+    shutil.copy2(str(zip_path) + ".sha256", attach)
+    print("==> attach/: %s and its .sha256, nothing else" % zip_path.name)
     print("==> sha256 %s  %s" % (zip_sum, zip_path.name))
     print("==> built from %s" % head)
     for line in not_yet:
