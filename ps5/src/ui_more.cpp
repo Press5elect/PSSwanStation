@@ -2885,7 +2885,7 @@ struct PresetLook
 };
 const PresetLook presetLook[] = {
 	{ "crt", "Picture tube", { 0, 5, 0, 0, 0, 0, 0 } },
-	{ "signal", "Signal", { 0, 3, -1, -1, -1, -1, 0 } },
+	{ "signal", "Signal", { 0, 3, 0, 0, 0, 0, 0 } },
 	{ "scaler", "Scaling filter", { 2, 0, 2, 2, 2, 5, 1 } },
 	{ "frame_generation", "Frame generation", { 0, 0, -1, -1, -1, -1, 0 } },
 	{ "fg_runahead", "Frame generation's run-ahead", { 0, 0, -1, -1, -1, -1, 0 } },
