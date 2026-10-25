@@ -37,9 +37,11 @@ ALWAYS_INLINE uint32_t GetICacheLineOffset(VirtualMemoryAddress address)
 {
   return (address & (ICACHE_LINE_SIZE - 1));
 }
+// The tag holds the physical address (psx-spx, Memory Map, i-Cache, "Tag
+// format"): KUSEG and KSEG0 reach the same physical code through the same tag.
 ALWAYS_INLINE uint32_t GetICacheTagForAddress(VirtualMemoryAddress address)
 {
-  return (address & ICACHE_TAG_ADDRESS_MASK);
+  return (address & ICACHE_TAG_ADDRESS_MASK & 0x1FFFFFFFu);
 }
 ALWAYS_INLINE uint32_t GetICacheTagMaskForAddress(VirtualMemoryAddress address)
 {

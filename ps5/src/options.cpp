@@ -144,6 +144,12 @@ void adapt(Option& option)
 		option.defaultValue = "false";
 	else if (key == "swanstation_Display_CropMode")
 		option.defaultValue = "Overscan";
+	else if (key == "swanstation_CPU_RecompilerICache")
+	{
+		// The CPU's 4 KB instruction cache, and the time a line takes to fill
+		// from RAM, as the console has them.
+		option.defaultValue = "true";
+	}
 	else if (key == "swanstation_MemoryCards_Card1Type")
 	{
 		// "Libretro" hands the card to a frontend as save RAM; here the
@@ -809,6 +815,7 @@ void keepEarlierDefaults()
 		{ "swanstation_GPU_CloseGaps", "true" },
 		{ "swanstation_TextureReplacements_EnableTextureBlocks", "true" },
 		{ "swanstation_Display_CropMode", "Borders" },
+		{ "swanstation_CPU_RecompilerICache", "false" },
 	};
 	bool any = false;
 	for (const auto& [key, value] : earlier)

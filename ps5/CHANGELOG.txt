@@ -40,6 +40,11 @@ Build 25 (not released yet)
     wrong shader results and GPU hangs), memory kept until the GPU is done
     with it (against a whole-console hang), a shader cache that stays on,
     cheaper draw calls and fewer cache flushes.
+  - The CPU's instruction cache as the PlayStation has it: on in Original
+    and Original on a TV and for a new install (the recompiler skipped it
+    before), a line taking 4 to 7 cycles to fill from RAM by how much of it
+    is read (it took 1 cycle a word), and the same code reached through
+    either of its addresses cached once.
   - While a game falls behind the screen, a third frame may wait to be
     shown (four swapchain images), so a late frame no longer holds the next
     one back; two again once it keeps up, as close to the controls as before.

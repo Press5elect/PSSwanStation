@@ -4,6 +4,7 @@
 # usage: tests/run_tests.sh core.so suite [args]
 #   mdec                              MDEC decode, compared with tests/mdec_decode.expected
 #   polyline                          long GPU poly-lines, compared with tests/gpu_polyline.expected
+#   icache                            the instruction cache's line fills timed, physical tags
 #   regfuzz [first] [last] [frames]   register fuzzer, one run per seed (default 1 20 120)
 #   statefuzz [first] [last] [iters]  corrupted save states loaded into a fuzzed system (default 1 3 150)
 #   rollback                          every byte of the CPU section head set to 0xFF in turn and
@@ -106,6 +107,52 @@ case "$SUITE" in
 
   polyline)
     run_golden gpu_polyline 600 80 4
+    ;;
+
+  icache)
+    # The instruction cache's timing in both CPU modes (FE_ICACHE=true for the
+    # recompiler's cache): a cold call costs a line fill of 7 cycles more than
+    # a warm one for each line, and KUSEG hits what KSEG0 filled.
+    build_rom icache
+    for cpu in Interpreter Recompiler; do
+      if ! FE_CPU=$cpu FE_ICACHE=true RAMDUMP=0:100 run_rom icache 1 0 60; then
+        echo "icache ($cpu): run failed"
+        exit 1
+      fi
+      python3 - "$WORK/run.log" "$cpu" <<'PY'
+import sys
+words = {}
+for line in open(sys.argv[1]):
+    f = line.split()
+    if len(f) == 2 and len(f[0]) == 8:
+        words[int(f[0], 16)] = int(f[1], 16)
+if words.get(0) != 0xC0FFEE:
+    sys.exit('icache: the test did not finish')
+runs = [[words[0x100 + 16 * r + 4 * i] for i in range(4)] for r in range(4)]
+for r, (cold, warm, kuseg, uncached) in enumerate(runs):
+    print('icache (%s) run %d: cold %d, warm %d, KUSEG after KSEG0 %d, uncached %d cycles' % (sys.argv[2], r, cold, warm, kuseg, uncached))
+print('icache (%s): 32 lines cold %d, warm %d' % (sys.argv[2], words[0x180], words[0x184]))
+# The interpreter fetches a block's first line in the call's delay slot,
+# before the counter starts; the recompiler charges a block's fills when the
+# block begins, after it. So one fill fewer is counted by the interpreter.
+uncounted = 1 if sys.argv[2] == 'Interpreter' else 0
+problems = []
+if words[0x180] - words[0x184] != (32 - uncounted) * 7:
+    problems.append('32 lines: a cold call should cost %d line fills of 7 cycles more (got %d)'
+                    % (32 - uncounted, words[0x180] - words[0x184]))
+for cold, warm, kuseg, uncached in runs[1:]:
+    if cold - warm != (16 - uncounted) * 7:
+        problems.append('a cold call should cost %d line fills of 7 cycles more than a warm one (got %d)'
+                        % (16 - uncounted, cold - warm))
+    if kuseg != warm:
+        problems.append('KUSEG should hit the lines KSEG0 filled (the tag is the physical address)')
+    if uncached <= cold:
+        problems.append('uncached code should be slower than a cold cache')
+if problems:
+    sys.exit('icache (%s): %s' % (sys.argv[2], '; '.join(problems)))
+PY
+    done
+    echo "icache: passed"
     ;;
 
   regfuzz)

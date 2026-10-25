@@ -2868,6 +2868,7 @@ const Preset presetOptions[] = {
 	{ "swanstation_TextureReplacements_EnableVRAMWriteReplacements",
 		{ "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
 	{ "swanstation_CPU_Overclock", { "100", "100", nullptr, nullptr, nullptr, nullptr, "100" } },
+	{ "swanstation_CPU_RecompilerICache", { "true", "true", nullptr, nullptr, nullptr, nullptr, nullptr } },
 	{ "swanstation_Console_Enable8MBRAM", { "false", "false", nullptr, nullptr, nullptr, nullptr, "false" } },
 	{ "swanstation_Main_RunaheadFrameCount", { "0", "0", nullptr, nullptr, nullptr, nullptr, "0" } },
 	{ "swanstation_CDROM_ReadSpeedup", { "1", "1", nullptr, nullptr, nullptr, nullptr, "1" } },

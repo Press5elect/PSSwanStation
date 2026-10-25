@@ -142,6 +142,8 @@ static bool env_cb(unsigned cmd, void* data)
         v->value = opt_fastmem;
       else if (!strcmp(v->key, "swanstation_CPU_ExecutionMode"))
         v->value = opt_cpu;
+      else if (!strcmp(v->key, "swanstation_CPU_RecompilerICache"))
+        v->value = getenv("FE_ICACHE");
       return v->value != NULL;
     }
     default:
