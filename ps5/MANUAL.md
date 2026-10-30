@@ -58,7 +58,7 @@ Everything lives in `/data/homebrew/PPSA99248/` unless you choose to keep your f
 | `data/` | Memory cards, their backups, save states and settings (written by the title) |
 | `logs/` | The emulator's log of the last two runs |
 
-**Game formats:** `.chd`, `.cue` with its `.bin` files, `.iso`, `.img`, `.pbp`, `.ecm`, `.mds`, and PlayStation programs (`.exe`, `.psexe`). A game on several discs named "... (Disc 1)", "... (Disc 2)" shows once, and its discs share one memory card.
+**Game formats:** `.chd`, `.cue` with its `.bin` files, `.iso`, `.img`, `.pbp`, `.ecm`, `.mds`, and PlayStation programs (`.exe`, `.psexe`). A game on several discs shows once, and its discs share one memory card ("Multi-disc games as one", Settings, Interface, View; on). Its discs are found by their names, "... (Disc 1)", "... [CD 2]", "... (Disc 2 of 3)", or "... CD2" or "... Disc 2" at the end, in one folder, each in a folder named after the disc, or in folders named only `CD1`, `CD2` inside the game's folder. Change disc in the menu over the game.
 
 **USB drives.** Switch on "USB drives" in Settings, Games and saving; it takes effect at the next start. It needs a resident Lapy service, or the ELF loader listening on port 9021. Games are read from a folder named `psx`, `ps1` or `playstation` at the top of the drive.
 

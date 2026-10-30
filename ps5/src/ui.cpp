@@ -2501,6 +2501,16 @@ void frontendItems(int kind, std::vector<Item>& items)
 		}
 		items.push_back(action(icon::Paint, "ES-DE themes", "The ES-DE theme, its variant, colours and font size, and "
 				"themes to download.", [] { push(Page::Themes); }));
+		items.push_back(toggle("Multi-disc games as one", &f.groupDiscs,
+				"The discs of a game are one entry, started from its first disc; the others are changed to in the menu "
+				"over the game, and all of them share one memory card. A game's discs are found by their names: "
+				"\"(Disc 2)\", \"[CD 2]\", \"(Disc 2 of 3)\", or \"CD2\" or \"Disc 2\" at the end, in one folder, or "
+				"each in a folder named after the disc. Off: each disc is an entry of its own.",
+				[] {
+					for (int source : { library::Internal, library::Usb, library::Network })
+						if (library::sourceAvailable(source))
+							library::scan(source, false);
+				}));
 		items.push_back(header("Videos"));
 		videoSettingItems(items, true);
 		items.push_back(header("Covers and header"));

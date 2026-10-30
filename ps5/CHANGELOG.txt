@@ -1,6 +1,20 @@
 PSSwanStation - what changed
 ============================
 
+Build 26 (not released yet)
+  Added
+  - "Multi-disc games as one" (Settings, Interface, View; on): the discs of
+    a game are one entry, sharing one memory card. Discs are now also found
+    when each is in a folder of its own named after the disc
+    ("Game (Disc 1)/..."), in folders named only CD1, CD2 ("Game/CD1/..."),
+    and by "CD2" or "Disc 2" at the end of a name ("Game CD2"). Off: each
+    disc is an entry of its own.
+  Fixed
+  - A cover that downloads but cannot be saved (a full or read-only drive)
+    is no longer taken for the server not answering, which stopped cover
+    downloads for the rest of the run; the boot log says why it was not
+    saved (bobrass, pull request #5).
+
 Build 25
   Added
   - GameShark codes typed in: "Add a GameShark code" in a game's Cheats

@@ -270,6 +270,7 @@ std::vector<Field> fields()
 		{ "library_view", &c.view, nullptr, 0, 62 },
 		{ "source", &c.source, nullptr, 0, 3 },
 		{ "covers", nullptr, &c.covers, 0, 1 },
+		{ "group_discs", nullptr, &c.groupDiscs, 0, 1 },
 		{ "usb", nullptr, &c.usb, 0, 1 },
 		{ "disc_drive", nullptr, &c.discDrive, 0, 1 },
 		{ "disc_speed", &c.discSpeed, nullptr, 0, 2 },
