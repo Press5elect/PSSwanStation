@@ -19,13 +19,15 @@
 	SMB share's or an FTP server's (smb.cpp, ftp.cpp); both are in the one list.
 
 	Files that are parts of a game are folded into it: the tracks a cue sheet
-	names, and the discs of one game named as dumps are ("Game (USA) (Disc
-	1).chd", "... (Disc 2).chd"), for which a playlist is written in
-	data/cache/playlists/. A playlist is what lets the discs of a game share
+	names, and the discs of one game ("Game (USA) (Disc 1).chd", "... (Disc
+	2).chd", or "Game CD1", "Game - Disc 2"; in one folder, or each in a
+	folder named after the disc: library_names.h), for which a playlist is
+	written in data/cache/playlists/ ("Multi-disc games as one", on). A playlist is what lets the discs of a game share
 	one memory card. Playlists found in the folders (.m3u) are not shown: their
 	discs are there themselves and are grouped the same way.
 */
 #include "fe.h"
+#include "library_names.h"
 #include "tuning.h"
 
 #include <algorithm>
@@ -139,37 +141,6 @@ std::string folderOf(const std::string& path)
 	return slash == std::string::npos ? "" : path.substr(0, slash + 1);
 }
 
-// "Game (USA) (Disc 2)" -> "Game (USA)" and 2; 0 when the name has no disc.
-int discNumber(const std::string& title, std::string& base)
-{
-	const std::string lower = lowercase(title);
-	for (const char *word : { "(disc ", "(disk ", "(cd ", "[disc ", "[disk ", "[cd " })
-	{
-		const size_t at = lower.find(word);
-		if (at == std::string::npos)
-			continue;
-		size_t i = at + strlen(word);
-		int number = 0;
-		if (i < lower.size() && isdigit((unsigned char)lower[i]))
-		{
-			while (i < lower.size() && isdigit((unsigned char)lower[i]))
-				number = number * 10 + (lower[i++] - '0');
-		}
-		else if (i < lower.size() && lower[i] >= 'a' && lower[i] <= 'h'
-				&& (i + 1 >= lower.size() || !isalpha((unsigned char)lower[i + 1])))
-			number = lower[i++] - 'a' + 1;
-		if (number <= 0)
-			continue;
-		const size_t end = lower.find_first_of(")]", i);
-		if (end == std::string::npos)
-			continue;
-		base = trim(title.substr(0, at)) + title.substr(end + 1);
-		base = trim(base);
-		return number;
-	}
-	return 0;
-}
-
 // "Crash Bandicoot (USA) (Rev 1) [SCUS-94900]" -> "Crash Bandicoot", "USA".
 void cleanName(const std::string& title, std::string& name, std::string& region)
 {
@@ -240,10 +211,21 @@ std::vector<Game> build(std::vector<Found> found, int source)
 				continue;
 		}
 		std::string base;
-		const int disc = discNumber(title, base);
+		int disc = options::frontend().groupDiscs ? names::discNumber(title, base) : 0;
+		if (disc == 0 && options::frontend().groupDiscs)
+		{
+			// "Game/CD1/game.cue": the folder says which disc; the game is the folder above.
+			disc = names::folderDisc(folderOf(file.path));
+			if (disc > 0)
+			{
+				const std::string above = names::groupFolder(folderOf(file.path));
+				base = above.size() > 1 ? fileTitle(above.substr(0, above.size() - 1)) : title;
+			}
+		}
 		if (disc > 0)
 		{
-			groups[folderOf(file.path) + base].push_back({ disc, file });
+			// A disc in a folder named after it groups with its sisters beside it.
+			groups[names::groupFolder(folderOf(file.path)) + base].push_back({ disc, file });
 			continue;
 		}
 		Game game;

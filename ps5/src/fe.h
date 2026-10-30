@@ -396,6 +396,7 @@ struct Frontend
 	// console (rest mode) can be continued at the next start.
 	bool sleepSafe = false;
 	bool verboseLog = false;
+	bool groupDiscs = true;		// the discs of a game as one entry in the library (library_names.h)
 	// The console's tuning (tuning.h): sound and controls ahead of the
 	// emulator's thread, the graphics driver on its own thread, the GPU wait's
 	// spin and sleep (choices of tuning::SpinChoices, SleepChoices: 0 the
