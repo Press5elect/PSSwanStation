@@ -28,6 +28,7 @@
 #include "tuning.h"
 
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -186,8 +187,17 @@ std::string baseUrlFor(const Source& source, int kind)
 	return root;
 }
 
-// 1 saved, 0 not in the collection, -1 could not ask (offline, time-out).
-int fetch(const Source& source, const std::string& base, int kind)
+enum FetchResult
+{
+	FetchSaveFailed = -2,
+	FetchUnavailable = -1,
+	FetchNotFound = 0,
+	FetchSaved = 1,
+};
+
+// Save failures are separate from an unavailable server: they must not trigger
+// a fallback request or mark the downloader offline.
+FetchResult fetch(const Source& source, const std::string& base, int kind)
 {
 	std::vector<uint8_t> data;
 	const std::string root = baseUrlFor(source, kind);
@@ -213,10 +223,20 @@ int fetch(const Source& source, const std::string& base, int kind)
 				makeDir(folder);
 			const std::string file = folder + base + ".png";
 			const std::string temporary = file + ".part";
-			if (!writeFile(temporary, data.data(), data.size()) || rename(temporary.c_str(), file.c_str()) != 0)
+			if (!writeFile(temporary, data.data(), data.size()))
 			{
+				diag::mark("covers: could not write %s", file.c_str());
 				unlink(temporary.c_str());
-				return -1;
+				return FetchSaveFailed;
+			}
+			errno = 0;
+			if (rename(temporary.c_str(), file.c_str()) != 0)
+			{
+				const int error = errno;
+				diag::mark("covers: could not finish saving %s (%s)", file.c_str(),
+						error == 0 ? "rename failed" : strerror(error));
+				unlink(temporary.c_str());
+				return FetchSaveFailed;
 			}
 			static bool first = true;
 			if (first)
@@ -224,16 +244,16 @@ int fetch(const Source& source, const std::string& base, int kind)
 				first = false;
 				diag::mark("covers: downloads work, from %s (%s, %s)", source.name, base.c_str(), collectionFolders[kind]);
 			}
-			return 1;
+			return FetchSaved;
 		}
 		if (status != 404 && status != 200)
 		{
 			if (status > 0)
 				diag::mark("covers: the server answered %d", status);
-			return -1;
+			return FetchUnavailable;
 		}
 	}
-	return 0;
+	return FetchNotFound;
 }
 
 void worker()
@@ -250,22 +270,24 @@ void worker()
 			queue.pop_front();
 		}
 		int result = offline ? -1 : fetch(Sources[source], job.base, job.kind);
-		if (result < 0 && !offline && platform::httpAvailable() && source + 1 < SourceCount)
+		if (result == FetchUnavailable && !offline && platform::httpAvailable() && source + 1 < SourceCount)
 		{
 			diag::mark("covers: %s does not answer; trying %s", Sources[source].name, Sources[source + 1].name);
 			source++;
 			result = fetch(Sources[source], job.base, job.kind);
 		}
-		if (result == 1)
+		if (result == FetchSaved)
 		{
 			currentGeneration++;
 			failures = 0;
 		}
-		else if (result == 0)
+		else if (result == FetchNotFound)
 		{
 			rememberNotFound(notFoundKey(job.base, job.kind));
 			failures = 0;
 		}
+		else if (result == FetchSaveFailed)
+			failures = 0;
 		else if (++failures >= 3 && !offline)
 		{
 			// No network, or the collection cannot be reached: stop for this run.
