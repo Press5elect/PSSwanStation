@@ -1544,6 +1544,8 @@ void HostInterface::LoadSettings()
   }
 }
 
+static std::optional<GPURenderer> RetroHwContextToRenderer(retro_hw_context_type type);
+
 void HostInterface::UpdateSettings()
 {
   Settings old_settings(std::move(g_settings));
@@ -1554,8 +1556,38 @@ void HostInterface::UpdateSettings()
   {
     if (g_settings.gpu_renderer != old_settings.gpu_renderer)
     {
-      ReportFormattedMessage("Renderer switch pending, please restart the core to apply.");
-      g_settings.gpu_renderer = old_settings.gpu_renderer;
+      // The renderer is changed while the game runs: System::RecreateGPU keeps
+      // the GPU's state (VRAM, registers, what it was drawing) across. To the
+      // software renderer at once; to the frontend's hardware renderer at once
+      // when its context was made already, or once the frontend resets the
+      // context it is asked for now. Another hardware API than the frontend's
+      // still waits for a restart.
+      const bool to_software = (g_settings.gpu_renderer == GPURenderer::Software);
+      const std::optional<GPURenderer> frontend_renderer =
+        m_hw_render_callback_valid ? RetroHwContextToRenderer(m_hw_render_callback.context_type) : std::nullopt;
+      if (to_software)
+      {
+        if (m_using_hardware_renderer)
+        {
+          SwitchToSoftwareRenderer();
+          UpdateSystemAVInfo(false);
+        }
+      }
+      else if (frontend_renderer.has_value() && frontend_renderer.value() == g_settings.gpu_renderer)
+      {
+        if (!m_using_hardware_renderer)
+        {
+          UpdateSystemAVInfo(true);
+          SwitchToHardwareRenderer();
+        }
+      }
+      else if (!m_hw_render_callback_valid && RequestHardwareRendererContext())
+        UpdateSystemAVInfo(true);
+      else
+      {
+        ReportFormattedMessage("Renderer switch pending, please restart the core to apply.");
+        g_settings.gpu_renderer = old_settings.gpu_renderer;
+      }
     }
   }
 
@@ -1641,6 +1673,9 @@ void HostInterface::UpdateSettings()
     }
   }
 
+  // A renderer change was made above, in place (or put back): the common
+  // check would recreate the whole system for it.
+  old_settings.gpu_renderer = g_settings.gpu_renderer;
   CheckForSettingsChanges(old_settings);
 }
 
