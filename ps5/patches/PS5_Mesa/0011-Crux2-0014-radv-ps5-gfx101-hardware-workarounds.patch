@@ -1,7 +1,7 @@
-From 8b570e7ef8b3911ed9f110aac212b995c3e453bb Mon Sep 17 00:00:00 2001
+From 93626543abbfa6db57099289ee25f3a97abb508b Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
-Date: Sat, 24 Oct 2026 20:34:39 +0000
-Subject: [PATCH 11/12] Crux2: 0014-radv-ps5-gfx101-hardware-workarounds
+Date: Sat, 31 Oct 2026 20:01:11 +0000
+Subject: [PATCH 11/14] Crux2: 0014-radv-ps5-gfx101-hardware-workarounds
 
 ---
  src/amd/common/ac_gpu_info.c                  |  1 +
@@ -78,10 +78,10 @@ index 656ec9fb538..cd821fd35fd 100644
        if (info->min_good_cu_per_sa <= 4) {
           /* Too few available compute units per SA. Disallowing VS to run on one CU could hurt us
 diff --git a/src/amd/compiler/aco_assembler.cpp b/src/amd/compiler/aco_assembler.cpp
-index bdfa155e2c2..947fccdc028 100644
+index 9301546520d..ae5e92e9e51 100644
 --- a/src/amd/compiler/aco_assembler.cpp
 +++ b/src/amd/compiler/aco_assembler.cpp
-@@ -1656,7 +1656,7 @@ chain_branches(asm_context& ctx, std::vector<uint32_t>& out, branch_info& branch
+@@ -1657,7 +1657,7 @@ chain_branches(asm_context& ctx, std::vector<uint32_t>& out, branch_info& branch
        }
  
        /* Since we insert a branch into existing code, mitigate LdsBranchVmemWARHazard on GFX10. */
@@ -90,7 +90,7 @@ index bdfa155e2c2..947fccdc028 100644
           emit_sopk_instruction(
              ctx, code, bld.sopk(aco_opcode::s_waitcnt_vscnt, Operand(sgpr_null, s1), 0).instr);
        }
-@@ -1689,7 +1689,7 @@ fix_branches(asm_context& ctx, std::vector<uint32_t>& out)
+@@ -1690,7 +1690,7 @@ fix_branches(asm_context& ctx, std::vector<uint32_t>& out)
     do {
        repeat = false;
  
@@ -99,7 +99,7 @@ index bdfa155e2c2..947fccdc028 100644
           fix_branches_gfx10(ctx, out);
  
        for (branch_info& branch : ctx.branches) {
-@@ -1747,7 +1747,8 @@ align_block(asm_context& ctx, std::vector<uint32_t>& code, Block& block)
+@@ -1748,7 +1748,8 @@ align_block(asm_context& ctx, std::vector<uint32_t>& code, Block& block)
         * Don't use the s_inst_prefetch instruction on GFX10 as it might cause hangs.
         */
        const bool change_prefetch = ctx.program->gfx_level >= GFX10_3 &&
@@ -146,7 +146,7 @@ index d44cc4cc876..85fed7b5410 100644
  
     /* VcmpxPermlaneHazard */
 diff --git a/src/amd/compiler/aco_ir.cpp b/src/amd/compiler/aco_ir.cpp
-index 08f28f53dbf..4cb4d10984a 100644
+index 8954d929620..f1343e86fe3 100644
 --- a/src/amd/compiler/aco_ir.cpp
 +++ b/src/amd/compiler/aco_ir.cpp
 @@ -124,6 +124,9 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
@@ -175,10 +175,10 @@ index 08f28f53dbf..4cb4d10984a 100644
     } else {
        program->dev.max_nsa_vgprs = 0;
 diff --git a/src/amd/compiler/aco_ir.h b/src/amd/compiler/aco_ir.h
-index 6e34f3a684a..cbb09d1fc09 100644
+index 821774087ab..f55d2c3f7c6 100644
 --- a/src/amd/compiler/aco_ir.h
 +++ b/src/amd/compiler/aco_ir.h
-@@ -2309,6 +2309,10 @@ struct DeviceInfo {
+@@ -2308,6 +2308,10 @@ struct DeviceInfo {
     bool mubuf_scratch = false;
     bool has_gfx6_mrt_export_bug = false;
     bool has_desc_resource_level = false;
@@ -190,7 +190,7 @@ index 6e34f3a684a..cbb09d1fc09 100644
     int32_t scratch_global_offset_min;
     int32_t scratch_global_offset_max;
 diff --git a/src/amd/compiler/aco_optimizer.cpp b/src/amd/compiler/aco_optimizer.cpp
-index 0823fa48e52..ea83c234ca5 100644
+index 3ca5f0dc297..b706738cc55 100644
 --- a/src/amd/compiler/aco_optimizer.cpp
 +++ b/src/amd/compiler/aco_optimizer.cpp
 @@ -2115,7 +2115,7 @@ can_eliminate_and_exec(opt_ctx& ctx, Temp tmp, unsigned pass_flags, bool allow_c

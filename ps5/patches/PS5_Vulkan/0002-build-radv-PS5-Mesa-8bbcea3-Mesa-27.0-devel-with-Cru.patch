@@ -1,7 +1,7 @@
 From 8a45c72f0093d673f6f7ec5a9e36ba4007c1c3de Mon Sep 17 00:00:00 2001
 From: Press5elect <noreply@anthropic.com>
 Date: Sat, 24 Oct 2026 20:58:29 +0000
-Subject: [PATCH 2/2] build-radv: PS5 Mesa 8bbcea3, Mesa 27.0-devel with
+Subject: [PATCH 2/3] build-radv: PS5 Mesa 8bbcea3, Mesa 27.0-devel with
  Crux2's RADV patches
 
 PS5 Mesa branch ps5-mesa-27: main (1ba9874) with Crux2's ps5/patches/mesa-27 applied

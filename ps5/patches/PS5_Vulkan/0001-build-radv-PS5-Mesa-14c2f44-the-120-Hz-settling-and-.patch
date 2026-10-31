@@ -1,7 +1,7 @@
 From c8f6c948846f7cbec4518319f674be34f5b259ef Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 18 Oct 2026 11:11:33 +0000
-Subject: [PATCH 1/2] build-radv: PS5 Mesa 14c2f44, the 120 Hz settling and
+Subject: [PATCH 1/3] build-radv: PS5 Mesa 14c2f44, the 120 Hz settling and
  timed waits on the barycentrics pin
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

@@ -239,6 +239,14 @@ void applyDriverSettings()
 		setenv("RADV_PS5_WAIT_SPIN_US", format("%d", spin).c_str(), 1);
 	if (f.gpuWaitSleep != 0)
 		setenv("RADV_PS5_WAIT_SLEEP_US", format("%d", sleep).c_str(), 1);
+	// "119.88 Hz with a variable refresh rate" (Display output): the driver asks
+	// the output to leave its fixed rate once 119.88 Hz is configured
+	// (ps5/vrr_ps5.cpp).
+	if (f.displayMode == 2)
+	{
+		setenv("PS5_VIDEOOUT_VRR", "1", 1);
+		diag::mark("display: variable refresh is asked for (Display output)");
+	}
 	diag::mark("tuning: the graphics driver %s; the GPU wait spins %d us, then sleeps %d us between checks; "
 			"sound and controls %s", f.driverThread ? "records on its own thread" : "records on the frame's thread",
 			spin, sleep, f.threadPriorities ? "run before the emulator" : "at the emulator's priority");

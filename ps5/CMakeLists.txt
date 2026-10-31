@@ -270,6 +270,7 @@ if(SWANSTATION_PS5)
 		src/ps5/stdio_ps5.cpp
 		src/ps5/platform_ps5.cpp
 		src/ps5/clock_ps5.c
+		src/ps5/vrr_ps5.cpp
 		src/ps5/drive_ps5.cpp
 		src/ps5/usbdrive_ps5.cpp
 		src/ps5/elevation/elevation.cpp)

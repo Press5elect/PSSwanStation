@@ -8,8 +8,8 @@ tree this title was built from:
 
 | Folder | Repository and base | Gives (the revision `licenses/components.json` names) |
 | --- | --- | --- |
-| `PS5_Mesa/` | [mihawk-99/PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa) at `1ba9874f4786` | `8bbcea366d65`: Mesa 27.0-devel's RADV with Crux2's patches (Crux2's `ps5/patches/mesa-27`) and the 119.88 Hz settling kept under VRR |
-| `PS5_Vulkan/` | [mihawk-99/PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan) at `f410e67a0241` | `8a45c72f0093`: its Mesa pin moved to the revision above |
+| `PS5_Mesa/` | [mihawk-99/PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa) at `1ba9874f4786` | `c3eab8ac8b24`: Mesa main of 2026-10-31 (27.0.0-devel) with Crux2's patches 0001-0017 (Crux2's `ps5/patches/mesa-27`): the GFX10.1 workarounds, 119.88 Hz on a VRR display, variable refresh on request |
+| `PS5_Vulkan/` | [mihawk-99/PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan) at `f410e67a0241` | `e5e62cb`: its Mesa pin moved to the revision above |
 | `PS5_VKHomebrewUI/` | [mihawk-99/PS5_VKHomebrewUI](https://github.com/mihawk-99/PS5_VKHomebrewUI) at `2188642afbcc` | `ea00f4febd38`: an image may turn inside its rect |
 
 ```sh

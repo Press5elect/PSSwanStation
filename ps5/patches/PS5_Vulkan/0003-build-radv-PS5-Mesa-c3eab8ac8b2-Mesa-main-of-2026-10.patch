@@ -1,0 +1,31 @@
+From e5e62cb5946af5aae622ee66f3e3bcc7433f01bc Mon Sep 17 00:00:00 2001
+From: Press5elect <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 20:08:29 +0000
+Subject: [PATCH 3/3] build-radv: PS5 Mesa c3eab8ac8b2, Mesa main of 2026-10-31
+ with Crux2's RADV patches 0001-0017
+
+As Crux2 1.0.17 builds it: the newest Mesa main, 119.88 Hz kept on a VRR display
+(0015), variable refresh on request (0016), found while the title runs (0017).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
+---
+ tools/build-radv.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/build-radv.sh b/tools/build-radv.sh
+index bc5c41b..6d5264a 100644
+--- a/tools/build-radv.sh
++++ b/tools/build-radv.sh
+@@ -26,7 +26,7 @@ set -euo pipefail
+ 
+ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+ mesa_fork="${PS5_MESA_FORK:-$root/../PS5_Mesa}"
+-mesa_revision=${PS5_MESA_REVISION:-8bbcea366d65e0fd0e26dfa3c948dec18d93dbfc}
++mesa_revision=${PS5_MESA_REVISION:-c3eab8ac8b24f510cda54d884577802a8a4c09ba}
+ variant=${1:-debug}
+ sdk="$root/.deps/native/ps5-payload-sdk"
+ source_tree="$root/.deps/work/radv-src"
+-- 
+2.43.0
+
