@@ -2723,7 +2723,7 @@ void optionItems(const std::string& category, bool uncategorised, bool forGame, 
 			item.info += "\n\n";
 		item.info += "Default: " + options::label(option, option.defaultValue);
 		if (option.key == "swanstation_GPU_Renderer" && host::running())
-			item.info += "\n\nA running game keeps its renderer; the change is used from the next start.";
+			item.info += "\n\nChanged while a game runs, the game goes on with the other renderer at once, where it was.";
 		const std::string key = option.key;
 		const bool own = options::hasGameValue(key);
 		if (options::hasOverride(key))

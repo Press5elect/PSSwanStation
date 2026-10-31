@@ -6,7 +6,8 @@
 
 	No pad, no sound card and no shell are needed. The pad is a script (the
 	SWANSTATION_SCRIPT file: "frame button[+button] [hold-frames]" lines, and
-	"frame shot name" to save a screenshot), the sound goes nowhere (a thread
+	"frame shot name" to save a screenshot, "frame option KEY VALUE" to change
+	an emulator setting), the sound goes nowhere (a thread
 	takes it at the output's pace, as the console's does) and files live in the
 	folder SWANSTATION_ROOT names. HTTP is the PC's curl program, so that what
 	downloads (covers, the cheat database, updates, achievements) can be run
@@ -46,6 +47,7 @@ struct Step
 	int pad = 0;		// "2:cross" is the second player's
 	bool tilt = false;	// "tilt X Y": the pad leans that far, as parts of gravity
 	float tiltX = 0, tiltY = 0;
+	std::string optionKey, optionValue;	// "option KEY VALUE": an emulator setting changed there
 };
 std::vector<Step> script;
 Pad pads[MaxPads];
@@ -141,6 +143,11 @@ void earlyInit()
 					step.tilt = true;
 					words >> step.tiltX >> step.tiltY;
 				}
+				else if (what == "option")
+				{
+					words >> step.optionKey >> step.optionValue;
+					step.shot.clear();
+				}
 				else
 				{
 					if (what.size() > 2 && what[1] == ':' && what[0] >= '1' && what[0] <= '0' + MaxPads)
@@ -182,6 +189,15 @@ void padPoll()
 	float tiltX = 0, tiltY = 0;
 	for (const Step& step : script)
 	{
+		if (!step.optionKey.empty())
+		{
+			if (step.frame == frame)
+			{
+				options::set(step.optionKey, step.optionValue, false);
+				diag::mark("script: %s = %s", step.optionKey.c_str(), step.optionValue.c_str());
+			}
+			continue;
+		}
 		if (step.tilt)
 		{
 			if (frame >= step.frame)

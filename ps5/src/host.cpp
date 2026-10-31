@@ -129,6 +129,9 @@ float fpsMeasured;
 
 retro_hw_render_callback hwRender{};
 bool hwRenderSet;
+// The renderer was changed to the hardware one while a game ran on the
+// software one: the core asked for the context, which is reset after the frame.
+bool hwResetPending;
 retro_hw_render_interface_vulkan vulkanInterface{};
 retro_vulkan_image hwImage{};
 bool hwImageValid;
@@ -841,6 +844,8 @@ bool environment(unsigned command, void *data)
 			return false;
 		hwRender = *callback;
 		hwRenderSet = true;
+		if (isRunning)
+			hwResetPending = true;
 		return true;
 	}
 	case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
@@ -1513,6 +1518,7 @@ bool start(const std::string& path, int stateSlot, int disc, const std::string& 
 		disk.set_initial_image((unsigned)disc, path.c_str());
 
 	hwRenderSet = false;
+	hwResetPending = false;
 	hwImageValid = false;
 	frameWidth = frameHeight = 0;
 	nameTextureFolders();
@@ -1740,6 +1746,15 @@ void runOne(bool keep)
 #endif
 	retro_run();
 	emulatedFrames++;
+	if (hwResetPending)
+	{
+		hwResetPending = false;
+		if (hwRenderSet && hwRender.context_reset != nullptr)
+		{
+			diag::mark("game: hardware renderer, switched to while the game runs");
+			hwRender.context_reset();
+		}
+	}
 #ifdef SWANSTATION_HOST
 	// The renderer tests (ps5/tests/gpu): the whole of video memory written
 	// to a file once the game has run this many frames.
