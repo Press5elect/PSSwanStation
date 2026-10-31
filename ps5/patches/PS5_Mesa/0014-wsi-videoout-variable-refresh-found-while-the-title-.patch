@@ -1,0 +1,46 @@
+From c3eab8ac8b24f510cda54d884577802a8a4c09ba Mon Sep 17 00:00:00 2001
+From: Press5elect <Press5elect@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 02:10:27 +0000
+Subject: [PATCH 14/14] wsi/videoout: variable refresh found while the title
+ runs, not imported
+
+sceVideoOutVrrUnpegFromFixedRate is not exported by every firmware's
+libSceVideoOut, and a title importing it would not start there. The driver
+now calls a weak hook, ps5_title_videoout_vrr_unpeg, which the title answers
+after looking the function up by its NID (T4ucGB8CsnM); without it variable
+refresh is refused and 119.88 Hz stays as configured.
+
+SPDX-FileCopyrightText: 2026 Press5elect
+SPDX-License-Identifier: MIT
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/vulkan/wsi/wsi_common_videoout.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/vulkan/wsi/wsi_common_videoout.c b/src/vulkan/wsi/wsi_common_videoout.c
+index ecaa03e03e4..3464f167270 100644
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -224,7 +224,17 @@ struct wsi_videoout_display {
+ };
+ 
+ #if defined(__PROSPERO__)
+-extern int sceVideoOutVrrUnpegFromFixedRate(int32_t handle);
++/* sceVideoOutVrrUnpegFromFixedRate is not exported by every firmware's libSceVideoOut, and a title
++ * that imports what the console does not give it does not start. The title finds it while it runs
++ * (by its NID, T4ucGB8CsnM) and answers through this weak hook; without the hook, or when the
++ * console has no such function, variable refresh is refused and the mode stays as configured. */
++extern int ps5_title_videoout_vrr_unpeg(int32_t handle) __attribute__((weak));
++static int
++videoout_vrr_unpeg(int32_t handle)
++{
++   return ps5_title_videoout_vrr_unpeg ? ps5_title_videoout_vrr_unpeg(handle) : -1;
++}
++#define sceVideoOutVrrUnpegFromFixedRate videoout_vrr_unpeg
+ #endif
+ 
+ static struct wsi_videoout_display videoout_display;
+-- 
+2.43.0
+

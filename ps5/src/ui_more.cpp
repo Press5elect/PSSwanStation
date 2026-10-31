@@ -3199,8 +3199,10 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				format("What the console is asked for, from the next start. It is at %.2f Hz now. 120 Hz: menus "
 				"move at twice the rate, a PAL game's frames fall more evenly, and black frame insertion "
 				"becomes possible; a display that cannot do 120 Hz stays at 60. The third declares, as games "
-				"that support it do, that a variable refresh rate may stay on: use it with \"by the clock\" "
-				"above. An experiment, not yet run on a console: if the screen stays dark afterwards, hold "
+				"that support it do, that a variable refresh rate may stay on, and asks the output to leave its "
+				"fixed rate, so each frame is shown as soon as it is ready on a TV with VRR (where the console "
+				"offers it: the boot log says): use it with \"by the clock\" above. An experiment, not yet run "
+				"on a console: if the screen stays dark afterwards, hold "
 				"L1 and R1 while PSSwanStation starts. This one is for every game: the console reads it when "
 				"PSSwanStation starts, before any game is chosen.", display::outputRefreshRate()),
 				[](int i) {

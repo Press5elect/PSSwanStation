@@ -1,7 +1,7 @@
-From 981725bf1597fe1a31bae9617beddec2ae94aa23 Mon Sep 17 00:00:00 2001
+From 37b2db9961132a807276e0c36dd054ecbf32987d Mon Sep 17 00:00:00 2001
 From: ps5cemu <ps5cemu@localhost>
 Date: Sat, 3 Oct 2026 16:30:49 +0000
-Subject: [PATCH 05/12] radv/ps5: a destroyed buffer's memory waits for the
+Subject: [PATCH 05/14] radv/ps5: a destroyed buffer's memory waits for the
  GPU's work
 
 amdgpu keeps a buffer that submitted work names alive in the kernel until

@@ -1,0 +1,99 @@
+From e7d52fafdae243627a9c1eb6b6beb1669b8ca2d5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 5 Oct 2026 20:07:48 +0000
+Subject: [PATCH 13/14] wsi/videoout: a title may ask the output to leave its
+ fixed rate (variable refresh)
+
+With PS5_VIDEOOUT_VRR=1 in the environment before the first Vulkan call, the
+output is asked to leave its fixed rate once the high-frame-rate mode is
+configured. The variable then reads "on" or "refused"; a refusal configures
+the mode again, as it was.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+(cherry picked from commit 72a093bb45936dccef266ef09621f50174d6234b)
+---
+ src/vulkan/wsi/wsi_common_videoout.c | 33 ++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/src/vulkan/wsi/wsi_common_videoout.c b/src/vulkan/wsi/wsi_common_videoout.c
+index f65ca8e0abe..ecaa03e03e4 100644
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -88,6 +88,12 @@
+  * its own, for a display that takes the mode badly): set before the first
+  * Vulkan call. */
+ #define VIDEOOUT_NO_HIGH_FRAME_RATE_ENV "PS5_VIDEOOUT_59HZ"
++/* The title asks for variable refresh ("1" before the first Vulkan call):
++ * once the high-frame-rate mode is configured the output is asked to leave
++ * its fixed rate, so that a flip shows when it comes rather than at the next
++ * 8.3 ms step. The variable is then "on" when the output took it, and
++ * "refused" when it did not and the mode was configured again without it. */
++#define VIDEOOUT_VRR_ENV "PS5_VIDEOOUT_VRR"
+ #define VIDEOOUT_PERIOD_INTERVALS 6
+ /* How long a display switching to 119.88 Hz is given to settle before 59.94 Hz
+  * is restored: some televisions keep their old rate for a moment after the
+@@ -177,6 +183,12 @@ sceVideoOutConfigureOutput(int32_t handle, uint32_t mode, const void *a, const v
+ {
+    return -1;
+ }
++
++static int
++sceVideoOutVrrUnpegFromFixedRate(int32_t handle)
++{
++   return -1;
++}
+ #endif
+ 
+ /* The sizes VideoOut takes buffers of, the largest first, and a buffer's
+@@ -211,6 +223,10 @@ struct wsi_videoout_display {
+    int dummy;
+ };
+ 
++#if defined(__PROSPERO__)
++extern int sceVideoOutVrrUnpegFromFixedRate(int32_t handle);
++#endif
++
+ static struct wsi_videoout_display videoout_display;
+ 
+ #define VIDEOOUT_SIZE_MODES(index)                                                                               \
+@@ -413,6 +429,20 @@ videoout_open_locked(void)
+             ? sceVideoOutConfigureOutput(out->handle, PS5_VIDEO_OUT_MODE_HIGH_FRAME_RATE, NULL, NULL, NULL)
+             : -1;
+       out->high_frame_rate = supported > 0 && configured == 0;
++      const char *const variable = getenv(VIDEOOUT_VRR_ENV);
++      const bool variable_asked = variable != NULL && variable[0] == '1';
++      bool variable_refresh = false;
++      if (out->high_frame_rate && variable_asked) {
++         const int unpegged = sceVideoOutVrrUnpegFromFixedRate(out->handle);
++         if (unpegged != 0) {
++            /* As it was before the request. */
++            sceVideoOutConfigureOutput(out->handle, PS5_VIDEO_OUT_MODE_HIGH_FRAME_RATE, NULL, NULL, NULL);
++            fprintf(stderr, "wsi/videoout: variable refresh refused (0x%08x)\n", (unsigned)unpegged);
++         } else {
++            fprintf(stderr, "wsi/videoout: variable refresh: the output left its fixed rate\n");
++         }
++         variable_refresh = unpegged == 0;
++      }
+       if (out->high_frame_rate) {
+          /* A period of 0 is a failed wait: never taken for 119.88 Hz. The
+           * display is measured again until it settles or 1.5 s pass; each
+@@ -438,6 +468,7 @@ videoout_open_locked(void)
+          if (period == 0 || (period > VIDEOOUT_HIGH_REFRESH_LIMIT_NS && !vrr)) {
+             sceVideoOutConfigureOutput(out->handle, PS5_VIDEO_OUT_MODE_RESTORE, NULL, NULL, NULL);
+             out->high_frame_rate = false;
++            variable_refresh = false;
+             if (period == 0)
+                fprintf(stderr, "wsi/videoout: 119.88 Hz accepted, but a vblank wait failed; 59.94 Hz restored\n");
+             else
+@@ -458,6 +489,8 @@ videoout_open_locked(void)
+                  "wsi/videoout: 119.88 Hz not offered on the console's present output (%d); presenting at 59.94 Hz\n",
+                  supported);
+       }
++      if (variable_asked)
++         setenv(VIDEOOUT_VRR_ENV, variable_refresh ? "on" : "refused", 1);
+    }
+    return true;
+ }
+-- 
+2.43.0
+
