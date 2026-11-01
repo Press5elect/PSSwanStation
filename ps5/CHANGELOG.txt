@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Build 26 (not released yet)
+Build 26
   Added
   - The renderer changes while a game runs (Software and Vulkan, both ways),
     and the game goes on where it was: no restart. The picture presets that
@@ -20,6 +20,8 @@ Build 26 (not released yet)
   - The graphics driver is Mesa main of 31 October 2026 (27.0.0-devel, as
     Crux2 1.0.17 builds it): fixes to the shader compiler and to how graphics
     pipelines are found in the shader cache.
+  - Newer parts: libsmb2 (c6e4997: SMB3 signing and session fixes) and libnfs
+    (affe4c8: call arguments checked).
   Fixed
   - 120 Hz fell back to 60 Hz on TVs with VRR: before the first frame such a
     TV refreshes at 48 Hz, which was taken for a TV still at 60 Hz.
