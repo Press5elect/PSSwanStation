@@ -29,8 +29,16 @@
  *       fcntl    does nothing: the socket is left blocking, everywhere, and
  *                what follows makes that work.
  *       connect  gives the socket send and receive time limits, as a last
- *                resort, and connects: it returns when the connection is made
- *                (the caller has just seen the server's port answer).
+ *                resort, and large send and receive buffers (below), and
+ *                connects: it returns when the connection is made (the
+ *                caller has just seen the server's port answer).
+ *
+ * TCP buffers (as OGBox does, OGBox by Press5elect): a connection the
+ * console opens gets small default buffers, so a share was read at about
+ * 18 MB/s whatever the link - one small window per round trip. Before the
+ * connect, while the window scale is still to be agreed, the buffers are made
+ * the largest the console takes, from 4 MiB down to 128 KiB. libnfs connects
+ * through this function too.
  *       readv    asks poll, without waiting, whether there is anything to
  *                read, and says EAGAIN when there is not, as a non-blocking
  *                socket would; else it is recv, which then has data and does
@@ -87,8 +95,26 @@ int ps5_smb_fcntl(int fd, int command, ...)
 	return 0;
 }
 
+/* The size the last connection's buffers were given, in KiB (0: the
+ * console's own); smb.cpp logs it. */
+int ps5_net_buffer_kib;
+
+void ps5_net_large_buffers(int fd)
+{
+	int size;
+	for (size = 4 << 20; size >= 128 << 10; size /= 2)
+		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)) == 0
+				&& setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) == 0)
+		{
+			ps5_net_buffer_kib = size >> 10;
+			return;
+		}
+	ps5_net_buffer_kib = 0;
+}
+
 int ps5_smb_connect(int fd, const struct sockaddr *address, socklen_t length)
 {
+	ps5_net_large_buffers(fd);
 	/* No read waits here (ps5_smb_readv asks poll first); the limits are for a
 	 * server that goes away in the middle of an answer or of a request. */
 	struct timeval limit;

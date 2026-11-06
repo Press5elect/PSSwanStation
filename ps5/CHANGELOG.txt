@@ -10,6 +10,10 @@ Next build
     with their NetBIOS names), as OGBox's share form does. A change is used
     at once: no restart.
   Changed
+  - Network games read faster: every SMB, NFS and FTP connection gets large
+    TCP buffers (up to 4 MiB) before it connects, as OGBox does; with the
+    console's small default ones a share was held to one small window per
+    round trip. The boot log names the size taken.
   - Covers: with "Download covers" on, every game of the library gets its
     cover in the background, one after another, not only the games on
     screen (as OGBox does). Not while a game runs.

@@ -134,6 +134,12 @@ int connectTo(const std::string& host, int port)
 	const timeval limit = { RequestSeconds, 0 };
 	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &limit, sizeof(limit));
 	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &limit, sizeof(limit));
+	// Large buffers before the connect, while the window scale is still to be
+	// agreed (as the SMB and NFS connections, ps5/smb/compat.c).
+	for (int size = 4 << 20; size >= 128 << 10; size /= 2)
+		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)) == 0
+				&& setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) == 0)
+			break;
 	if (connect(fd, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0)
 	{
 		close(fd);
@@ -327,8 +333,6 @@ public:
 			close(data);
 			return -1;
 		}
-		const int size = 1 << 20;
-		setsockopt(data, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
 		return data;
 	}
 

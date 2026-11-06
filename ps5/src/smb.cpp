@@ -85,6 +85,9 @@ extern "C"
 {
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
+#if defined(SWANSTATION_PS5)
+extern int ps5_net_buffer_kib;	// ps5/smb/compat.c
+#endif
 }
 
 namespace fe::smb
@@ -424,6 +427,15 @@ struct Share
 				preferred = (i + preferred) % 3;
 				diag::mark("smb: connected to //%s/%s as %s (%s) in %d s", server.c_str(), share.c_str(),
 						account.user.c_str(), attempt.name, (int)(time(nullptr) - started));
+#if defined(SWANSTATION_PS5)
+				static bool saidBuffers;
+				if (!saidBuffers)
+				{
+					saidBuffers = true;
+					diag::mark("smb: the connection's TCP buffers: %d KiB (receive and send)%s", ps5_net_buffer_kib,
+							ps5_net_buffer_kib == 0 ? ", the console's own: none larger was taken" : "");
+				}
+#endif
 				break;
 			}
 			error = stripped(smb2_get_error(c));
