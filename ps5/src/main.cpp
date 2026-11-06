@@ -106,8 +106,40 @@ bool readFile(const std::string& path, std::vector<uint8_t>& out)
 	return ok;
 }
 
+// Whether the file already holds exactly these bytes. Reading a file is
+// cheaper than writing one, and a write that changes nothing only wears the
+// storage (and a rename makes the file system write too).
+static bool sameContents(const std::string& path, const void *data, size_t bytes)
+{
+	struct stat st;
+	if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode) || (uint64_t)st.st_size != bytes)
+		return false;
+	FILE *f = fopen(path.c_str(), "rb");
+	if (f == nullptr)
+		return false;
+	const uint8_t *want = static_cast<const uint8_t *>(data);
+	uint8_t block[65536];
+	size_t at = 0;
+	bool same = true;
+	while (same && at < bytes)
+	{
+		const size_t n = fread(block, 1, std::min(sizeof(block), bytes - at), f);
+		if (n == 0)
+			same = false;
+		else
+		{
+			same = memcmp(block, want + at, n) == 0;
+			at += n;
+		}
+	}
+	fclose(f);
+	return same;
+}
+
 bool writeFile(const std::string& path, const void *data, size_t bytes)
 {
+	if (sameContents(path, data, bytes))
+		return true;
 	// Written beside the file and renamed over it: a crash or a full disk
 	// leaves the old one whole.
 	const std::string temporary = path + ".tmp";
@@ -199,6 +231,9 @@ int main(int argc, char **argv)
 	platform::earlyInit();
 	// Before the graphics driver is started: its own settings.
 	tuning::applyDriverSettings();
+	// One shader cache on the disk, the driver's: the emulator's pipeline cache
+	// stays in memory (src/common/vulkan/shader_cache.cpp).
+	setenv("SWANSTATION_NO_PIPELINE_FILE", "1", 1);
 	// A home-screen forwarder starts the title with --rom <game> (and
 	// --exit-after-game): PS5 Forwarder Format, section 10.
 	std::string launchRom;
@@ -374,6 +409,23 @@ int main(int argc, char **argv)
 		display::endFrame();
 		at[6] = now();
 		tuning::frame(at, playing);
+		// Settings are written when the title closes, and when the console's
+		// menu opens: the console may close the title from there. Asked twice
+		// a second.
+		{
+			static unsigned countdown;
+			static int before;
+			if (countdown == 0)
+			{
+				countdown = 30;
+				const int overlay = platform::systemUiOverlaid();
+				if (overlay == 1 && before != 1)
+					options::flush();
+				before = overlay;
+			}
+			else
+				countdown--;
+		}
 #ifdef SWANSTATION_HOST
 		// A test: what each refresh's frame of the game took.
 		static FILE *times = getenv("SWANSTATION_TIMES") != nullptr ? fopen(getenv("SWANSTATION_TIMES"), "w") : nullptr;

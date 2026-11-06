@@ -662,7 +662,7 @@ std::string runCloud()
 	if (options::frontend().cloudStates && !report.failed)
 	{
 		say("Save states, " + store->name());
-		syncPair(*store, "cloud-save-states", rootDir + "data/states/", "save states", Way::Both, false, false, report);
+		syncPair(*store, "cloud-save-states", host::statesFolder(), "save states", Way::Both, false, false, report);
 	}
 	std::string summary;
 	if (report.failed)

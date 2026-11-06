@@ -115,7 +115,11 @@ void earlyInit()
 			outsideUsed = true;
 		}
 	}
-	diag::open(rootDir);
+	// The logs as Settings, System, Logs has them (a USB drive: the folder
+	// SWANSTATION_USB_DATA names).
+	diag::configure(options::frontend().logMode);
+	const std::string usb = options::frontend().logPlace == 1 ? usbDataDir() : std::string();
+	diag::open(usb.empty() ? rootDir : usb);
 	diag::mark("%s host build %d; title folder: %s; files: %s", AppName, BuildNumber, appDir.c_str(), rootDir.c_str());
 	storage::makeFolders(rootDir);
 	if (fileExists(appDir + "sce_sys/param.json"))
@@ -177,6 +181,7 @@ void lateInit()
 {
 	diag::mark("quit");
 	storage::startCompleted(appDir);
+	options::flush();
 	fflush(nullptr);
 	diag::flush();
 	_Exit(0);
@@ -467,6 +472,19 @@ std::vector<std::string> usbGameDirs()
 	if (const char *dir = getenv("SWANSTATION_USB"))
 		dirs.push_back(dir);
 	return dirs;
+}
+
+std::string usbDataDir()
+{
+	// A test's "drive": the folder SWANSTATION_USB_DATA names.
+	const char *dir = getenv("SWANSTATION_USB_DATA");
+	if (dir == nullptr || *dir == 0)
+		return "";
+	std::string folder = dir;
+	if (folder.back() != '/')
+		folder += '/';
+	makeDir(folder);
+	return folder;
 }
 
 std::vector<std::string> usbDrives()

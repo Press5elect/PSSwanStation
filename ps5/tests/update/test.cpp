@@ -737,6 +737,28 @@ void testDownloadAndInstall()
 	checkInstalled("good", before);
 }
 
+void testSameFilesLeftAlone()
+{
+	// The release installed, then the same release again: only eboot.bin is
+	// unpacked, the files the folder already has as the release has them are
+	// not written again, and the install still leaves the release's tree.
+	freshTitle();
+	const Tree before = snapshot(title);
+	CHECK_STATE(downloadOf("good"), State::Ready);
+	CHECK(update::install());
+	checkInstalled("good", before);
+	const Tree installed = snapshot(title);
+	CHECK_STATE(downloadOf("good"), State::Ready);
+	const std::string dir = title + ".update/";
+	CHECK(contentOf(dir + "plan") == "eboot.bin\n");
+	CHECK(exists(dir + "stage/eboot.bin"));
+	CHECK(!exists(dir + "stage/sce_sys/param.json"));
+	CHECK(markedWith("the same as now"));
+	CHECK(update::install());
+	CHECK(sameTree(installed, snapshot(title), "the same release again"));
+	checkInstalled("good", before);
+}
+
 void testInstallIntoEmptyFolder()
 {
 	// A title folder with none of the program's files (and so no folders).
@@ -1365,6 +1387,7 @@ int main(int argc, char **argv)
 		{ "available", testAvailable },
 		{ "download-install", testDownloadAndInstall },
 		{ "empty-folder", testInstallIntoEmptyFolder },
+		{ "same-files", testSameFilesLeftAlone },
 		{ "checksums", testChecksums },
 		{ "refused-archives", testRefusedArchives },
 		{ "progress-cancel", testProgressAndCancel },

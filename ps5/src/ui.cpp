@@ -2690,8 +2690,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"the worst frame, what each part of a frame took, and the draws, render passes, barriers, copies "
 				"and clears per frame. For finding where a slow game loses its time; a line about a slow stretch, "
 				"and one about each game's speed when it closes, are written either way.", {}));
-		items.push_back(header("Debug"));
-		moreSettings(7, items);
+		moreSettings(7, items);	// the logs, recordings of what is pressed
 		break;
 	default:
 		moreSettings(kind, items);

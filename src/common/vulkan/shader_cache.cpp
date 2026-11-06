@@ -4,6 +4,7 @@
 #include "context.h"
 #include "util.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -102,7 +103,22 @@ void ShaderCache::Open(std::string_view base_path, bool debug)
       filestream_delete(legacy_bin.c_str());
 
     m_pipeline_cache_filename = GetPipelineCacheBaseFileName(base_path, debug);
-    if (!ReadExistingPipelineCache())
+    // PSSwanStation (Press5elect): the driver keeps its own shader cache on
+    // the disk (Mesa's, MESA_SHADER_CACHE_DIR), which holds what this file
+    // would; and this file is written whole whenever a session made a
+    // pipeline. With SWANSTATION_NO_PIPELINE_FILE the cache lives in memory
+    // for the session only, and a file earlier builds left is removed.
+    if (std::getenv("SWANSTATION_NO_PIPELINE_FILE") != nullptr)
+    {
+      if (path_is_valid(m_pipeline_cache_filename.c_str()))
+      {
+        filestream_delete(m_pipeline_cache_filename.c_str());
+        Log_InfoPrintf("Removed '%s': the driver's shader cache is used alone", m_pipeline_cache_filename.c_str());
+      }
+      m_pipeline_cache_filename.clear();
+      CreateNewPipelineCache();
+    }
+    else if (!ReadExistingPipelineCache())
       CreateNewPipelineCache();
   }
   else

@@ -9,7 +9,23 @@ Next build
     The SMB servers on the network are found as the page opens (port 445,
     with their NetBIOS names), as OGBox's share form does. A change is used
     at once: no restart.
+  - Logs (Settings, System): written as they come, only when something goes
+    wrong (kept in memory, written on a crash, a notice of a problem or
+    "Save the log now"), or off; in the title's folder or on a USB drive;
+    the boot log alone, with the emulator's log, or everything (what
+    "Verbose logging" was).
+  - Save states on a USB drive (Settings, Games and saving): the states and
+    the resume state off the console's storage. States saved before are
+    still found.
   Changed
+  - Fewer writes to the console's storage: settings are written when
+    PSSwanStation closes and when the console's menu opens, not at every
+    change; a file is not written again when nothing in it changed; the
+    resume state (sleep-safe saving) is saved only when the console's menu
+    opens, no longer every five minutes; one shader cache, the graphics
+    driver's (the emulator's pipeline cache file, rewritten whole after
+    every session, is removed); an update unpacks and replaces only the
+    files that changed.
   - Network games read faster: every SMB, NFS and FTP connection gets large
     TCP buffers (up to 4 MiB) before it connects, as OGBox does; with the
     console's small default ones a share was held to one small window per
@@ -19,7 +35,7 @@ Next build
     screen (as OGBox does). Not while a game runs.
   - The boot log's lines go through memory to a writer thread of their own
     (as OGBox's): a line no longer waits for the file system on the thread
-    that wrote it. The log is put on the disk every two seconds that had
+    that wrote it. The log is put on the disk every 30 seconds that had
     lines, and a crash report still writes everything before itself.
 
 Build 26

@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <mutex>
 #include <ps5platform/exec.h>
 #include <string>
 #include <sys/stat.h>
@@ -70,6 +71,7 @@ void padOpen();
 namespace
 {
 bool elevated;
+std::string logDir;		// where the logs are written (the title's folder, or a USB drive's)
 bool safeStart;
 bool outsideUsed;
 std::string outsideWhy;
@@ -156,6 +158,7 @@ void repairModes(const std::string& dir, int depth)
 // paid it on whichever thread logged (PSFlyCast's finding).
 void redirectLogs(const std::string& root)
 {
+	makeDir(root + "logs");
 	const std::string log = root + "logs/psswanstation.log";
 	const std::string prev = root + "logs/swanstation.prev.log";
 	rename(log.c_str(), prev.c_str());
@@ -182,6 +185,25 @@ void redirectLogs(const std::string& root)
 // The game folders on USB drives: a folder named psx, ps1, playstation,
 // psone or swanstation (any case) at the top of /mnt/usb0-7. Only those are
 // scanned, not whole drives.
+std::string usbDataFolder()
+{
+	if (!elevated)
+		return "";
+	// The first USB drive that has the folder, else the first one that can be written to.
+	for (int pass = 0; pass < 2; pass++)
+		for (int i = 0; i < 8; i++)
+		{
+			const std::string mount = "/mnt/usb" + std::to_string(i);
+			if (pass == 0 ? writableDir(mount + "/" + storage::UsbFolder) : writableDir(mount))
+			{
+				const std::string folder = mount + "/" + storage::UsbFolder;
+				makeDir(folder);
+				return folder + "/";
+			}
+		}
+	return "";
+}
+
 void findUsbDirs()
 {
 	// Told only when what is found changes: the library and the disc copy's
@@ -227,6 +249,23 @@ void findUsbDirs()
 }
 
 } // namespace
+
+std::string usbDataDir()
+{
+	// Asked for each state the menus show: the drives are looked at again
+	// every five seconds at most.
+	static std::mutex mutex;
+	static std::string folder;
+	static time_t lookedAt;
+	std::lock_guard<std::mutex> lock(mutex);
+	const time_t t = time(nullptr);
+	if (lookedAt == 0 || t - lookedAt >= 5)
+	{
+		lookedAt = t;
+		folder = usbDataFolder();
+	}
+	return folder;
+}
 
 void earlyInit()
 {
@@ -343,15 +382,7 @@ void earlyInit()
 	}
 	else if (filesAt == 2)
 	{
-		// The first USB drive that has the folder, else the first one that can be written to.
-		std::string drive;
-		for (int pass = 0; pass < 2 && drive.empty() && elevated; pass++)
-			for (int i = 0; i < 8 && drive.empty(); i++)
-			{
-				const std::string mount = "/mnt/usb" + std::to_string(i);
-				if (pass == 0 ? writableDir(mount + "/" + storage::UsbFolder) : writableDir(mount))
-					drive = mount + "/" + storage::UsbFolder + "/";
-			}
+		const std::string drive = usbDataDir();
 		if (!elevated)
 			outsideWhy = sandboxWhy;
 		else if (drive.empty())
@@ -374,9 +405,25 @@ void earlyInit()
 		outsideUsed = true;
 	}
 	// The boot log is in the title's folder, wherever the files are kept:
-	// where the manual says it is, the same place in every set-up.
-	diag::open(appDir);
+	// where the manual says it is, the same place in every set-up. Or on a
+	// USB drive (Settings, System, Logs), off the console's storage.
+	const options::Frontend& settings = options::frontend();
+	diag::configure(settings.logMode);
+	logDir = appDir;
+	std::string logWhy;
+	if (settings.logPlace == 1)
+	{
+		const std::string usb = usbDataDir();
+		if (!usb.empty())
+			logDir = usb;
+		else
+			logWhy = elevated ? "no USB drive that can be written to is plugged in" : sandboxWhy;
+	}
+	diag::open(logDir);
 	diag::mark("%s, build %d; title folder: %s; files: %s", AppName, BuildNumber, appDir.c_str(), rootDir.c_str());
+	diag::mark("logs: %s, in %s%s%s", settings.logMode == 0 ? "written as they come"
+			: settings.logMode == 1 ? "kept in memory, written when something goes wrong" : "off",
+			logDir.c_str(), logWhy.empty() ? "" : "; not on a USB drive: ", logWhy.c_str());
 	if (migrated > 0)
 		diag::mark("storage: first start with the files outside: %d copied", migrated);
 	if (!outsideWhy.empty())
@@ -417,8 +464,19 @@ void earlyInit()
 	// Whether the console gives the title a folder of its own for downloads,
 	// noted for later builds.
 	diag::mark("storage: /download0 %s", writableDir("/download0") ? "can be written to" : "cannot be written to");
-	redirectLogs(rootDir);
-	diag::mark("the emulator's log: %slogs/psswanstation.log", rootDir.c_str());
+	// The emulator's log (and the graphics driver's messages): with the boot
+	// log written as it comes and "What the logs keep" past the boot log.
+	if (settings.logMode == 0 && settings.logDetail >= 1)
+	{
+		redirectLogs(logDir);
+		diag::mark("the emulator's log: %slogs/psswanstation.log", logDir.c_str());
+	}
+	else
+	{
+		freopen("/dev/null", "a", stdout);
+		freopen("/dev/null", "a", stderr);
+		diag::mark("the emulator's log: not written (Settings, System, Logs)");
+	}
 }
 
 void lateInit()
@@ -434,6 +492,7 @@ void lateInit()
 	storage::startCompleted(appDir);
 	for (int i = 0; i < MaxPads; i++)
 		padLight(i, 0, 0, 0);
+	options::flush();
 	fflush(nullptr);
 	diag::flush();
 	const int result = sceSystemServiceLoadExec("exit", nullptr);

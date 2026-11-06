@@ -31,6 +31,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <mutex>
 #include <sys/stat.h>
 
@@ -62,10 +63,33 @@ std::string gameFile(const std::string& id)
 	return rootDir + "data/game-options/" + id + ".cfg";
 }
 
+// Files changed and not written yet (flush()): the path, and the text, or
+// nothing for a file to remove. What is read comes from here first.
+std::mutex pendingMutex;
+std::map<std::string, std::optional<std::string>> pendingFiles;
+
+void putPending(const std::string& path, std::optional<std::string> text)
+{
+	std::lock_guard<std::mutex> lock(pendingMutex);
+	pendingFiles[path] = std::move(text);
+}
+
 void readValues(const std::string& path, std::map<std::string, std::string>& values)
 {
 	values.clear();
-	FILE *f = fopen(path.c_str(), "r");
+	FILE *f = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(pendingMutex);
+		const auto it = pendingFiles.find(path);
+		if (it != pendingFiles.end())
+		{
+			if (!it->second)
+				return;
+			f = fmemopen(const_cast<char *>(it->second->data()), it->second->size(), "r");
+		}
+	}
+	if (f == nullptr)
+		f = fopen(path.c_str(), "r");
 	if (f == nullptr)
 		return;
 	char line[1024];
@@ -88,16 +112,13 @@ void writeValues(const std::string& path, const std::map<std::string, std::strin
 {
 	if (values.empty())
 	{
-		remove(path.c_str());
+		putPending(path, std::nullopt);
 		return;
 	}
-	FILE *f = fopen(path.c_str(), "w");
-	if (f == nullptr)
-		return;
+	std::string text;
 	for (const auto& [key, value] : values)
-		fprintf(f, "%s = \"%s\"\n", key.c_str(), value.c_str());
-	fclose(f);
-	chmod(path.c_str(), 0666);
+		text += key + " = \"" + value + "\"\n";
+	putPending(path, std::move(text));
 }
 
 void keepOnly(Option& option, std::initializer_list<const char *> wanted)
@@ -309,6 +330,10 @@ std::vector<Field> fields()
 		{ "auto_load", nullptr, &c.autoLoadOnStart, 0, 1 },
 		{ "sleep_safe", nullptr, &c.sleepSafe, 0, 1 },
 		{ "verbose_log", nullptr, &c.verboseLog, 0, 1 },
+		{ "log_mode", &c.logMode, nullptr, 0, 2 },
+		{ "log_place", &c.logPlace, nullptr, 0, 1 },
+		{ "log_detail", &c.logDetail, nullptr, 0, 2 },
+		{ "states_on_usb", nullptr, &c.statesOnUsb, 0, 1 },
 		{ "thread_priorities", nullptr, &c.threadPriorities, 0, 1 },
 		{ "driver_thread", nullptr, &c.driverThread, 0, 1 },
 		{ "gpu_wait_spin", &c.gpuWaitSpin, nullptr, 0, 3 },
@@ -633,6 +658,10 @@ void loadFrontend()
 	// Speedrun is still what it was; the others' settings stay, under "As set".
 	if (current.seenBuild < 25)
 		current.preset = current.preset == 4 ? 7 : 0;
+	// "Verbose logging" of before is the logs' "Everything".
+	if (current.verboseLog)
+		current.logDetail = 2;
+	current.verboseLog = current.logDetail == 2;
 	std::lock_guard<std::mutex> lock(mutex);
 	takeGeneral();
 }
@@ -686,7 +715,33 @@ void saveFrontend()
 		}
 	}
 	text += format("dead_zone = %.2f\nturbo = %u\n", current.deadZone, current.turbo);
-	writeFile(appDir + "frontend.cfg", text.data(), text.size());
+	putPending(appDir + "frontend.cfg", std::move(text));
+}
+
+void flush()
+{
+	std::map<std::string, std::optional<std::string>> files;
+	{
+		std::lock_guard<std::mutex> lock(pendingMutex);
+		files.swap(pendingFiles);
+	}
+	int written = 0;
+	for (const auto& [path, text] : files)
+	{
+		if (!text)
+			remove(path.c_str());
+		else
+		{
+			const size_t slash = path.find_last_of('/');
+			if (slash != std::string::npos)
+				makeDir(path.substr(0, slash));
+			if (!writeFile(path, text->data(), text->size()))
+				diag::mark("options: %s could not be written", path.c_str());
+		}
+		written++;
+	}
+	if (written > 0)
+		diag::mark("options: %d settings file(s) saved", written);
 }
 
 void define(const void *optionsV2)

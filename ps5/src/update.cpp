@@ -14,7 +14,9 @@
 	            compares its size and SHA-256 with the release's, looks at
 	            every entry of the archive before anything is unpacked, and
 	            unpacks the program's files into .update/stage/. The list of
-	            them is .update/plan.
+	            them is .update/plan. A file the title's folder already has
+	            as the release has it (size and CRC-32) is left out of both:
+	            the console's storage is written only for what changed.
 	install()   writes .update/journal, then renames each old file into
 	            .update/backup/ and the new one into its place. When all are in
 	            place the journal goes first and .update/ after it.
@@ -801,6 +803,7 @@ struct Entry
 	mz_uint index;
 	std::string path;	// below the title's folder
 	uint64_t size;
+	uint32_t crc;		// the ZIP's CRC-32 of it
 };
 
 // Why a ZIP is refused, for the screen and the log.
@@ -876,7 +879,7 @@ std::string examine(mz_zip_archive& zip, const std::string& titleId, std::vector
 			eboot = true;
 		if (path == "sce_sys/param.json")
 			param = true;
-		files.push_back({ i, path, stat.m_uncomp_size });
+		files.push_back({ i, path, stat.m_uncomp_size, stat.m_crc32 });
 	}
 	if (!eboot)
 		return "The release's ZIP was refused: it has no eboot.bin.";
@@ -969,6 +972,36 @@ bool unpack(mz_zip_archive& zip, const Entry& entry, const std::string& path)
 	ok = fsync(sink.fd) == 0 && ok;
 	ok = close(sink.fd) == 0 && ok;
 	return ok;
+}
+
+// Whether the title's folder already has this file as the release has it
+// (its size and CRC-32): then it is not unpacked or replaced, and the
+// console's storage is not written for it. A build changes eboot.bin and a
+// few files; the sounds, fonts and pictures are mostly the same.
+bool alreadyInstalled(const std::string& place, const Entry& entry)
+{
+	struct stat st;
+	// 0777 too, as unpack() would leave it: the console starts no eboot.bin
+	// with less, and the FTP server is another process.
+	if (lstat(place.c_str(), &st) != 0 || !S_ISREG(st.st_mode) || (uint64_t)st.st_size != entry.size
+			|| (st.st_mode & 0777) != 0777)
+		return false;
+	const int fd = open(place.c_str(), O_RDONLY);
+	if (fd < 0)
+		return false;
+	mz_ulong crc = MZ_CRC32_INIT;
+	std::vector<uint8_t> block(1 << 20);
+	uint64_t read = 0;
+	for (;;)
+	{
+		const ssize_t n = ::read(fd, block.data(), block.size());
+		if (n <= 0)
+			break;
+		crc = mz_crc32(crc, block.data(), (size_t)n);
+		read += (uint64_t)n;
+	}
+	close(fd);
+	return read == entry.size && (uint32_t)crc == entry.crc;
 }
 
 // --------------------------------------------------------------- download
@@ -1071,12 +1104,21 @@ Outcome verifyAndUnpack(const Setup& use, const Release& release, const std::str
 	if (error.empty())
 	{
 		std::string plan;
+		size_t same = 0;
+		uint64_t sameBytes = 0;
 		for (const Entry& file : files)
 		{
 			if (stopRequested)
 			{
 				outcome = Outcome::Stopped;
 				break;
+			}
+			// eboot.bin always: the plan is never empty, and it is the build.
+			if (file.path != "eboot.bin" && alreadyInstalled(use.appDir + file.path, file))
+			{
+				same++;
+				sameBytes += file.size;
+				continue;
 			}
 			if (!unpack(zip, file, dir + "stage/" + file.path))
 			{
@@ -1095,7 +1137,8 @@ Outcome verifyAndUnpack(const Setup& use, const Release& release, const std::str
 			if (!writeDurable(dir + "plan", plan))
 				error = "The update's list of files could not be written.";
 			else
-				diag::mark("update: %zu files unpacked, ready to install", files.size());
+				diag::mark("update: %zu files unpacked, ready to install; %zu the same as now (%llu KiB) left as they are",
+						files.size() - same, same, (unsigned long long)(sameBytes >> 10));
 		}
 	}
 	mz_zip_reader_end(&zip);

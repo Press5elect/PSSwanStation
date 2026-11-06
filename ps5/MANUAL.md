@@ -257,7 +257,7 @@ Each game has ten save-state slots and its own memory card; both are kept in `da
 
 **Save states.** Menu, Save state and Load state, each slot shown with the picture it was saved at. With "Save when a game is closed" on (Settings, Games and saving), one more state is written when you close a game, and "Continue where I left off" starts from it next time. A game's details (Triangle) can still start it from the beginning.
 
-**Sleep-safe saving** (Settings, Games and saving; off at first). While a game runs, its resume state is saved every five minutes of play, and whenever the console's own menu (the PS button) opens over it, quietly and without a pause. If the console then closes PSSwanStation (rest mode, or closing it from that menu), the next start offers to continue. It uses the same state as "Save when a game is closed". If PSSwanStation stops when a game starts with this on, switch it off: it has not run on a console yet.
+**Sleep-safe saving** (Settings, Games and saving; off at first). While a game runs, its resume state is saved whenever the console's own menu (the PS button) opens over it, quietly and without a pause (not on a timer: the menu is where the console closes a title, and a timer only wore the storage). If the console then closes PSSwanStation (rest mode, or closing it from that menu), the next start offers to continue. It uses the same state as "Save when a game is closed". If PSSwanStation stops when a game starts with this on, switch it off: it has not run on a console yet.
 
 **Memory cards** work as on the console, one for each game. Menu, "Memory cards" (with no game running) shows every card and the saves on it, with their pictures. There you can:
 
@@ -385,16 +385,28 @@ Settings (first in the menu) has nine sections. L1 and R1 move between sections,
 | Sound | Volume: the game, menu sounds, music, videos. Sound delay: how far ahead of the speakers the game's sound is kept (60, 32 or 16 ms; lower for rhythm games and wireless headphones, Normal should it crackle). What plays: menu music (the title's own, your `music/` folder, or the kit's songs), the menus' sound set, the start-up sound |
 | Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation (the title's own, AMD FSR3's optical flow, or MihawkGen); the frame rate counter |
 | Controls | The confirm button. Players: multitap and each player's controller type. USB controllers (an experiment). The pad: buttons (remapping, OPTIONS and the touch pad included; which opens the menu; turbo), stick dead zone, vibration, player lights, tilt steering. Shortcuts: the held-OPTIONS shortcuts and fast forward speed. Rewind and its memory |
-| Games and saving | Where the games are: folders, USB drives, the USB disc drive, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database. RetroAchievements: sign in, hardcore mode |
+| Games and saving | Where the games are: folders, USB drives, the USB disc drive, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, save states on a USB drive, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database. RetroAchievements: sign in, hardcore mode |
 | Emulator | The emulator's own settings in one list, a part for each of its sections (Console, Enhancement, Display, Port, Advanced): CPU and BIOS options, internal resolution, texture filtering, PGXP, Close Gaps Between Polygons, widescreen hack, texture replacement and the rest |
-| System | Console notices. Console tuning: sound and controls before the emulator (off; the sound and USB controllers' threads run first, downloads, covers and copies last), the graphics driver on its own thread (off), the GPU wait's checks and sleeps (the driver's 1500 and 1000 µs, or shorter or longer), and measuring the game in the boot log (a line every five seconds of play: speed, worst frame, each part of a frame, draws, passes and barriers per frame), all but the last from the next start. Verbose logging and recordings of what you press |
+| System | Console notices. Console tuning: sound and controls before the emulator (off; the sound and USB controllers' threads run first, downloads, covers and copies last), the graphics driver on its own thread (off), the GPU wait's checks and sleeps (the driver's 1500 and 1000 µs, or shorter or longer), and measuring the game in the boot log (a line every five seconds of play: speed, worst frame, each part of a frame, draws, passes and barriers per frame), all but the last from the next start. Logs: how they are kept, where, and what they keep. Recordings of what you press |
 | About | Build number and date, licences |
 
 Display output is the one Picture setting that cannot be a game's own: the console reads it when PSSwanStation starts.
 
 ## Troubleshooting
 
-Two logs say what happened: `psswanstation-boot.log` in the title's folder (written from the first moment of every start, with the two starts before kept as `.1.log` and `.2.log`) and `logs/psswanstation.log`, the emulator's own, in the folder your files are kept in (the title's folder, or `/data/psswanstation/` or a USB drive's `PSSwanStation` when "Where my files are kept" says so).
+Two logs say what happened: `psswanstation-boot.log` (written from the first moment of every start, with the two starts before kept as `.1.log` and `.2.log`) and `logs/psswanstation.log`, the emulator's and the graphics driver's own messages. Both are in the title's folder, or in `PSSwanStation` on a USB drive.
+
+Settings, System, Logs decides how (from the next start):
+
+| Setting | Choices |
+| --- | --- |
+| Logs | **Written as they come** (the usual: everything for finding a problem). **Only when something goes wrong**: the lines are kept in memory (the last megabyte) and written only on a crash, a notice of a problem, or "Save the log now"; nothing is written otherwise, and the logs of the runs before stay. **Off**: nothing, not even a crash report |
+| Where the logs are kept | The title's folder, or a USB drive (off the console's storage; the title's folder when no drive can be written to) |
+| What the logs keep | **The boot log** alone (start-up, problems, each game's summary). **Boot log and emulator's log** (the usual). **Everything**: all the emulator says, and a line every ten seconds about a game's speed (what "Verbose logging" was) |
+
+To send a log of a problem that did not crash with "Only when something goes wrong", choose "Save the log now" right after it.
+
+**Sparing the console's storage.** Settings are kept in memory as they change and written when PSSwanStation closes and when the console's menu opens (the console can close the title from there); a file is not written again when nothing in it changed. The graphics driver keeps the one shader cache (`radv-shader-cache`, written once for each new shader); the emulator's own pipeline cache file is gone. An update unpacks and replaces only the files that changed. Save states can go to a USB drive (Settings, Games and saving, "Save states on a USB drive"), and so can the logs.
 
 | Problem | What to do |
 | --- | --- |

@@ -13,8 +13,11 @@
 	  memory to a writer thread of their own (as OGBox's boot log, OGBox by
 	  Press5elect): a line written straight to the file waits for the file
 	  system, on whatever thread wrote it, and the frame thread writes some.
-	  The writer puts the file on the disk every two seconds that had lines;
-	  a crash report writes what memory still holds, then itself, straight;
+	  The writer puts the file on the disk every 30 seconds that had lines;
+	  a crash report writes what memory still holds, then itself, straight.
+	  Settings, System, Logs can keep the lines in memory instead, written
+	  only when something goes wrong (a crash, a notice of a problem, or
+	  "Save the log now"), or write none at all;
 	- on a fatal signal, the faulting instruction as an offset in eboot.bin
 	  (ps5/tools/symbolize.sh turns it into a function), the registers, the
 	  return addresses on the stack and the last step reached;
@@ -89,6 +92,54 @@ pthread_cond_t ringFilled = PTHREAD_COND_INITIALIZER;
 pthread_cond_t ringEmptied = PTHREAD_COND_INITIALIZER;
 volatile bool writerUp;
 
+// Settings, System, Logs: 0 written as they come, 1 kept in memory (the
+// ring, its oldest lines making room) and written when something goes
+// wrong, 2 none written.
+enum Mode { Live, Memory, Off };
+volatile int mode = Live;
+// The file and the two kept before it, made ready by open(): a crash in
+// Memory mode opens the file from a signal handler.
+char logPath[512], logPath1[512], logPath2[512];
+
+// Memory mode: the oldest bytes make room.
+void ringKeep(const char *text, size_t length)
+{
+	if (length > RingBytes)
+	{
+		text += length - RingBytes;
+		length = RingBytes;
+	}
+	pthread_mutex_lock(&ringLock);
+	if (ringLength + length > RingBytes)
+	{
+		const size_t drop = ringLength + length - RingBytes;
+		ringHead = (ringHead + drop) % RingBytes;
+		ringLength -= drop;
+	}
+	size_t at = (ringHead + ringLength) % RingBytes;
+	for (size_t done = 0; done < length;)
+	{
+		const size_t n = length - done < RingBytes - at ? length - done : RingBytes - at;
+		memcpy(ring + at, text + done, n);
+		done += n;
+		at = (at + n) % RingBytes;
+	}
+	ringLength += length;
+	pthread_mutex_unlock(&ringLock);
+}
+
+// This run's file, the two before it kept (rename and open: a signal
+// handler may do this).
+int openLogFile()
+{
+	rename(logPath1, logPath2);
+	rename(logPath, logPath1);
+	const int fd = ::open(logPath, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0666);
+	if (fd >= 0)
+		fchmod(fd, 0666);
+	return fd;
+}
+
 void writeAll(const char *text, size_t length)
 {
 	if (logFd < 0)
@@ -146,6 +197,13 @@ void ringPut(const char *text, size_t length)
 // A line: to the writer when it runs, else straight to the file.
 void lineOut(const char *text, size_t length)
 {
+	if (mode == Off)
+		return;
+	if (mode == Memory && logPath[0] != 0)
+	{
+		ringKeep(text, length);
+		return;
+	}
 	if (writerUp && logFd >= 0)
 		ringPut(text, length);
 	else
@@ -203,11 +261,11 @@ void *writerMain(void *)
 			pthread_mutex_lock(&ringLock);
 		}
 		pthread_cond_broadcast(&ringEmptied);
-		// On the disk every two seconds that had lines: a console that stops
+		// On the disk every 30 seconds that had lines: a console that stops
 		// whole loses what its cache held. Here, in no other thread's way.
 		timespec now;
 		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (unsynced && now.tv_sec - lastSync.tv_sec >= 2)
+		if (unsynced && now.tv_sec - lastSync.tv_sec >= 30)
 		{
 			lastSync = now;
 			unsynced = false;
@@ -224,6 +282,10 @@ void *writerMain(void *)
 // handler cannot wait for it).
 void drainForCrash()
 {
+	if (mode == Off)
+		return;
+	if (mode == Memory && logFd < 0 && logPath[0] != 0)
+		logFd = openLogFile();
 	if (logFd < 0 || pthread_mutex_trylock(&ringLock) != 0)
 		return;
 	while (ringLength > 0)
@@ -372,19 +434,41 @@ void onTerminate()
 
 } // namespace
 
+void configure(int how)
+{
+	mode = how == 1 ? Memory : how == 2 ? Off : Live;
+}
+
+int currentMode()
+{
+	return mode;
+}
+
 bool open(const std::string& dir)
 {
-	if (logFd >= 0)
+	if (logFd >= 0 || logPath[0] != 0)
 		return true;
-	const std::string a = dir + "psswanstation-boot.log";
-	const std::string b = dir + "psswanstation-boot.1.log";
-	const std::string c = dir + "psswanstation-boot.2.log";
-	rename(b.c_str(), c.c_str());
-	rename(a.c_str(), b.c_str());
-	const int fd = ::open(a.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0666);
+	snprintf(logPath, sizeof(logPath), "%spsswanstation-boot.log", dir.c_str());
+	snprintf(logPath1, sizeof(logPath1), "%spsswanstation-boot.1.log", dir.c_str());
+	snprintf(logPath2, sizeof(logPath2), "%spsswanstation-boot.2.log", dir.c_str());
+	if (mode == Off)
+	{
+		earlyUsed = 0;
+		return true;
+	}
+	if (mode == Memory)
+	{
+		// Nothing written now: the files of the runs before stay as they are.
+		ringKeep(early, earlyUsed);
+		earlyUsed = 0;
+		return true;
+	}
+	const int fd = openLogFile();
 	if (fd < 0)
+	{
+		logPath[0] = 0;
 		return false;
-	fchmod(fd, 0666);
+	}
 	logFd = fd;
 	writeAll(early, earlyUsed);
 	earlyUsed = 0;
@@ -396,6 +480,34 @@ bool open(const std::string& dir)
 		writerUp = true;
 	}
 	return true;
+}
+
+bool saveNow(const char *why)
+{
+	if (mode != Memory || logPath[0] == 0)
+		return false;
+	pthread_mutex_lock(&ringLock);
+	if (logFd < 0)
+		logFd = openLogFile();
+	const bool opened = logFd >= 0;
+	if (opened)
+	{
+		char note[160];
+		const int k = snprintf(note, sizeof(note), "[log: the lines kept in memory, written: %s]\n", why);
+		while (ringLength > 0)
+		{
+			const size_t n = ringLength < RingBytes - ringHead ? ringLength : RingBytes - ringHead;
+			writeAll(ring + ringHead, n);
+			ringHead = (ringHead + n) % RingBytes;
+			ringLength -= n;
+		}
+		if (k > 0)
+			writeAll(note, (size_t)k);
+	}
+	pthread_mutex_unlock(&ringLock);
+	if (opened)
+		fsync(logFd);
+	return opened;
 }
 
 void flush()
@@ -453,6 +565,8 @@ void notify(const char *format, ...)
 	va_end(args);
 	mark("notice: %s", text);
 	sendNotification(text);
+	// Something went wrong: what memory holds goes into the file.
+	saveNow("a notice");
 }
 
 const char *lastMark()

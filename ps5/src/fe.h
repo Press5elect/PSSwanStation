@@ -46,9 +46,17 @@ constexpr const char *Developer = "Press5elect";
 // ------------------------------------------------------------------ diag.cpp
 namespace diag
 {
+// How the log is kept (Settings, System, Logs), before open(): 0 written as
+// it comes, 1 in memory, written only when something goes wrong, 2 none.
+void configure(int mode);
+int currentMode();
 // Opens <dir>psswanstation-boot.log for this run (the two before it are kept as
-// .1.log and .2.log) and writes the marks made before it was open.
+// .1.log and .2.log) and writes the marks made before it was open. Kept in
+// memory, the file is made only when something is written to it.
 bool open(const std::string& dir);
+// Kept in memory: what it holds into the file now (false when the log is
+// not kept in memory, or the file cannot be made).
+bool saveNow(const char *why);
 // One line of the boot log: into memory, and from there into the file on
 // a thread of its own (straight into the file before open()).
 void mark(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -177,6 +185,11 @@ std::vector<std::string> usbGameDirs();
 // The top of each USB drive that is plugged in and can be read (/mnt/usb0),
 // without a trailing '/'.
 std::vector<std::string> usbDrives();
+// PSSwanStation's folder on a USB drive that can be written to (the first
+// drive that has one, else the first that can be written to), with a
+// trailing '/', made if needed; empty when there is none. For the files kept
+// off the console's storage: the logs, the save states.
+std::string usbDataDir();
 
 // Whether the console's own menu (the PS button's) is over the title: 1 it
 // is, 0 it is not, -1 the console does not say.
@@ -395,11 +408,20 @@ struct Frontend
 	int preset = 1;
 	bool autoSaveOnExit = false;	// save a resume state when a game is closed
 	bool autoLoadOnStart = false;	// and start from it
-	// Sleep-safe saving: the resume state is saved every five minutes of play
-	// and when the console's menu opens over the game, so a title closed by the
-	// console (rest mode) can be continued at the next start.
+	// Sleep-safe saving: the resume state is saved when the console's menu
+	// opens over the game, so a title closed by the console (rest mode) can
+	// be continued at the next start.
 	bool sleepSafe = false;
-	bool verboseLog = false;
+	bool verboseLog = false;	// logDetail == 2, kept as its own field for the files of before
+	// The logs (diag.cpp): 0 written as they come, 1 kept in memory and
+	// written only when something goes wrong (a crash, a notice of a problem,
+	// "Save the log now"), 2 off. Where: 0 the title's folder, 1 a USB drive.
+	// What: 0 the boot log, 1 and the emulator's log (logs/psswanstation.log),
+	// 2 everything (the emulator at Developer level, a speed line every 10 s).
+	int logMode = 0;
+	int logPlace = 0;
+	int logDetail = 1;
+	bool statesOnUsb = false;	// save states and the resume state on a USB drive (host::statesFolder())
 	bool groupDiscs = true;		// the discs of a game as one entry in the library (library_names.h)
 	// The console's tuning (tuning.h): sound and controls ahead of the
 	// emulator's thread, the graphics driver on its own thread, the GPU wait's
@@ -485,7 +507,11 @@ struct Frontend
 };
 Frontend& frontend();
 void loadFrontend();
+// Settings are kept in memory when changed (frontend.cfg and the emulator's
+// options files) and written by flush(): when the title closes and when the
+// console's menu opens (the console may close the title from there).
 void saveFrontend();
+void flush();
 
 // The core's options (libretro core options v2), as the core defined them.
 struct Value
@@ -749,6 +775,10 @@ bool playbackStart(const std::string& file);
 void playbackStop();
 // The folder the running game's recordings are in (<root>data/recordings/<serial>).
 std::string recordingsFolder();
+// Where save states are written: <USB drive>/PSSwanStation/data/states/ with
+// "Save states on a USB drive" and a drive that can be written to, else
+// <files>/data/states/.
+std::string statesFolder();
 }
 
 // ---------------------------------------------------------------- rewind.cpp

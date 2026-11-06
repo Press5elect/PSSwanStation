@@ -878,18 +878,43 @@ bool environment(unsigned command, void *data)
 
 // ------------------------------------------------------------ save states
 
-std::string stateBase(const std::string& gamePath)
+std::string stateName(const std::string& gamePath, int slot)
 {
 	std::string name = fileTitle(gamePath);
 	for (char& c : name)
 		if (c == '/' || c == '\\' || c == ':' || c == '?' || c == '*' || c == '"' || c == '<' || c == '>' || c == '|')
 			c = '_';
-	return rootDir + "data/states/" + name;
+	return name + (slot == ResumeSlot ? std::string(".resume") : format(".%d", slot)) + ".state";
 }
 
-std::string statePathFor(const std::string& gamePath, int slot)
+// Where a state is. Written where "Save states on a USB drive" says (the
+// console's storage when no drive can be written to); read from there or
+// the other place, whichever has the newer copy, so that the states of
+// before the setting changed are still found.
+std::string statePathFor(const std::string& gamePath, int slot, bool writing = false)
 {
-	return stateBase(gamePath) + (slot == ResumeSlot ? std::string(".resume") : format(".%d", slot)) + ".state";
+	const std::string name = stateName(gamePath, slot);
+	const std::string usb = options::frontend().statesOnUsb ? platform::usbDataDir() : std::string();
+	const std::string console = rootDir + "data/states/";
+	const std::string preferred = (usb.empty() ? console : usb + "data/states/") + name;
+	if (writing)
+	{
+		if (!usb.empty())
+			makeDir(usb + "data/states");
+		return preferred;
+	}
+	const std::string usbAny = usb.empty() ? platform::usbDataDir() : usb;
+	std::string other;
+	if (!usb.empty())
+		other = console + name;
+	else if (!usbAny.empty())
+		other = usbAny + "data/states/" + name;
+	struct stat a, b;
+	const bool hasPreferred = stat(preferred.c_str(), &a) == 0;
+	const bool hasOther = !other.empty() && stat(other.c_str(), &b) == 0;
+	if (hasOther && (!hasPreferred || b.st_mtime > a.st_mtime))
+		return other;
+	return preferred;
 }
 
 // A state file: the mark, how large the emulator's state is unpacked, then
@@ -2511,7 +2536,8 @@ std::vector<uint8_t> packState(const std::vector<uint8_t>& raw, const std::vecto
 }
 
 // ---------------------------------------------------------- sleep-safe saving
-// The resume state is saved now and then while a game runs: the emulator's
+// The resume state is saved when the console's menu opens over the game
+// (the console closes a title from there, or puts itself to rest): the emulator's
 // state is taken on this thread (a copy of its memory), and compressed and
 // written on another, so the game does not stop for it. A file says which
 // game it was; closing the game removes it, so one that is there at the next
@@ -2553,7 +2579,7 @@ void sleepSafeSave(const char *why)
 	const std::string kept = discdrive::keptPath(current.path);
 	if (launchedGame.path != kept)
 		marker = "path=" + kept + "\nname=" + current.title + "\nfile=" + fileTitle(kept) + "\n";
-	const std::string path = statePath(ResumeSlot);
+	const std::string path = statePathFor(current.path, ResumeSlot, true);
 	const std::string reason = why;
 	waitForResume();
 	resumeWriting = true;
@@ -2575,7 +2601,9 @@ void sleepSafeStarted()
 	overlayBefore = 0;
 }
 
-// Once a frame: five minutes of play, or the console's menu over the game.
+// Once a frame: the console's menu over the game. (Until build 27 also every
+// five minutes of play: a write of the whole state that only wore the
+// storage, the menu being how the console closes a title.)
 void sleepSafeTick()
 {
 	if (!options::frontend().sleepSafe || !isRunning)
@@ -2594,8 +2622,6 @@ void sleepSafeTick()
 	}
 	else
 		overlayCountdown--;
-	if (!isPaused && !ffOn && !rewindOn && now() - resumeSavedAt >= 300.0)
-		sleepSafeSave("five minutes of play");
 }
 }
 
@@ -2664,7 +2690,7 @@ bool saveState(int slot)
 	const std::vector<uint8_t> packed = packState(raw, achievements::saveProgress());
 	if (packed.empty())
 		return false;
-	const bool ok = writeFile(statePath(slot), packed.data(), packed.size());
+	const bool ok = writeFile(statePathFor(current.path, slot, true), packed.data(), packed.size());
 	diag::mark("state: slot %d %s (%zu KiB)", slot, ok ? "saved" : "could not be written", packed.size() >> 10);
 	if (ok)
 	{
@@ -2730,6 +2756,12 @@ bool applyState(const std::vector<uint8_t>& packed)
 }
 
 // ------------------------------------------------------------- recordings
+
+std::string statesFolder()
+{
+	const std::string usb = options::frontend().statesOnUsb ? platform::usbDataDir() : std::string();
+	return usb.empty() ? rootDir + "data/states/" : usb + "data/states/";
+}
 
 std::string recordingsFolder()
 {

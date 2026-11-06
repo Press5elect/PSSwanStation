@@ -3539,12 +3539,48 @@ void moreSettings(int kind, std::vector<Item>& items)
 	{
 	case 7:
 	{
-		items.push_back(toggle("Verbose logging", &f.verboseLog,
-				"Writes everything the emulator says into the boot log (" + shownRoot() + "psswanstation-boot.log, kept "
-				"for this run and the two before it), not only its warnings and errors, with its log level at "
-				"Developer; and, while a game runs, a line every ten seconds about its speed, the pictures shown, the "
-				"sound and the free memory. For finding what went wrong; the log grows quickly, so leave it off "
-				"otherwise."));
+		items.push_back(header("Logs"));
+		items.push_back(choice("Logs", std::clamp(f.logMode, 0, 2),
+				{ "Written as they come", "Only when something goes wrong", "Off" },
+				"Written as they come: the boot log (psswanstation-boot.log, kept for this run and the two before it) "
+				"is written while PSSwanStation runs, for finding any problem. Only when something goes wrong: its "
+				"lines are kept in memory (the last megabyte) and written only on a crash, a notice of a problem, or "
+				"\"Save the log now\": nothing is written otherwise, and the logs of the runs before stay. Off: "
+				"nothing is written, not even a crash report. Used from the next start of PSSwanStation.",
+				[](int i) { options::frontend().logMode = i; }));
+		{
+			const bool usb = !platform::usbDataDir().empty();
+			Item item = choice("Where the logs are kept", std::clamp(f.logPlace, 0, 1),
+					{ "The title's folder", "A USB drive" },
+					"The title's folder: on the console (" + appDir + "). A USB drive: in PSSwanStation on the drive, "
+					"so the logs do not wear the console's storage; without a drive that can be written to, the "
+					"title's folder. Needs \"USB drives\" on. Used from the next start of PSSwanStation.",
+					[](int i) { options::frontend().logPlace = i; });
+			if (f.logPlace == 1 && !usb)
+				item.value = "A USB drive (none now)";
+			items.push_back(std::move(item));
+		}
+		items.push_back(choice("What the logs keep", std::clamp(f.logDetail, 0, 2),
+				{ "The boot log", "Boot log and emulator's log", "Everything" },
+				"The boot log: the start-up, what goes wrong, and each game's summary. Boot log and emulator's log: "
+				"also logs/psswanstation.log, the emulator's and the graphics driver's own messages (with the logs "
+				"written as they come). Everything: all the emulator says, at its Developer level, and a line every "
+				"ten seconds about a game's speed, the pictures, the sound and the free memory; the log grows "
+				"quickly, so for finding a problem only. The emulator's log is started or stopped at the next start.",
+				[](int i) {
+					options::Frontend& f = options::frontend();
+					f.logDetail = i;
+					f.verboseLog = i == 2;
+				}));
+		{
+			Item item = action(icon::Save, "Save the log now", "Writes the lines kept in memory to "
+					"psswanstation-boot.log now: to send a log of something that went wrong without a crash. Only "
+					"with the logs kept until something goes wrong.", [] {
+						host::addMessage(diag::saveNow("asked for in Settings") ? "The log was written."
+								: "The log could not be written.");
+					}, diag::currentMode() == 1);
+			items.push_back(item);
+		}
 		items.push_back(header("Recordings of what you press"));
 		const double fps = host::coreFps() > 1.0 ? host::coreFps() : 60.0;
 		const recorder::Mode mode = recorder::mode();
@@ -3799,9 +3835,21 @@ void moreSettings(int kind, std::vector<Item>& items)
 		items.push_back(toggle("Continue where I left off", &f.autoLoadOnStart,
 				"Starts a game from the state kept when it was last closed, when there is one. The game's details "
 				"page (Triangle) can still start it from the beginning."));
+		{
+			const std::string usb = platform::usbDataDir();
+			Item item = toggle("Save states on a USB drive", &f.statesOnUsb,
+					"Writes the save states and the resume state to a USB drive (PSSwanStation/data/states on it) "
+					"instead of the console's storage, which then is not worn by them. States saved before stay "
+					"where they are and are still found: of two copies of a slot, the newer one is used. Without a "
+					"drive that can be written to, states are written to the console as before. Memory cards stay "
+					"with your files. Needs \"USB drives\" on.");
+			if (f.statesOnUsb && usb.empty())
+				item.value = "On, no drive";
+			items.push_back(std::move(item));
+		}
 		items.push_back(toggle("Sleep-safe saving", &f.sleepSafe,
-				"Saves the game's resume state every five minutes of play and whenever the console's own menu (the PS "
-				"button) opens over it, quietly and without a pause. When the console closes PSSwanStation (rest "
+				"Saves the game's resume state whenever the console's own menu (the PS button) opens over it, quietly "
+				"and without a pause (not on a timer: that only wrote to the storage). When the console closes PSSwanStation (rest "
 				"mode, or closing it from the console's menu) the next start offers to continue from there. It uses "
 				"the same state as \"Save when a game is closed\". Not yet tried on a console: if PSSwanStation "
 				"stops when a game starts with this on, switch it off."));
