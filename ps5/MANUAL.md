@@ -66,11 +66,13 @@ Everything lives in `/data/homebrew/PPSA99248/` unless you choose to keep your f
 
 PSSwanStation reads games from SMB shares (Windows sharing), NFS exports and FTP servers named in `network.cfg`. The file is in the title's folder (or wherever "Where my files are kept" puts your files). The title writes it at its first start, with every line explained and the example lines switched off.
 
+**From the console.** Settings, Games and saving, "Network shares" fills in the file for you: add, change or remove the folders with games, set the account and the folder for your files. As the page opens, the console looks for the SMB servers on its network (every address of its /24 asked on port 445, with the NetBIOS name of each that gives one); choose one and type the share and folder after its address. NFS and FTP folders are added by hand in the same list. A change is used at once: the Network tab is scanned again, and the next request to a share logs in with the new account. The file's comments and the lines the page does not show (`domain`, `wake`) are kept.
+
 **The rules of the file**
 
 - One setting per line, as `name = value`. A line starting with `#` is switched off: remove the `#` to use it.
 - Give every server by its **IP address** (`192.168.1.10`), never its name. Names are refused.
-- Restart PSSwanStation after editing it. The folders are scanned at that start; the list of games is kept, and Square, "Scan for games" scans again.
+- Restart PSSwanStation after editing it by hand (the page above needs no restart). The folders are scanned at that start; the list of games is kept, and Square, "Scan for games" scans again.
 
 **The settings**
 
@@ -197,7 +199,7 @@ The library shows your games from four places, each a tab once it has games: Int
 - **Cheats**, its cheats and patches;
 - **More**: favourite, hidden, another cover (box, title screen or a moment of the game) and its texture pack.
 
-Covers are looked for in `covers/` by the game's file name. With "Download covers" on, missing ones are fetched from the libretro thumbnails collection.
+Covers are looked for in `covers/` by the game's file name. With "Download covers" on, missing ones are fetched from the libretro thumbnails collection: the games on screen first, then every other game of the library in its order, one after another in the background (not while a game runs), so that scrolling finds them there. The library's header counts them ("Downloading covers (game 12 of 340)").
 
 ### ES-DE themes
 
@@ -402,7 +404,7 @@ Two logs say what happened: `psswanstation-boot.log` in the title's folder (writ
 | A game crashes at once | Try CPU Execution Mode "Cached Interpreter" (Settings, Console) and GPU Renderer "Software" (Enhancement) |
 | A game is too slow | Lower the Internal Resolution Scale (Enhancement); FSR 1 or NIS keeps it sharp |
 | No USB tab | Switch on "USB drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; a Lapy service or the ELF loader must be running |
-| No Network tab | Check the `path` lines in `network.cfg` (server by IP address), then restart or press Square, "Scan for games" |
+| No Network tab | Check the folders under Settings, Games and saving, "Network shares" (or the `path` lines in `network.cfg`, server by IP address); a server the page does not find may be asleep or have file sharing off |
 | The console will not turn off | It was started with a disc in a USB drive. Hold the power button to turn it off, and next time start the console with the drive empty and put the disc in afterwards |
 | No Disc Drive tab | Switch on "USB drives" or "USB disc drive" and restart; a Lapy service or the ELF loader must be running. The boot log's `disc drive:` lines say which drives `/dev` has, whether each opens, and why a disc was not read |
 | A disc's videos or music are missing | The drive is read 2048 bytes a sector (the choice page says so): the console did not let the SCSI commands through |

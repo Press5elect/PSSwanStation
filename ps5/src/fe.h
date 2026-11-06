@@ -49,8 +49,12 @@ namespace diag
 // Opens <dir>psswanstation-boot.log for this run (the two before it are kept as
 // .1.log and .2.log) and writes the marks made before it was open.
 bool open(const std::string& dir);
-// One line of the boot log, written straight to the file.
+// One line of the boot log: into memory, and from there into the file on
+// a thread of its own (straight into the file before open()).
 void mark(const char *format, ...) __attribute__((format(printf, 1, 2)));
+// Everything marked so far in the file and on the disk (before the title
+// closes): waits up to two seconds for the writer.
+void flush();
 // A line of the boot log and, where the platform has them and they are on, a
 // pop-up notice.
 void notify(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -794,11 +798,31 @@ public:
 void loadConfig();
 // The folders it names, as smb://server/share/folder, ftp://server/folder or
 // nfs://server/path.
-const std::vector<std::string>& gameFolders();
+std::vector<std::string> gameFolders();
 // network.cfg's "files" line: the folder on a share for the title's own files
 // (memory card copies, covers, everything when the files are kept there), or
 // "" when it names none.
-const std::string& filesFolder();
+std::string filesFolder();
+// What network.cfg says, as it is written there, for the share form in
+// Settings.
+struct Config
+{
+	std::vector<std::string> paths;	// the "path" lines: server/share/folder, nfs://..., ftp://...
+	std::string files;
+	std::string user = "guest", password;
+};
+Config readConfig();
+// Writes it into network.cfg (its comments and the lines the form does not
+// show are kept) and reads the file again; the next request to a share uses
+// the account. The caller scans the library's Network tab again.
+bool saveConfig(const Config& config, std::string& error);
+// The SMB servers on the console's network (port 445 open), with their
+// NetBIOS names where they answer. A few seconds: on a thread of the caller's.
+struct FoundServer
+{
+	std::string address, name;
+};
+std::vector<FoundServer> findServers(std::string& problem);
 // Writing to a network folder: an SMB or NFS share (an FTP folder is only
 // read). A file is written beside its place and then put there, so that one
 // cut short is never taken for it; the folders it is in are made.

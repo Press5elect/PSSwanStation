@@ -375,7 +375,7 @@ void run(int source, bool force)
 	{
 		const std::vector<std::string>& folders = smb::gameFolders();
 		if (folders.empty())
-			status = "No network folder is set: edit network.cfg in " + shownRoot();
+			status = "No network folder is set: Settings, Games and saving, Network shares";
 		else if (force || !loadNetworkList(found))
 		{
 			found.clear();
@@ -578,8 +578,8 @@ std::string sourceHint(int source)
 	if (source == Optical)
 		return "Put a PlayStation disc in a USB CD or DVD drive plugged into the console.";
 	if (smb::gameFolders().empty())
-		return "Name your share or FTP server in " + shownRoot() + "network.cfg (path = 192.168.1.10/Games/PSX, "
-				"or path = ftp://192.168.1.10/games/psx), then restart PSSwanStation.";
+		return "Add a folder on your share or FTP server under Settings, Games and saving, Network shares (the "
+				"console finds the servers on the network), or in " + shownRoot() + "network.cfg.";
 	return "Press Square to scan the share again.";
 }
 

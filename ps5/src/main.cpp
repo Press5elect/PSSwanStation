@@ -281,6 +281,34 @@ int main(int argc, char **argv)
 		fflush(stdout);
 		_exit(ok ? 0 : 1);
 	}
+	if (getenv("SWANSTATION_SHARES_TEST") != nullptr)
+	{
+		// The share form's file: written, read back, and the servers looked for.
+		smb::Config config = smb::readConfig();
+		printf("shares-test: before: %d path(s), user %s\n", (int)config.paths.size(), config.user.c_str());
+		config.paths = { "192.168.1.10/Games/PSX", "nfs://192.168.1.11/volume1/psx", "ftp://192.168.1.12/psx" };
+		config.files = "192.168.1.10/Games/PSSwanStation";
+		config.user = "me";
+		config.password = "pass#word";
+		std::string error;
+		const bool saved = smb::saveConfig(config, error);
+		const smb::Config back = smb::readConfig();
+		printf("shares-test: saved %d (%s); back: %d path(s), files %s, user %s, password %s; %d folder(s) in use\n",
+				saved, error.c_str(), (int)back.paths.size(), back.files.c_str(), back.user.c_str(),
+				back.password.c_str(), (int)smb::gameFolders().size());
+		config.paths.erase(config.paths.begin());
+		smb::saveConfig(config, error);
+		printf("shares-test: one removed: %d path(s)\n", (int)smb::readConfig().paths.size());
+		std::string problem;
+		const double began = now();
+		const std::vector<smb::FoundServer> servers = smb::findServers(problem);
+		printf("shares-test: %d server(s) found in %.2f s (%s)\n", (int)servers.size(), now() - began, problem.c_str());
+		for (const smb::FoundServer& server : servers)
+			printf("shares-test: server %s \"%s\"\n", server.address.c_str(), server.name.c_str());
+		diag::flush();
+		fflush(stdout);
+		_exit(saved && back.paths.size() == 3 && back.password == "pass#word" ? 0 : 1);
+	}
 	if (const char *spec = getenv("SWANSTATION_NET_TEST"))
 	{
 		const int result = smb::selfTest(spec);

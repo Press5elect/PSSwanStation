@@ -1,6 +1,23 @@
 PSSwanStation - what changed
 ============================
 
+Next build
+  Added
+  - Network shares from the console (Settings, Games and saving, Network
+    shares): add, change and remove the folders with games, set the account
+    and the folder for your files, without editing network.cfg over FTP.
+    The SMB servers on the network are found as the page opens (port 445,
+    with their NetBIOS names), as OGBox's share form does. A change is used
+    at once: no restart.
+  Changed
+  - Covers: with "Download covers" on, every game of the library gets its
+    cover in the background, one after another, not only the games on
+    screen (as OGBox does). Not while a game runs.
+  - The boot log's lines go through memory to a writer thread of their own
+    (as OGBox's): a line no longer waits for the file system on the thread
+    that wrote it. The log is put on the disk every two seconds that had
+    lines, and a crash report still writes everything before itself.
+
 Build 26
   Added
   - The renderer changes while a game runs (Software and Vulkan, both ways),

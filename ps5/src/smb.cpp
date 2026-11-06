@@ -21,6 +21,9 @@
 		user = guest
 		password =
 
+	Settings' "Network shares" page writes the file too (saveConfig, below),
+	and finds the SMB servers on the console's network for it (findServers).
+
 	Sockets. On the console a title's socket did not behave as a non-blocking
 	one after fcntl(F_SETFL, O_NONBLOCK): libsmb2, which reads until the socket
 	says "nothing more", waited for ever on the server's first answer. With the
@@ -53,6 +56,7 @@
 */
 #include "fe.h"
 #include "net.h"
+#include "netplay.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -108,6 +112,16 @@ struct Account
 Account account;
 std::vector<std::string> folders;	// smb://, ftp:// and nfs:// folders, from network.cfg
 std::string filesPlace;				// network.cfg's "files" folder, or ""
+// What network.cfg says (the three above and the wake address) is read again
+// when the share form changes it, while other threads use it: they take
+// copies under this.
+std::mutex configMutex;
+
+Account currentAccount()
+{
+	std::lock_guard<std::mutex> lock(configMutex);
+	return account;
+}
 
 // ---------------------------------------------------- what the share is doing
 
@@ -361,13 +375,13 @@ struct Share
 			return false;
 		if (answer == Probe::Closed)
 		{
-			fail(server + " does not answer: is it switched on, and is the address in network.cfg right?");
+			fail(server + " does not answer: is it switched on, and is its address right (Settings, Games and saving, Network shares)?");
 			failedAt = nowMs();
 			return false;
 		}
 		if (answer == Probe::NoName)
 		{
-			fail("\"" + server + "\" is a name: give the server's IP address in network.cfg (192.168.x.x)");
+			fail("\"" + server + "\" is a name: give the server's IP address (192.168.x.x), not its name");
 			failedAt = nowMs();
 			return false;
 		}
@@ -386,6 +400,7 @@ struct Share
 				{ true, SMB2_VERSION_0210, "SMB 2.1" } };
 		static const Attempt asGuest[] = { { false, 0, "SMB 3, no password" }, { true, SMB2_VERSION_0302, "SMB 3.0.2" },
 				{ true, SMB2_VERSION_0210, "SMB 2.1" } };
+		const Account account = currentAccount();
 		const Attempt *attempts = account.password.empty() ? asGuest : withPassword;
 		smb2_context *c = nullptr;
 		std::string error;
@@ -425,7 +440,7 @@ struct Share
 			if (stopping())
 				return false;
 			fail("//" + server + "/" + share + ": " + error
-					+ " (check the share's name, the user and the password in network.cfg)");
+					+ " (check the share's name, the user and the password under Network shares)");
 			failedAt = nowMs();
 			return false;
 		}
@@ -948,7 +963,7 @@ bool parseHardwareAddress(const std::string& text, uint8_t out[6])
 std::vector<uint32_t> serverAddresses()
 {
 	std::vector<uint32_t> out;
-	for (const std::string& folder : folders)
+	for (const std::string& folder : gameFolders())
 	{
 		size_t begin = folder.find("://");
 		begin = begin == std::string::npos ? 0 : begin + 3;
@@ -968,6 +983,7 @@ std::vector<uint32_t> serverAddresses()
 
 std::string wakeAddress()
 {
+	std::lock_guard<std::mutex> lock(configMutex);
 	return wakeSet ? wakeText : std::string();
 }
 
@@ -977,12 +993,17 @@ std::string wakeAddress()
 // the last address of each server's own /24, where most home networks have it.
 bool wake()
 {
-	if (!wakeSet)
-		return false;
 	uint8_t packet[6 + 16 * 6];
-	memset(packet, 0xff, 6);
-	for (int i = 0; i < 16; i++)
-		memcpy(packet + 6 + i * 6, wakeBytes, 6);
+	std::string wakeText;
+	{
+		std::lock_guard<std::mutex> lock(configMutex);
+		if (!wakeSet)
+			return false;
+		wakeText = smb::wakeText;
+		memset(packet, 0xff, 6);
+		for (int i = 0; i < 16; i++)
+			memcpy(packet + 6 + i * 6, wakeBytes, 6);
+	}
 	const int handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (handle < 0)
 	{
@@ -1024,9 +1045,22 @@ bool wake()
 
 void loadConfig()
 {
-	folders.clear();
-	filesPlace.clear();
-	wakeSet = false;
+	// Read into these, then put in place at once.
+	std::vector<std::string> folders;
+	std::string filesPlace;
+	Account account;
+	bool wakeSet = false;
+	std::string wakeText;
+	uint8_t wakeBytes[6] = {};
+	const auto install = [&] {
+		std::lock_guard<std::mutex> lock(configMutex);
+		smb::folders = folders;
+		smb::filesPlace = filesPlace;
+		smb::account = account;
+		smb::wakeSet = wakeSet;
+		smb::wakeText = wakeText;
+		memcpy(smb::wakeBytes, wakeBytes, sizeof(wakeBytes));
+	};
 	const std::string file = rootDir + "network.cfg";
 	FILE *f = fopen(file.c_str(), "r");
 	if (f == nullptr)
@@ -1074,6 +1108,7 @@ void loadConfig()
 			fclose(f);
 			chmod(file.c_str(), 0666);
 		}
+		install();
 		return;
 	}
 	// FTP folders wait for the whole file: the account may come after them.
@@ -1140,6 +1175,7 @@ void loadConfig()
 			diag::mark("share: network.cfg: a path line is not ftp://server/folder");
 	}
 	folders.erase(std::remove(folders.begin(), folders.end(), std::string()), folders.end());
+	install();
 	for (const std::string& folder : folders)
 		diag::mark("share: games folder %s%s", folder.c_str(),
 				ftp::isPath(folder) || nfs::isPath(folder) ? "" : (" (user " + account.user + ")").c_str());
@@ -1151,8 +1187,9 @@ void loadConfig()
 		wake();
 }
 
-const std::vector<std::string>& gameFolders()
+std::vector<std::string> gameFolders()
 {
+	std::lock_guard<std::mutex> lock(configMutex);
 	return folders;
 }
 
@@ -1164,8 +1201,7 @@ bool isNetworkPath(const std::string& path)
 void retryNow()
 {
 	// Asked for again by hand: a server that went back to sleep is woken first.
-	if (wakeSet)
-		wake();
+	wake();
 	ftp::retryNow();
 	nfs::retryNow();
 	std::lock_guard<std::mutex> lock(sharesMutex);
@@ -1366,8 +1402,9 @@ int selfTest(const char *spec)
 }
 #endif
 
-const std::string& filesFolder()
+std::string filesFolder()
 {
+	std::lock_guard<std::mutex> lock(configMutex);
 	return filesPlace;
 }
 
@@ -1540,6 +1577,361 @@ bool readWhole(const std::string& path, std::vector<uint8_t>& out)
 	if (!ok)
 		out.clear();
 	return ok;
+}
+
+
+// ------------------------------------------------------- the share form
+
+Config readConfig()
+{
+	Config config;
+	FILE *f = fopen((rootDir + "network.cfg").c_str(), "r");
+	if (f == nullptr)
+		return config;
+	char line[1024];
+	while (fgets(line, sizeof(line), f) != nullptr)
+	{
+		const std::string text = trim(line);
+		if (text.empty() || text[0] == '#' || text[0] == ';')
+			continue;
+		const size_t equals = text.find('=');
+		if (equals == std::string::npos)
+			continue;
+		const std::string key = trim(text.substr(0, equals)), value = trim(text.substr(equals + 1));
+		if (key == "path" && !value.empty())
+			config.paths.push_back(value);
+		else if (key == "files")
+			config.files = value;
+		else if (key == "user")
+			config.user = value;
+		else if (key == "password")
+			config.password = value;
+	}
+	fclose(f);
+	return config;
+}
+
+namespace
+{
+std::string oneLine(std::string value)
+{
+	value.erase(std::remove_if(value.begin(), value.end(), [](char c) { return c == '\n' || c == '\r'; }), value.end());
+	return trim(value);
+}
+
+// The key of a line that is in use (not a comment), or "".
+std::string activeKey(const std::string& line)
+{
+	const std::string text = trim(line);
+	if (text.empty() || text[0] == '#' || text[0] == ';')
+		return "";
+	const size_t equals = text.find('=');
+	return equals == std::string::npos ? "" : trim(text.substr(0, equals));
+}
+}
+
+// The file keeps what the form does not change: its comments, the domain,
+// the wake address, any line it does not know. The folders take the place
+// of the first path line (or come after the template's "# path =" example),
+// and the others are changed where they are.
+bool saveConfig(const Config& config, std::string& error)
+{
+	const std::string file = rootDir + "network.cfg";
+	std::vector<std::string> lines;
+	{
+		FILE *f = fopen(file.c_str(), "r");
+		if (f == nullptr)
+		{
+			loadConfig();	// the template, to fill in
+			f = fopen(file.c_str(), "r");
+		}
+		if (f != nullptr)
+		{
+			char line[1024];
+			while (fgets(line, sizeof(line), f) != nullptr)
+			{
+				std::string text = line;
+				while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+					text.pop_back();
+				lines.push_back(text);
+			}
+			fclose(f);
+		}
+	}
+	std::vector<std::string> paths;
+	for (const std::string& path : config.paths)
+		if (!oneLine(path).empty())
+			paths.push_back("path = " + oneLine(path));
+	const std::string files = oneLine(config.files);
+	const std::string user = oneLine(config.user).empty() ? "guest" : oneLine(config.user);
+	const std::string password = oneLine(config.password);
+
+	std::vector<std::string> out;
+	bool pathsDone = false, filesDone = false, userDone = false, passwordDone = false;
+	for (const std::string& line : lines)
+	{
+		const std::string key = activeKey(line);
+		if (key == "path")
+		{
+			if (!pathsDone)
+				out.insert(out.end(), paths.begin(), paths.end());
+			pathsDone = true;
+		}
+		else if (key == "files")
+		{
+			if (!filesDone && !files.empty())
+				out.push_back("files = " + files);
+			filesDone = true;
+		}
+		else if (key == "user")
+		{
+			if (!userDone)
+				out.push_back("user = " + user);
+			userDone = true;
+		}
+		else if (key == "password")
+		{
+			if (!passwordDone)
+				out.push_back("password = " + password);
+			passwordDone = true;
+		}
+		else
+			out.push_back(line);
+	}
+	if (!pathsDone && !paths.empty())
+	{
+		// After the template's last "# path = ..." example, or at the end.
+		size_t at = out.size();
+		for (size_t i = 0; i < out.size(); i++)
+		{
+			const std::string text = trim(out[i]);
+			if (text.rfind("#", 0) == 0 && trim(text.substr(1)).rfind("path", 0) == 0 && text.find('=') != std::string::npos)
+				at = i + 1;
+		}
+		out.insert(out.begin() + (std::ptrdiff_t)at, paths.begin(), paths.end());
+	}
+	if (!filesDone && !files.empty())
+		out.push_back("files = " + files);
+	if (!userDone)
+		out.push_back("user = " + user);
+	if (!passwordDone)
+		out.push_back("password = " + password);
+
+	// Written beside it and put in its place: a file cut short is never read.
+	const std::string next = file + ".new";
+	FILE *f = fopen(next.c_str(), "w");
+	if (f == nullptr)
+	{
+		error = std::string("network.cfg could not be written: ") + strerror(errno);
+		return false;
+	}
+	bool ok = true;
+	for (const std::string& line : out)
+		ok = ok && fputs(line.c_str(), f) >= 0 && fputc('\n', f) != EOF;
+	ok = fflush(f) == 0 && ok;
+	fsync(fileno(f));
+	fclose(f);
+	if (!ok || rename(next.c_str(), file.c_str()) != 0)
+	{
+		error = std::string("network.cfg could not be written: ") + strerror(errno);
+		::remove(next.c_str());
+		return false;
+	}
+	chmod(file.c_str(), 0666);
+	diag::mark("share: network.cfg written by the share form (%d folder(s))", (int)paths.size());
+	loadConfig();
+	// A connection made with the account before is made again with this one,
+	// the next time it is needed (one in use now is left to finish).
+	{
+		std::lock_guard<std::mutex> lock(sharesMutex);
+		for (auto& [name, share] : shares)
+		{
+			std::unique_lock<std::recursive_mutex> own(share->mutex, std::try_to_lock);
+			if (own.owns_lock())
+			{
+				share->drop();
+				share->failedAt = 0;
+			}
+		}
+	}
+	ftp::retryNow();
+	nfs::retryNow();
+	clearError();
+	return true;
+}
+
+namespace
+{
+// A NetBIOS node status answer: the machine's own name (its unique 0x20
+// "file server" name, else its 0x00 workstation name).
+std::string nodeStatusName(const uint8_t *b, size_t n)
+{
+	if (n < 57)
+		return "";
+	const unsigned count = b[56];
+	std::string first;
+	for (unsigned i = 0; i < count && 57 + (i + 1) * 18 <= n; i++)
+	{
+		const uint8_t *e = b + 57 + i * 18;
+		const bool group = (e[16] & 0x80) != 0;
+		std::string name(reinterpret_cast<const char *>(e), 15);
+		while (!name.empty() && (name.back() == ' ' || name.back() == 0))
+			name.pop_back();
+		if (group || name.empty())
+			continue;
+		bool printable = true;
+		for (char c : name)
+			printable = printable && (unsigned char)c >= 32 && (unsigned char)c < 127;
+		if (!printable)
+			continue;
+		if (e[15] == 0x20)
+			return name;
+		if (first.empty() && e[15] == 0x00)
+			first = name;
+	}
+	return first;
+}
+}
+
+// After OGBox's share form (OGBox by Press5elect): the hosts of the console's
+// own /24 that answer on port 445, 64 asked at once with 400 ms for each
+// batch, then each asked for its NetBIOS name on port 137 (half a second for
+// all the answers). A connect that never comes back is what a blocking
+// socket would do with a host that is not there, so the scan stops at once
+// should the console not take O_NONBLOCK on a socket.
+std::vector<FoundServer> findServers(std::string& problem)
+{
+	std::vector<FoundServer> found;
+	problem.clear();
+	std::string own = netplay::localAddress();
+#if defined(SWANSTATION_HOST)
+	// A test looks on another network (127.0.0.x, where it answers).
+	if (const char *from = getenv("SWANSTATION_SCAN_FROM"))
+		own = from;
+#endif
+	in_addr mine{};
+	if (own.empty() || inet_pton(AF_INET, own.c_str(), &mine) != 1)
+	{
+		problem = "The console has no address on a network.";
+		return found;
+	}
+	const uint32_t me = ntohl(mine.s_addr), net = me & 0xffffff00u;
+	const long long started = nowMs();
+	std::vector<uint32_t> open;
+	for (uint32_t base = 1; base < 255 && !stopping(); base += 64)
+	{
+		std::vector<std::pair<int, uint32_t>> sockets;
+		for (uint32_t h = base; h < base + 64 && h < 255; h++)
+		{
+			const uint32_t ip = net | h;
+			if (ip == me)
+				continue;
+			const int fd = socket(AF_INET, SOCK_STREAM, 0);
+			if (fd < 0)
+				continue;
+			const int flags = fcntl(fd, F_GETFL, 0);
+			if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0 || !(fcntl(fd, F_GETFL, 0) & O_NONBLOCK))
+			{
+				close(fd);
+				for (const auto& s : sockets)
+					close(s.first);
+				diag::mark("share: find servers: this console's sockets do not take O_NONBLOCK; not scanned");
+				problem = "This console cannot ask many addresses at once. Type the server's address instead.";
+				return found;
+			}
+			char text[INET_ADDRSTRLEN];
+			snprintf(text, sizeof(text), "%u.%u.%u.%u", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
+			sockaddr_in address;
+			numericAddress(text, 445, address);
+			const int rc = connect(fd, reinterpret_cast<const sockaddr *>(&address), sizeof(address));
+			if (rc == 0)
+			{
+				open.push_back(ip);
+				close(fd);
+			}
+			else if (errno == EINPROGRESS)
+				sockets.push_back({ fd, ip });
+			else
+				close(fd);
+		}
+		std::vector<pollfd> polled;
+		for (const auto& s : sockets)
+			polled.push_back({ s.first, POLLOUT, 0 });
+		for (int waited = 0; waited < 400 && !polled.empty(); waited += 50)
+		{
+			if (poll(polled.data(), polled.size(), 50) <= 0)
+				continue;
+			for (size_t i = 0; i < polled.size(); i++)
+				if (polled[i].fd >= 0 && (polled[i].revents & (POLLOUT | POLLERR | POLLHUP)))
+				{
+					int error = 1;
+					socklen_t length = sizeof(error);
+					if ((polled[i].revents & POLLOUT)
+							&& getsockopt(polled[i].fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0 && error == 0)
+						open.push_back(sockets[i].second);
+					polled[i].fd = -1;	// answered: not asked again
+				}
+		}
+		for (const auto& s : sockets)
+			close(s.first);
+	}
+	std::sort(open.begin(), open.end());
+	open.erase(std::unique(open.begin(), open.end()), open.end());
+
+	// Their names: a node status request for "*".
+	std::vector<std::string> names(open.size());
+	const int udp = socket(AF_INET, SOCK_DGRAM, 0);
+	if (udp >= 0 && !open.empty())
+	{
+		uint8_t query[50] = { 0x50, 0x53, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 'C', 'K' };
+		for (int i = 15; i < 45; i++)
+			query[i] = 'A';
+		query[45] = 0x00;
+		query[46] = 0x00;
+		query[47] = 0x21;	// NBSTAT
+		query[48] = 0x00;
+		query[49] = 0x01;	// IN
+		for (const uint32_t ip : open)
+		{
+			sockaddr_in to{};
+			to.sin_family = AF_INET;
+			to.sin_port = htons(137);
+			to.sin_addr.s_addr = htonl(ip);
+#if defined(__PROSPERO__) || defined(__FreeBSD__)
+			to.sin_len = sizeof(to);
+#endif
+			sendto(udp, query, sizeof(query), 0, reinterpret_cast<const sockaddr *>(&to), sizeof(to));
+		}
+		for (int waited = 0; waited < 500; waited += 50)
+		{
+			pollfd p{ udp, POLLIN, 0 };
+			if (poll(&p, 1, 50) <= 0)
+				continue;
+			uint8_t answer[1500];
+			sockaddr_in from{};
+			socklen_t length = sizeof(from);
+			const ssize_t n = recvfrom(udp, answer, sizeof(answer), 0, reinterpret_cast<sockaddr *>(&from), &length);
+			if (n <= 0)
+				continue;
+			const auto it = std::find(open.begin(), open.end(), ntohl(from.sin_addr.s_addr));
+			if (it != open.end())
+				names[(size_t)(it - open.begin())] = nodeStatusName(answer, (size_t)n);
+		}
+	}
+	if (udp >= 0)
+		close(udp);
+	for (size_t i = 0; i < open.size(); i++)
+	{
+		char text[INET_ADDRSTRLEN];
+		snprintf(text, sizeof(text), "%u.%u.%u.%u", open[i] >> 24, (open[i] >> 16) & 255, (open[i] >> 8) & 255, open[i] & 255);
+		found.push_back({ text, names[i] });
+	}
+	// The log has how many and how long, not the addresses.
+	diag::mark("share: find servers: %d answer on port 445 in the console's /24 (%lld ms)", (int)found.size(),
+			nowMs() - started);
+	if (found.empty())
+		problem = "No server answered on the console's network.";
+	return found;
 }
 
 } // namespace fe::smb

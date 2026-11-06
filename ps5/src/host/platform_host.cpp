@@ -178,6 +178,7 @@ void lateInit()
 	diag::mark("quit");
 	storage::startCompleted(appDir);
 	fflush(nullptr);
+	diag::flush();
 	_Exit(0);
 }
 

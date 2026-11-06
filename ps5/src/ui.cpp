@@ -5323,6 +5323,7 @@ void frame()
 		case Page::Cloud: cloudPage(f); break;
 		case Page::Original: originalPage(f); break;
 		case Page::Shaders: shadersPage(f); break;
+		case Page::Shares: sharesPage(f); break;
 		case Page::WhatsNew: whatsNewPage(f); break;
 		case Page::DiscDrive: discDrivePage(f); break;
 		case Page::Themes: themesPage(f); break;

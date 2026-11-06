@@ -9,7 +9,12 @@
 	where. This file writes what the next run needs to fix it, in the title's
 	own folder:
 
-	- every start-up step, as a line written straight to the file;
+	- every start-up step, as a line of the file. The lines go through
+	  memory to a writer thread of their own (as OGBox's boot log, OGBox by
+	  Press5elect): a line written straight to the file waits for the file
+	  system, on whatever thread wrote it, and the frame thread writes some.
+	  The writer puts the file on the disk every two seconds that had lines;
+	  a crash report writes what memory still holds, then itself, straight;
 	- on a fatal signal, the faulting instruction as an offset in eboot.bin
 	  (ps5/tools/symbolize.sh turns it into a function), the registers, the
 	  return addresses on the stack and the last step reached;
@@ -72,6 +77,18 @@ char lastMarkText[256] = "(none)";
 timespec startTime;
 volatile bool notices = false;
 
+// The lines on their way to the writer thread. Fixed storage: the crash
+// report empties it from a signal handler.
+constexpr size_t RingBytes = 1u << 20;
+char ring[RingBytes];
+size_t ringHead, ringLength;		// the oldest byte, and how many
+unsigned long long ringDropped;		// bytes of lines that found it full
+bool writerBusy;					// a chunk taken out, being written
+pthread_mutex_t ringLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t ringFilled = PTHREAD_COND_INITIALIZER;
+pthread_cond_t ringEmptied = PTHREAD_COND_INITIALIZER;
+volatile bool writerUp;
+
 void writeAll(const char *text, size_t length)
 {
 	if (logFd < 0)
@@ -103,6 +120,121 @@ void writef(const char *format, ...)
 	va_end(args);
 	if (n > 0)
 		writeAll(line, (size_t)n < sizeof(line) ? (size_t)n : sizeof(line) - 1);
+}
+
+void ringPut(const char *text, size_t length)
+{
+	pthread_mutex_lock(&ringLock);
+	if (ringLength + length > RingBytes)
+		ringDropped += length;
+	else
+	{
+		size_t at = (ringHead + ringLength) % RingBytes;
+		for (size_t done = 0; done < length;)
+		{
+			const size_t n = length - done < RingBytes - at ? length - done : RingBytes - at;
+			memcpy(ring + at, text + done, n);
+			done += n;
+			at = (at + n) % RingBytes;
+		}
+		ringLength += length;
+	}
+	pthread_cond_signal(&ringFilled);
+	pthread_mutex_unlock(&ringLock);
+}
+
+// A line: to the writer when it runs, else straight to the file.
+void lineOut(const char *text, size_t length)
+{
+	if (writerUp && logFd >= 0)
+		ringPut(text, length);
+	else
+		writeAll(text, length);
+}
+
+void *writerMain(void *)
+{
+#if defined(SWANSTATION_PS5)
+	pthread_set_name_np(pthread_self(), "psswan-log");
+#endif
+	static char chunk[64 * 1024];
+	timespec lastSync;
+	clock_gettime(CLOCK_MONOTONIC, &lastSync);
+	bool unsynced = false;
+	pthread_mutex_lock(&ringLock);
+	for (;;)
+	{
+		if (ringLength == 0)
+		{
+			timespec until;
+			clock_gettime(CLOCK_REALTIME, &until);
+			until.tv_nsec += 100 * 1000000L;
+			if (until.tv_nsec >= 1000000000L)
+			{
+				until.tv_sec++;
+				until.tv_nsec -= 1000000000L;
+			}
+			pthread_cond_timedwait(&ringFilled, &ringLock, &until);
+		}
+		while (ringLength > 0)
+		{
+			size_t n = ringLength < sizeof(chunk) ? ringLength : sizeof(chunk);
+			if (n > RingBytes - ringHead)
+				n = RingBytes - ringHead;
+			memcpy(chunk, ring + ringHead, n);
+			ringHead = (ringHead + n) % RingBytes;
+			ringLength -= n;
+			writerBusy = true;
+			pthread_mutex_unlock(&ringLock);
+			writeAll(chunk, n);
+			unsynced = true;
+			pthread_mutex_lock(&ringLock);
+			writerBusy = false;
+		}
+		if (ringDropped != 0)
+		{
+			char note[96];
+			const int k = snprintf(note, sizeof(note), "[log: %llu bytes of lines left out: the file system was slow]\n",
+					ringDropped);
+			ringDropped = 0;
+			pthread_mutex_unlock(&ringLock);
+			if (k > 0)
+				writeAll(note, (size_t)k);
+			pthread_mutex_lock(&ringLock);
+		}
+		pthread_cond_broadcast(&ringEmptied);
+		// On the disk every two seconds that had lines: a console that stops
+		// whole loses what its cache held. Here, in no other thread's way.
+		timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		if (unsynced && now.tv_sec - lastSync.tv_sec >= 2)
+		{
+			lastSync = now;
+			unsynced = false;
+			pthread_mutex_unlock(&ringLock);
+			fsync(logFd);
+			pthread_mutex_lock(&ringLock);
+		}
+	}
+	return nullptr;
+}
+
+// From the crash report: what memory holds into the file, before the
+// report's own lines - unless another thread holds the lock (a signal
+// handler cannot wait for it).
+void drainForCrash()
+{
+	if (logFd < 0 || pthread_mutex_trylock(&ringLock) != 0)
+		return;
+	while (ringLength > 0)
+	{
+		const size_t n = ringLength < RingBytes - ringHead ? ringLength : RingBytes - ringHead;
+		writeAll(ring + ringHead, n);
+		ringHead = (ringHead + n) % RingBytes;
+		ringLength -= n;
+	}
+	writerUp = false;	// what follows goes straight to the file
+	pthread_mutex_unlock(&ringLock);
 }
 
 void sendNotification(const char *text)
@@ -145,6 +277,7 @@ void report(int signal, siginfo_t *info, void *contextPointer)
 	const uintptr_t base = imageBase();
 	size_t flexible = 0;
 	sceKernelAvailableFlexibleMemorySize(&flexible);
+	drainForCrash();
 
 	writef("\n=== CRASH: signal %d (%s) ===\n", signal,
 			signal == SIGSEGV ? "SIGSEGV" : signal == SIGBUS ? "SIGBUS" : signal == SIGILL ? "SIGILL"
@@ -213,6 +346,7 @@ void report(int signal, siginfo_t *info, void *contextPointer)
 #else
 void report(int signal, siginfo_t *info, void *)
 {
+	drainForCrash();
 	writef("\n=== CRASH: signal %d ===\nlast step: %s\nfault address: %p\n", signal, lastMarkText, info->si_addr);
 	std::signal(signal, SIG_DFL);
 	std::raise(signal);
@@ -255,7 +389,36 @@ bool open(const std::string& dir)
 	writeAll(early, earlyUsed);
 	earlyUsed = 0;
 	fsync(logFd);
+	pthread_t writer;
+	if (pthread_create(&writer, nullptr, writerMain, nullptr) == 0)
+	{
+		pthread_detach(writer);
+		writerUp = true;
+	}
 	return true;
+}
+
+void flush()
+{
+	if (!writerUp)
+		return;
+	pthread_mutex_lock(&ringLock);
+	for (int i = 0; i < 40 && (ringLength > 0 || writerBusy); i++)
+	{
+		pthread_cond_signal(&ringFilled);
+		timespec until;
+		clock_gettime(CLOCK_REALTIME, &until);
+		until.tv_nsec += 50 * 1000000L;
+		if (until.tv_nsec >= 1000000000L)
+		{
+			until.tv_sec++;
+			until.tv_nsec -= 1000000000L;
+		}
+		pthread_cond_timedwait(&ringEmptied, &ringLock, &until);
+	}
+	pthread_mutex_unlock(&ringLock);
+	if (logFd >= 0)
+		fsync(logFd);
 }
 
 void mark(const char *format, ...)
@@ -271,7 +434,10 @@ void mark(const char *format, ...)
 	timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	const double seconds = (t.tv_sec - startTime.tv_sec) + (t.tv_nsec - startTime.tv_nsec) / 1e9;
-	writef("[%8.3f] %s\n", seconds, text);
+	char line[sizeof(text) + 32];
+	const int n = snprintf(line, sizeof(line), "[%8.3f] %s\n", seconds, text);
+	if (n > 0)
+		lineOut(line, (size_t)n < sizeof(line) ? (size_t)n : sizeof(line) - 1);
 #if !defined(SWANSTATION_PS5)
 	if (getenv("SWANSTATION_VERBOSE") != nullptr)
 		fprintf(stderr, "[boot %8.3f] %s\n", seconds, text);

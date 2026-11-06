@@ -23,11 +23,18 @@
 	collection has those (Named_Titles, Named_Snaps), fetched the same way
 	into media/titlescreens and media/screenshots, the folders ES-DE keeps
 	them in, when a theme asks for them and downloads are on.
+
+	Not only the games in sight: when nothing is asked for, the worker goes
+	through every game of the library in its order (the console's games, the
+	USB drives', the share's) and fetches the covers they lack, one after
+	another, as OGBox does with a folder's games (OGBox by Press5elect).
+	What the library shows meanwhile goes first. Not while a game runs.
 */
 #include "fe.h"
 #include "tuning.h"
 
 #include <atomic>
+#include <chrono>
 #include <cerrno>
 #include <condition_variable>
 #include <cstdio>
@@ -38,6 +45,7 @@
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 namespace fe::covers
 {
@@ -72,6 +80,11 @@ bool started;
 std::atomic<unsigned> currentGeneration{1};
 std::atomic<int> pending{0};
 std::atomic<bool> offline{false};
+// The library's games, gone through for the covers they lack (worker only),
+// and how far, for status().
+std::vector<library::Game> walk;
+std::atomic<size_t> walkAt{0}, walkSize{0};
+unsigned walkMade;	// the library's generations it was made from
 
 // The collection's file name for a game name: its reserved characters are '_'.
 std::string thumbnailName(const std::string& name)
@@ -256,6 +269,51 @@ FetchResult fetch(const Source& source, const std::string& base, int kind)
 	return FetchNotFound;
 }
 
+bool haveCover(const library::Game& game)
+{
+	for (const char *ext : { ".png", ".jpg", ".jpeg" })
+		if (fileExists(coversDir() + game.fileTitle + ext))
+			return true;
+	return !media::find(game, "covers").empty();
+}
+
+void request(const std::string& base, int kind);
+
+// Nothing is asked for: the library's next game without a cover is. The
+// list is made again when the library changes.
+void walkOn()
+{
+	unsigned made = 0;
+	for (int source : { library::Internal, library::Usb, library::Network })
+		made = made * 31 + library::generation(source);
+	if (made != walkMade)
+	{
+		walkMade = made;
+		walk.clear();
+		std::set<std::string> seen;
+		for (int source : { library::Internal, library::Usb, library::Network })
+			for (library::Game& game : library::games(source))
+				if (!game.fileTitle.empty() && seen.insert(game.fileTitle).second)
+					walk.push_back(std::move(game));
+		walkAt = 0;
+		walkSize = walk.size();
+	}
+	// ES-DE's folders are listed first: a cover there is not fetched again.
+	if (!options::frontend().covers || offline || host::running() || !media::ready())
+		return;
+	while (walkAt < walk.size())
+	{
+		const library::Game& game = walk[walkAt];
+		walkAt++;
+		if (haveCover(game))
+			continue;
+		const int before = pending.load();
+		request(game.fileTitle, BoxArt);
+		if (pending.load() != before)
+			return;	// one at a time: what the library asks for meanwhile goes first
+	}
+}
+
 void worker()
 {
 	int failures = 0;
@@ -265,7 +323,14 @@ void worker()
 		Job job;
 		{
 			std::unique_lock<std::mutex> lock(mutex);
-			wake.wait(lock, [] { return !queue.empty(); });
+			while (queue.empty())
+			{
+				lock.unlock();
+				walkOn();
+				lock.lock();
+				if (queue.empty())
+					wake.wait_for(lock, std::chrono::seconds(2));
+			}
 			job = queue.front();
 			queue.pop_front();
 		}
@@ -298,7 +363,7 @@ void worker()
 	}
 }
 
-void request(const std::string& base, int kind = BoxArt)
+void request(const std::string& base, int kind)
 {
 	if (!options::frontend().covers || base.empty() || offline)
 		return;
@@ -325,6 +390,16 @@ void request(const std::string& base, int kind = BoxArt)
 
 void init()
 {
+	// The worker starts at once: the library's covers are fetched without
+	// the library being looked at first.
+	if (!options::frontend().covers)
+		return;
+	std::lock_guard<std::mutex> lock(mutex);
+	if (!started)
+	{
+		started = true;
+		std::thread(tuning::background(worker)).detach();
+	}
 }
 
 namespace
@@ -447,7 +522,7 @@ std::string find(const library::Game& game)
 	const std::string kept = media::find(game, "covers");
 	if (!kept.empty())
 		return kept;
-	request(game.fileTitle);
+	request(game.fileTitle, BoxArt);
 	return "";
 }
 
@@ -466,6 +541,9 @@ std::string status()
 	const int n = pending.load();
 	if (n <= 0 || offline)
 		return "";
+	const size_t at = walkAt.load(), size = walkSize.load();
+	if (size > 0 && at < size)
+		return "Downloading covers (game " + std::to_string(at) + " of " + std::to_string(size) + ")";
 	return "Downloading covers (" + std::to_string(n) + " left)";
 }
 

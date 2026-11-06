@@ -28,6 +28,7 @@
 #include "qrcodegen.hpp"
 #include "cloud.h"
 #include "update.h"
+#include "tuning.h"
 
 #include <algorithm>
 #include <cctype>
@@ -36,6 +37,9 @@
 #include <ctime>
 #include <dirent.h>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <thread>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -2187,6 +2191,210 @@ void shadersPage(Frame& f)
 	standardHints(menuPage(f, "Shader presets", "From a USB drive", items, 900));
 }
 
+// ------------------------------------------------------ the network shares
+
+namespace
+{
+// network.cfg as the form shows it, and the servers found on the network.
+smb::Config shareForm;
+struct ServerSearch
+{
+	std::mutex mutex;
+	bool running = false, done = false;
+	std::vector<smb::FoundServer> servers;
+	std::string problem;
+};
+std::shared_ptr<ServerSearch> serverSearch = std::make_shared<ServerSearch>();
+
+void saveShares()
+{
+	std::string error;
+	if (!smb::saveConfig(shareForm, error))
+	{
+		message("Network shares", error);
+		return;
+	}
+	library::scan(library::Network, false);
+}
+
+void findServers()
+{
+	std::shared_ptr<ServerSearch> search = serverSearch;
+	{
+		std::lock_guard<std::mutex> lock(search->mutex);
+		if (search->running)
+			return;
+		search->running = true;
+	}
+	std::thread(tuning::background([search] {
+		std::string problem;
+		std::vector<smb::FoundServer> servers = smb::findServers(problem);
+		std::lock_guard<std::mutex> lock(search->mutex);
+		search->servers = std::move(servers);
+		search->problem = problem;
+		search->running = false;
+		search->done = true;
+	})).detach();
+}
+
+// A folder typed, or changed: kept as typed, with "smb://" taken off (the
+// file's SMB lines are server/share/folder).
+std::string typedFolder(std::string text)
+{
+	text = trim(text);
+	if (lowercase(text).rfind("smb://", 0) == 0)
+		text = text.substr(6);
+	while (text.size() > 1 && text.back() == '/')
+		text.pop_back();
+	return text;
+}
+
+const char *const folderForms = "An SMB share (Windows sharing): server/share/folder, the server by its IP address "
+		"(192.168.1.10/Games/PSX). An NFS share: nfs://server/path. An FTP server: ftp://server/folder (with an "
+		"account of its own: ftp://user:password@server/folder). The folder and the folders inside it are scanned for "
+		"games.";
+}
+
+void sharesPage(Frame& f)
+{
+	if (f.fresh)
+	{
+		shareForm = smb::readConfig();
+		bool searched;
+		{
+			std::lock_guard<std::mutex> lock(serverSearch->mutex);
+			searched = serverSearch->done || serverSearch->running;
+		}
+		// The servers are looked for as the form first opens.
+		if (!searched)
+			findServers();
+	}
+	std::vector<Item> items;
+	items.push_back(header("Folders with games"));
+	if (shareForm.paths.empty())
+		items.push_back(fact("None yet", "", std::string("Add a folder below, or choose a server the console found on "
+				"the network. ") + folderForms));
+	for (size_t i = 0; i < shareForm.paths.size(); i++)
+	{
+		Item item;
+		item.icon = icon::Folder;
+		item.label = shareForm.paths[i];
+		item.info = std::string("Change the folder, or remove it from the list. ") + folderForms;
+		item.menu = true;
+		item.choices = { "Change it", "Remove it" };
+		item.choose = [i](int which) {
+			if (i >= shareForm.paths.size())
+				return;
+			if (which == 1)
+			{
+				shareForm.paths.erase(shareForm.paths.begin() + (std::ptrdiff_t)i);
+				saveShares();
+				return;
+			}
+			askText("The folder", shareForm.paths[i], false, false, [i](const std::string& typed) {
+				if (i >= shareForm.paths.size())
+					return;
+				const std::string folder = typedFolder(typed);
+				if (folder.empty())
+					shareForm.paths.erase(shareForm.paths.begin() + (std::ptrdiff_t)i);
+				else
+					shareForm.paths[i] = folder;
+				saveShares();
+			});
+		};
+		items.push_back(item);
+	}
+	items.push_back(action(icon::Folder, "Add a folder", folderForms, [] {
+		askText("The folder: server/share/folder", "", false, false, [](const std::string& typed) {
+			const std::string folder = typedFolder(typed);
+			if (folder.empty())
+				return;
+			shareForm.paths.push_back(folder);
+			saveShares();
+		});
+	}));
+
+	items.push_back(header("Servers on the network"));
+	std::vector<smb::FoundServer> servers;
+	bool running, done;
+	std::string problem;
+	{
+		std::lock_guard<std::mutex> lock(serverSearch->mutex);
+		servers = serverSearch->servers;
+		running = serverSearch->running;
+		done = serverSearch->done;
+		problem = serverSearch->problem;
+	}
+	{
+		Item item = action(icon::Search, "Find servers", "Asks every address of the console's network whether it shares "
+				"files (SMB, port 445), and names the ones that say who they are. A few seconds. NFS and FTP servers "
+				"are not found this way: add their folders by hand.", [] { findServers(); }, !running);
+		item.value = running ? "Looking\xe2\x80\xa6" : done ? format("%d found", (int)servers.size()) : "";
+		items.push_back(item);
+	}
+	if (done && !running && servers.empty())
+		items.push_back(fact("None found", "", problem + " A server that sleeps is woken with \"Wake the server\" "
+				"(Games and saving); a share on a PC needs file sharing switched on."));
+	for (const smb::FoundServer& server : servers)
+	{
+		const std::string label = server.name.empty() ? server.address : server.name + "  (" + server.address + ")";
+		const std::string address = server.address;
+		Item item = action(icon::Server, label, "Adds a folder on this server: type the share's name and the folder "
+				"after the address (" + address + "/Games/PSX).", [address, label] {
+					askText("A folder on " + label, address + "/", false, false, [address](const std::string& typed) {
+						const std::string folder = typedFolder(typed);
+						if (folder.empty() || folder == address)
+							return;
+						shareForm.paths.push_back(folder);
+						saveShares();
+					});
+				});
+		items.push_back(item);
+	}
+
+	items.push_back(header("Account"));
+	{
+		Item item = action(icon::User, "User", "The account the SMB shares are asked with: guest, with no password, for "
+				"an open share. An FTP server is asked with it too (as \"anonymous\" for guest).", [] {
+					askText("User name", shareForm.user, false, false, [](const std::string& typed) {
+						shareForm.user = trim(typed).empty() ? "guest" : trim(typed);
+						saveShares();
+					});
+				});
+		item.value = shareForm.user.empty() ? "guest" : shareForm.user;
+		items.push_back(item);
+	}
+	{
+		Item item = action(icon::Lock, "Password", "The account's password, kept in network.cfg on the console. Leave it "
+				"empty for a guest.", [] {
+					askText("Password", "", true, false, [](const std::string& typed) {
+						shareForm.password = typed;
+						saveShares();
+					});
+				});
+		item.value = shareForm.password.empty() ? "None" : "Set";
+		items.push_back(item);
+	}
+
+	items.push_back(header("My files"));
+	{
+		Item item = action(icon::Save, "Files folder", "A folder on an SMB or NFS share for PSSwanStation's own files: "
+				"copies of the memory cards and the covers, or everything (Games and saving, My files). An FTP server is "
+				"only read. Clear it to name none.", [] {
+					askText("The files folder", shareForm.files, false, false, [](const std::string& typed) {
+						shareForm.files = typedFolder(typed);
+						saveShares();
+					});
+				});
+		item.value = shareForm.files.empty() ? "None" : shareForm.files;
+		items.push_back(item);
+	}
+	items.push_back(fact("network.cfg", shownRoot() + "network.cfg", "Everything here is kept in " + shownRoot()
+			+ "network.cfg, which can also be edited over FTP; its comments and the lines this page does not show "
+			"(the domain, the wake address) are kept as they are."));
+	standardHints(menuPage(f, "Network shares", "Games on the network", items, 900));
+}
+
 void shortcutsPage(Frame& f)
 {
 	std::vector<Item> items;
@@ -3558,10 +3766,15 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"emulator options a feature needs. Put a mod's folder (with its mod.txt) or a .mod file in "
 					+ shownRoot() + "mods, or in PSSwanStation/mods on a USB drive. A game's mods are under Cheats in "
 					"its details, each feature switched on and off by itself. MANUAL.md describes the format."));
-			items.push_back(fact("Network share", folders.empty() ? "Not set" : folders,
-					(folders.empty() ? std::string("No share is named yet. ") : folders + ". ")
-					+ "The share is named in " + shownRoot() + "network.cfg (edit it over FTP); the file explains "
-					"itself. PSSwanStation reads it when it starts."));
+			{
+				const size_t count = smb::gameFolders().size();
+				Item item = action(icon::Network, "Network shares", (folders.empty() ? std::string("No share is named "
+						"yet. ") : folders + ". ") + "Folders on an SMB or NFS share or an FTP server, the account, and the "
+						"folder for your files; the servers on the network are found for you. Kept in " + shownRoot()
+						+ "network.cfg.", [] { push(Page::Shares); });
+				item.value = count == 0 ? "Not set" : count == 1 ? "1 folder" : format("%d folders", (int)count);
+				items.push_back(item);
+			}
 		}
 		items.push_back(toggle("Load network games into memory", &f.ramCache,
 				"Reads a game from the network share completely before it starts, so the game never waits for the "

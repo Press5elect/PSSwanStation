@@ -435,6 +435,7 @@ void lateInit()
 	for (int i = 0; i < MaxPads; i++)
 		padLight(i, 0, 0, 0);
 	fflush(nullptr);
+	diag::flush();
 	const int result = sceSystemServiceLoadExec("exit", nullptr);
 	diag::mark("close request: %d", result);
 	for (;;)
