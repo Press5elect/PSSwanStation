@@ -1,7 +1,7 @@
-From c3eab8ac8b24f510cda54d884577802a8a4c09ba Mon Sep 17 00:00:00 2001
+From 8f2964be1e6bdd886a78f2c0fa8f5edf9a5d5890 Mon Sep 17 00:00:00 2001
 From: Press5elect <Press5elect@users.noreply.github.com>
 Date: Sat, 31 Oct 2026 02:10:27 +0000
-Subject: [PATCH 14/14] wsi/videoout: variable refresh found while the title
+Subject: [PATCH 13/13] wsi/videoout: variable refresh found while the title
  runs, not imported
 
 sceVideoOutVrrUnpegFromFixedRate is not exported by every firmware's

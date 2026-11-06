@@ -32,6 +32,7 @@
 #include <cstring>
 #include <map>
 #include <optional>
+#include <vector>
 #include <mutex>
 #include <sys/stat.h>
 
@@ -77,7 +78,7 @@ void putPending(const std::string& path, std::optional<std::string> text)
 void readValues(const std::string& path, std::map<std::string, std::string>& values)
 {
 	values.clear();
-	FILE *f = nullptr;
+	std::string text;
 	{
 		std::lock_guard<std::mutex> lock(pendingMutex);
 		const auto it = pendingFiles.find(path);
@@ -85,27 +86,34 @@ void readValues(const std::string& path, std::map<std::string, std::string>& val
 		{
 			if (!it->second)
 				return;
-			f = fmemopen(const_cast<char *>(it->second->data()), it->second->size(), "r");
+			text = *it->second;
 		}
 	}
-	if (f == nullptr)
-		f = fopen(path.c_str(), "r");
-	if (f == nullptr)
-		return;
-	char line[1024];
-	while (fgets(line, sizeof(line), f) != nullptr)
+	if (text.empty())
 	{
-		const char *equals = strchr(line, '=');
-		if (equals == nullptr || line[0] == '#')
+		std::vector<uint8_t> bytes;
+		if (!readFile(path, bytes))
+			return;
+		text.assign(bytes.begin(), bytes.end());
+	}
+	size_t start = 0;
+	while (start < text.size())
+	{
+		size_t end = text.find('\n', start);
+		if (end == std::string::npos)
+			end = text.size();
+		const std::string line = text.substr(start, end - start);
+		start = end + 1;
+		const size_t equals = line.find('=');
+		if (equals == std::string::npos || line.empty() || line[0] == '#')
 			continue;
-		const std::string key = trim(std::string(line, equals - line));
-		std::string value = trim(equals + 1);
+		const std::string key = trim(line.substr(0, equals));
+		std::string value = trim(line.substr(equals + 1));
 		if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
 			value = value.substr(1, value.size() - 2);
 		if (!key.empty())
 			values[key] = value;
 	}
-	fclose(f);
 }
 
 void writeValues(const std::string& path, const std::map<std::string, std::string>& values)

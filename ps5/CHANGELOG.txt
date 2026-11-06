@@ -1,7 +1,7 @@
 PSSwanStation - what changed
 ============================
 
-Next build
+Build 27
   Added
   - Network shares from the console (Settings, Games and saving, Network
     shares): add, change and remove the folders with games, set the account
@@ -26,6 +26,13 @@ Next build
     driver's (the emulator's pipeline cache file, rewritten whole after
     every session, is removed); an update unpacks and replaces only the
     files that changed.
+  - The graphics driver is PS5_Mesa main of 3 November 2026 with Crux2's
+    patches: a buffer that is freed keeps its memory until the GPU has run
+    the work submitted before (a GPU fault when memory ran short), and a
+    buffer piece is mapped only where nothing else is.
+  - Newer parts: the payload SDK's platform layer (e105cf6: the title's
+    heap grows in 2 MiB pieces) and libsmb2 (4d9ce67: an out-of-bounds read
+    with an empty user fixed, a server that disconnects reported as such).
   - Network games read faster: every SMB, NFS and FTP connection gets large
     TCP buffers (up to 4 MiB) before it connects, as OGBox does; with the
     console's small default ones a share was held to one small window per

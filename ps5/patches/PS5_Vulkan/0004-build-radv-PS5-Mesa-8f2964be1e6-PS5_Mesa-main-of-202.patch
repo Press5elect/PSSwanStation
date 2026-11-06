@@ -1,0 +1,61 @@
+From 224fc460cc5d796a27efc3e401901bc1332c62e7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 6 Nov 2026 02:54:10 +0000
+Subject: [PATCH 4/4] build-radv: PS5 Mesa 8f2964be1e6 (PS5_Mesa main of
+ 2026-11-03 with Crux2's RADV patches); payload SDK e105cf6
+
+- Mesa: PS5_Mesa main f5610fe2709 (a freed buffer keeps its memory until
+  the GPU has run what was submitted before; a buffer piece is mapped only
+  where nothing else is) with Crux2's patches 0001-0004 and 0010-0017 and
+  the spin and sleep choice; the earlier "destroyed buffer waits" patch is
+  left out, main's fix covering it.
+- Mesa's amd-use-llvm option is amd-options now: -Damd-options=[].
+- The payload SDK at e105cf6 (the title heap in 2 MiB segments, a
+  payload's direct memory from the application's pool, fdv sized to the
+  descriptor slots).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
+---
+ tools/build-radv.sh                | 4 ++--
+ tools/setup-native-dependencies.sh | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/tools/build-radv.sh b/tools/build-radv.sh
+index 6d5264a..cbb1fcd 100644
+--- a/tools/build-radv.sh
++++ b/tools/build-radv.sh
+@@ -26,7 +26,7 @@ set -euo pipefail
+ 
+ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+ mesa_fork="${PS5_MESA_FORK:-$root/../PS5_Mesa}"
+-mesa_revision=${PS5_MESA_REVISION:-c3eab8ac8b24f510cda54d884577802a8a4c09ba}
++mesa_revision=${PS5_MESA_REVISION:-8f2964be1e6bdd886a78f2c0fa8f5edf9a5d5890}
+ variant=${1:-debug}
+ sdk="$root/.deps/native/ps5-payload-sdk"
+ source_tree="$root/.deps/work/radv-src"
+@@ -97,7 +97,7 @@ printf "[constants]\nsdk = '%s'\n" "$sdk" > "$constants"
+ # The shader cache compresses with zlib, from its subproject: the SDK has none
+ # a cross build can find.
+ options=(-Dvulkan-drivers=amd -Dgallium-drivers= -Dplatforms= -Dradv-winsys=ps5
+-    -Dllvm=disabled -Damd-use-llvm=false -Dvideo-codecs=
++    -Dllvm=disabled -Damd-options=[] -Dvideo-codecs=
+     -Dbuildtype=debugoptimized -Db_ndebug="$ndebug"
+     -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled
+     -Dvalgrind=disabled -Dlibunwind=disabled -Dzstd=disabled -Dzlib=enabled --force-fallback-for=zlib
+diff --git a/tools/setup-native-dependencies.sh b/tools/setup-native-dependencies.sh
+index 6edf152..e512554 100644
+--- a/tools/setup-native-dependencies.sh
++++ b/tools/setup-native-dependencies.sh
+@@ -24,7 +24,7 @@ zlib_stamp="$zlib_root/.source-version"
+ # there). The pinned revision is exported with git archive, so a build never
+ # depends on the fork's working tree, and the SDK directory records it.
+ sdk_fork="${PS5_PAYLOAD_SDK_FORK:-$root/../PS5_PayloadSDK}"
+-sdk_revision=b83202be73e930050e00de0f1b4d9ec46c0391bf
++sdk_revision=e105cf6f25801d9e9981812a89a3b74021d2d2a2
+ zlib_url="https://zlib.net/fossils/zlib-$zlib_version.tar.gz"
+ zlib_hash="bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+ skip_sdk=false
+-- 
+2.43.0
+

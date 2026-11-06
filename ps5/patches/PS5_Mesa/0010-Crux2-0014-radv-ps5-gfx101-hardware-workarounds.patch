@@ -1,7 +1,7 @@
-From 93626543abbfa6db57099289ee25f3a97abb508b Mon Sep 17 00:00:00 2001
+From c6d515850067d2bd6fe2a156d52afc0ab121341a Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:11 +0000
-Subject: [PATCH 11/14] Crux2: 0014-radv-ps5-gfx101-hardware-workarounds
+Subject: [PATCH 10/13] Crux2: 0014-radv-ps5-gfx101-hardware-workarounds
 
 ---
  src/amd/common/ac_gpu_info.c                  |  1 +

@@ -1,7 +1,7 @@
-From 1c906082d339eba5c32dcd67693cfc9d3c78aeee Mon Sep 17 00:00:00 2001
+From da73ecade17e05101bfdc6435bebb644c59516b0 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:10 +0000
-Subject: [PATCH 10/14] Crux2: 0013-disk-cache-index-without-map-fixed
+Subject: [PATCH 09/13] Crux2: 0013-disk-cache-index-without-map-fixed
 
 ---
  src/util/disk_cache_os.c | 11 +++++++++--

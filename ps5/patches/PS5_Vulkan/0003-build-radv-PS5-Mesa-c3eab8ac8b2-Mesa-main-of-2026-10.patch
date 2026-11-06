@@ -1,7 +1,7 @@
-From e5e62cb5946af5aae622ee66f3e3bcc7433f01bc Mon Sep 17 00:00:00 2001
+From e6b736748b4d9367d28029ccbe455664b07c14ae Mon Sep 17 00:00:00 2001
 From: Press5elect <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:08:29 +0000
-Subject: [PATCH 3/3] build-radv: PS5 Mesa c3eab8ac8b2, Mesa main of 2026-10-31
+Subject: [PATCH 3/4] build-radv: PS5 Mesa c3eab8ac8b2, Mesa main of 2026-10-31
  with Crux2's RADV patches 0001-0017
 
 As Crux2 1.0.17 builds it: the newest Mesa main, 119.88 Hz kept on a VRR display

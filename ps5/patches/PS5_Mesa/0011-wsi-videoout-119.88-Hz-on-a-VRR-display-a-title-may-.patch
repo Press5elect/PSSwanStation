@@ -1,7 +1,7 @@
-From fb77fd48d572c563097aca1922514d512f693882 Mon Sep 17 00:00:00 2001
+From 5c462118788ec92580c53a5ba990d029e60c03b5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 2 Oct 2026 08:08:35 +0000
-Subject: [PATCH 12/14] wsi/videoout: 119.88 Hz on a VRR display; a title may
+Subject: [PATCH 11/13] wsi/videoout: 119.88 Hz on a VRR display; a title may
  ask for 59.94 Hz
 
 With the high-frame-rate mode taken and nothing flipped yet, a VRR display's

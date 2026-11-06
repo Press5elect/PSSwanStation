@@ -1,7 +1,7 @@
-From a44632cbeb68c752512298969539747df4c87b1e Mon Sep 17 00:00:00 2001
+From ce73c43f9a39f9f9a8b0cd6c03c4dc2754703f96 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:01 +0000
-Subject: [PATCH 01/14] Crux2: 0001-diagnostic-breadcrumbs
+Subject: [PATCH 01/13] Crux2: 0001-diagnostic-breadcrumbs
 
 ---
  src/amd/vulkan/radv_physical_device.c         | 22 +++++++++++++++++++
@@ -124,7 +124,7 @@ index c0826e5ec9e..ca22cfb267e 100644
        return VK_SUCCESS;
     if (result != VK_SUCCESS)
 diff --git a/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c b/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c
-index 98783e37036..5725b684fbb 100644
+index 1e56791ab39..916f6abea7a 100644
 --- a/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c
 +++ b/src/amd/vulkan/winsys/ps5/radv_ps5_platform.c
 @@ -6,6 +6,10 @@
@@ -158,19 +158,19 @@ index 98783e37036..5725b684fbb 100644
  }
  
  bool
-@@ -298,8 +306,10 @@ radv_ps5_memory_alloc(uint64_t bytes, uint64_t alignment, bool window32, struct
+@@ -300,8 +308,10 @@ radv_ps5_memory_alloc(uint64_t bytes, uint64_t alignment, bool window32, struct
  
     int64_t physical = -1;
     if (sceKernelAllocateDirectMemory(0, sceKernelGetDirectMemorySize(), bytes, alignment,
 -                                     RADV_PS5_DIRECT_TYPE, &physical) != 0)
 +                                     RADV_PS5_DIRECT_TYPE, &physical) != 0) {
 +      PS5_CRUMB("memory: sceKernelAllocateDirectMemory FAILED");
-       return false;
+       return !window32 && bytes > RADV_PS5_LARGE_BYTES && radv_ps5_memory_alloc_chunked(bytes, alignment, out);
 +   }
  
     /* A window buffer goes where the kernel puts a mapping it is given no
      * address for, which is the window (PS5_Vulkan R86); anything else goes in
-@@ -334,6 +344,10 @@ radv_ps5_memory_alloc(uint64_t bytes, uint64_t alignment, bool window32, struct
+@@ -336,6 +346,10 @@ radv_ps5_memory_alloc(uint64_t bytes, uint64_t alignment, bool window32, struct
                         (window32 ? radv_ps5_window_contains(va, bytes)
                                   : va < RADV_PS5_GPU_ADDRESS_LIMIT && bytes <= RADV_PS5_GPU_ADDRESS_LIMIT - va);
     if (!placed) {
