@@ -9,6 +9,13 @@ Build 27
     The SMB servers on the network are found as the page opens (port 445,
     with their NetBIOS names), as OGBox's share form does. A change is used
     at once: no restart.
+  - A game on a network share whose server does not answer when the game
+    is started (the network still coming up, a NAS waking) waits for it
+    instead of failing: the server is asked again each second, the screen
+    counts the seconds ("Waiting for the network share"), and the game
+    starts as soon as it answers; Circle goes back to the games. As OGBox
+    does. A server that answers but refuses (the account, the share's
+    name) still says so at once.
   - Logs (Settings, System): written as they come, only when something goes
     wrong (kept in memory, written on a crash, a notice of a problem or
     "Save the log now"), or off; in the title's folder or on a USB drive;

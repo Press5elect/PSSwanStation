@@ -904,6 +904,11 @@ enum { PrecacheIdle, PrecacheRunning, PrecacheDone, PrecacheFailed };
 void startPrecache(const std::string& gamePath);
 int precacheState();
 void finishPrecache();
+// A network game about to be read (between beginLoad and endLoad): while the
+// server `path` is on does not answer (the network still coming up, a server
+// waking), it is asked again each second, and status() says how long. False
+// when the load was cancelled meanwhile.
+bool awaitShare(const std::string& path);
 struct Status
 {
 	std::string text;

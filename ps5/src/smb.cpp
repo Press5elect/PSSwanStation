@@ -41,7 +41,8 @@
 	that let its disks sleep answers the first one only when they are spinning
 	again. A share that could not be reached is tried again after 30 seconds,
 	or at once when the user asks. A request that fails on a connection that is
-	gone is made once more on a new one.
+	gone is made once more on a new one. A game started while its server does
+	not answer waits for it, asking each second (awaitShare), as OGBox does.
 
 	A game's files, two ways (the "Load network games into memory" option):
 
@@ -138,6 +139,11 @@ thread_local bool streamOnly;			// this thread's files are not read into memory
 std::atomic<u64> ramInUse{0};			// all files in memory
 std::atomic<int> busyDepth{0};			// requests in flight
 std::atomic<long long> busySince{0};	// when the oldest started, in ms; 0 when none
+std::atomic<long long> awaitedSince{0};	// a share waited for before a game starts (awaitShare), in ms; 0 when none
+// Probes on this thread that settled whether a server is there: it answered,
+// or it is named so that the console cannot ask it. A share waited for is no
+// longer waited for after a try that made one of these.
+thread_local unsigned settledHere;
 std::atomic<unsigned> failureCount{0};
 std::mutex errorMutex;
 std::string errorText;
@@ -299,7 +305,10 @@ Probe probe(const std::string& server, int port, const char *what)
 {
 	sockaddr_in address;
 	if (!numericAddress(server, port, address))
+	{
+		settledHere++;
 		return Probe::NoName;
+	}
 	const std::shared_ptr<ConnectAttempt> attempt = startConnect(address);
 	const long long deadline = nowMs() + ProbeSeconds * 1000;
 	std::unique_lock<std::mutex> lock(attempt->mutex);
@@ -326,6 +335,7 @@ Probe probe(const std::string& server, int port, const char *what)
 	if (attempt->error == 0)
 	{
 		diag::mark("%s: %s port %d answers (%lld ms)", what, server.c_str(), port, attempt->tookMs);
+		settledHere++;
 		return Probe::Open;
 	}
 	diag::mark("%s: %s port %d: %s failed: %s (errno %d)", what, server.c_str(), port,
@@ -1210,10 +1220,12 @@ bool isNetworkPath(const std::string& path)
 	return path.rfind("smb://", 0) == 0 || ftp::isPath(path) || nfs::isPath(path);
 }
 
-void retryNow()
+namespace
 {
-	// Asked for again by hand: a server that went back to sleep is woken first.
-	wake();
+// The servers that could not be reached are asked again at the next request,
+// not RetrySeconds after the failure.
+void forgetFailures()
+{
 	ftp::retryNow();
 	nfs::retryNow();
 	std::lock_guard<std::mutex> lock(sharesMutex);
@@ -1224,6 +1236,62 @@ void retryNow()
 		if (own.owns_lock())
 			share->failedAt = 0;
 	}
+}
+}
+
+void retryNow()
+{
+	// Asked for again by hand: a server that went back to sleep is woken first.
+	wake();
+	forgetFailures();
+}
+
+bool awaitShare(const std::string& path)
+{
+	const long long began = nowMs();
+	unsigned settled = settledHere;
+	Entry entry;
+	int found = stat(path, entry);
+	// There, not there, or the server answered and refused (the account, the
+	// share's name): what follows says so, as before.
+	if (found != -1 || settledHere != settled)
+		return true;
+	awaitedSince = began;
+	const std::string where = path.substr(0, path.find_last_of('/'));
+	diag::mark("share: %s does not answer: the game waits for it, asking each second", where.c_str());
+	int tries = 1;
+	long long tried = began;
+	while (!stopping())
+	{
+		// A try that took a second or more (five for a server that is off) is
+		// followed at once.
+		while (!stopping() && nowMs() - tried < 1000)
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		if (stopping())
+			break;
+		forgetFailures();
+		tried = nowMs();
+		settled = settledHere;
+		found = stat(path, entry);
+		tries++;
+		if (found != -1 || settledHere != settled)
+			break;
+	}
+	awaitedSince = 0;
+	const double seconds = (double)(nowMs() - began) / 1000.0;
+	if (stopping())
+	{
+		diag::mark("share: waiting for %s given up after %.1f s (%d tries)", where.c_str(), seconds, tries);
+		return false;
+	}
+	if (found == -1)
+		diag::mark("share: %s answers after %.1f s, but does not let the game be read", where.c_str(), seconds);
+	else
+	{
+		diag::mark("share: %s answered after %.1f s (%d tries): the game is read", where.c_str(), seconds, tries);
+		clearError();
+	}
+	return true;
 }
 
 void streamOnThisThread(bool only)
@@ -1291,10 +1359,12 @@ Status status()
 		current.done = done;
 		current.total = total;
 	}
-	const long long since = busySince.load();
+	// A share waited for before a game starts counts from the first try.
+	const long long awaited = awaitedSince.load();
+	const long long since = awaited != 0 ? awaited : busySince.load();
 	const long long waited = since != 0 ? nowMs() - since : 0;
 	char text[128];
-	if (waited >= 2500)
+	if (awaited != 0 || waited >= 2500)
 	{
 		// No answer for a while: a NAS waking its disks, or a server that is gone.
 		snprintf(text, sizeof(text), "Waiting for the network share (%d s)", (int)(waited / 1000));

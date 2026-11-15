@@ -4004,6 +4004,9 @@ void loadingPage(Frame& f)
 	else
 		doing = options::frontend().ramCache ? "Opening the game on the network share" : "Checking the game's files";
 	text(at(left, barY + 38), l.ready ? t.text : t.dim, doing, Body, 24);
+	// A share that does not answer is waited for: nothing to do but wait, or cancel.
+	if (!l.ready && !fromDisc && status.waiting)
+		textFit(at(left, barY + 72), px(right - left), t.faint, "The game starts as soon as the share answers.", Body, 22);
 	if (!l.ready && !status.waiting && status.total != 0 && l.speed > 64 * 1024)
 	{
 		const double seconds = (double)(status.total - status.done) / l.speed;

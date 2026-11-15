@@ -11,7 +11,7 @@
 
 	Also here: reading a network game's files into memory before it starts, on
 	a thread of its own, so the screen can show how far it is and Circle can
-	stop it.
+	stop it. A share that does not answer yet is waited for first.
 */
 #include "fe.h"
 #include "tuning.h"
@@ -284,6 +284,16 @@ void startPrecache(const std::string& gamePath)
 	precacheThread = std::thread([gamePath] {
 		tuning::setThread(tuning::Role::Background);
 		beginLoad();
+		// A share that does not answer yet is waited for (as OGBox does), and
+		// the game read once it answers. Cancel goes back to the games.
+		if (!awaitShare(gamePath))
+		{
+			clearError();
+			endLoad();
+			diag::mark("share: %s: cancelled while waiting for the share", baseName(gamePath).c_str());
+			precache = PrecacheFailed;
+			return;
+		}
 		std::vector<std::string> files;
 		collect(gamePath, files, 0);
 		// How much there is to read, so the screen counts through the game
