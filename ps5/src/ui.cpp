@@ -4812,9 +4812,107 @@ void init()
 	source = wantedSource;
 }
 
+// Closing while the files are being brought up to date with the share or the
+// cloud (netfiles.cpp) waits for that, as OGBox does: the sync is asked to
+// stop before its next file, and the title stays in its loop, a bar along the
+// bottom saying what it is finishing, until it has.
+//
+// Circle does not leave sooner. A file on an SMB share is replaced by
+// removing the old one and renaming the new one into its place (SMB renames
+// over nothing, smb.cpp), and what a folder's sync did is written down only
+// once that folder stops (data/sync/<name>.state, and the share's own list,
+// which is replaced the same way). Leaving in the middle of a file could leave
+// the share without that file, which another console then takes for a file
+// removed, or without its list; so the file under way and the lists are
+// waited for.
+namespace
+{
+struct CloseWait
+{
+	bool active = false, backSaid = false;
+	double since = 0, lastLog = 0;
+};
+CloseWait closeWait;
+}
+
 bool quitRequested()
 {
-	return quit;
+	// Until the sync has stopped, closeWaitFrame() has the frames.
+	if (!quit || netfiles::working())
+		return false;
+	if (closeWait.active)
+	{
+		closeWait.active = false;
+		diag::mark("close: the files' sync stopped %.1f s after the close was asked; closing", now() - closeWait.since);
+	}
+	return true;
+}
+
+namespace
+{
+// Each frame while a close waits for the files' sync: the pad does nothing.
+void closeWaitFrame()
+{
+	if (!quit || (!closeWait.active && !netfiles::working()))
+		return;
+	const double t = now();
+	if (!closeWait.active)
+	{
+		closeWait = CloseWait();
+		closeWait.active = true;
+		closeWait.since = closeWait.lastLog = t;
+		diag::mark("close: waiting for the files' sync first (%s)", netfiles::status().c_str());
+		netfiles::askStop();
+		// The menu the close was chosen from is done with: the library is behind the bar.
+		if (!host::running())
+			stack.clear();
+	}
+	else if (t - closeWait.lastLog >= 5.0)
+	{
+		closeWait.lastLog = t;
+		const netfiles::Progress p = netfiles::progress();
+		diag::mark("close: still waiting for the files' sync after %.0f s (%s, %d of %d files%s%s)", t - closeWait.since,
+				p.part.c_str(), p.done, p.total, p.file.empty() ? "" : ", copying ", p.file.c_str());
+	}
+	if (hit(cancelButton) && !closeWait.backSaid)
+	{
+		closeWait.backSaid = true;
+		diag::mark("close: back pressed while waiting: the file under way is finished first (it is never left half copied)");
+	}
+	consumeInput();
+}
+
+// The bar along the bottom while a close waits: what the sync is doing, the
+// file it is finishing, and a bar that moves (no end is known: the sync stops
+// once that file is done).
+void drawCloseWait()
+{
+	if (!closeWait.active)
+		return;
+	const Theme& t = theme();
+	const netfiles::Progress p = netfiles::progress();
+	const float W = unitsWide(), H = unitsHigh();
+	const float x0 = 48, x1 = W - 48, h = 120, y0 = H - 40 - h;
+	std::string what = p.part.empty() ? std::string("Asking the share") : p.part;
+	if (p.total > 0)
+		what += format(", %d of %d files", p.done, p.total);
+	std::string detail = "PSSwanStation closes in a moment. ";
+	if (!p.file.empty())
+	{
+		detail = "Finishing " + p.file;
+		if (p.bytes >= (1u << 20))
+			detail += format(" (%.1f MB)", (double)p.bytes / (double)(1u << 20));
+		else if (p.bytes >= 1024)
+			detail += format(" (%llu KB)", (unsigned long long)(p.bytes / 1024));
+		detail += ", then PSSwanStation closes. ";
+	}
+	detail += "What is left is brought up to date at the next start.";
+	panel(at(x0, y0), at(x1, y0 + h), theme().panel, 14);
+	panel(at(x0, y0 + 14), at(x0 + 6, y0 + h - 14), t.accent, 3);
+	textFit(at(x0 + 36, y0 + 18), px(x1 - x0 - 72), t.text, "Bringing your files up to date: " + what, Bold, 26);
+	textFit(at(x0 + 36, y0 + 56), px(x1 - x0 - 72), t.dim, detail, Body, 22);
+	progressBar(at(x0 + 36, y0 + h - 30), at(x1 - 36, y0 + h - 22), -1.f);
+}
 }
 
 
@@ -5216,6 +5314,7 @@ void frame()
 		return;
 #endif
 	readInput();
+	closeWaitFrame();
 	menuSounds();
 	if (closeGame)
 	{
@@ -5265,14 +5364,18 @@ void frame()
 	{
 		// The animation has the screen.
 	}
-	else if (!game && idleSwan(stack.empty() || (stack.back().page != Page::Loading && stack.back().page != Page::Launch
-			&& stack.back().page != Page::Update)))
+	else if (!game && idleSwan(!closeWait.active && (stack.empty() || (stack.back().page != Page::Loading
+			&& stack.back().page != Page::Launch && stack.back().page != Page::Update))))
 	{
 		// Nothing was pressed for a while: the swan has the screen.
 	}
 	else if (!game && stack.empty())
 	{
-		libraryPage(true);
+		// Behind the bar of a close that waits for the files' sync: without its
+		// hints, as behind a page, since no button does anything meanwhile.
+		libraryBehind = closeWait.active;
+		libraryPage(!closeWait.active);
+		libraryBehind = false;
 		startNotices();
 	}
 	else if (game && stack.empty())
@@ -5367,6 +5470,7 @@ void frame()
 		deferred = nullptr;
 		run();
 	}
+	drawCloseWait();
 	playPendingSound();
 	const bool wantPause = host::running() && !stack.empty();
 	if (host::running() && host::paused() != wantPause)

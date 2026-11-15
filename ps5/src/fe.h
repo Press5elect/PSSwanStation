@@ -217,6 +217,21 @@ void now();
 bool working();
 // Waits for it (the title closes).
 void finish();
+// The title is closing (ui.cpp waits for working() to end, as OGBox does): a
+// sync under way stops before its next file. The one it is copying is
+// finished and what it did is written down; the next start's sync takes up
+// the rest.
+void askStop();
+// What a sync under way is doing, for the bar a close waits with: the part
+// ("Your covers"), how many of its files it has come to, and the file being
+// copied now with its size ("" between copies).
+struct Progress
+{
+	std::string part, file;
+	int done = 0, total = 0;
+	uint64_t bytes = 0;
+};
+Progress progress();
 // What it is doing, or what it did last.
 std::string status();
 // How many files were found changed on both sides, this run.

@@ -137,7 +137,7 @@ password = secret
 | Card backups | Sent to `card backups/<console>/`, a copy off each console | Sent the same way |
 | Save states, settings, cheats, BIOS, textures, music, borders, layouts | Stay on each console | Both ways |
 
-The NAS is brought up to date when PSSwanStation starts, when a game closes, and when you choose "Bring my files up to date now"; never while a game runs. With "Where my files are kept" on the network share, the console works on its own copy, so games still start, play and save when the NAS is off.
+The NAS is brought up to date when PSSwanStation starts, when a game closes, and when you choose "Bring my files up to date now"; never while a game runs. With "Where my files are kept" on the network share, the console works on its own copy, so games still start, play and save when the NAS is off. Closing PSSwanStation while it is being brought up to date first finishes the file being copied, a bar along the bottom saying which, and the rest is brought up to date at the next start.
 
 **Two consoles, one game.** If two consoles played the same game on their own copy of a card before they met, the one played last is kept and the other is saved beside it as `<card>.conflict-<date>-<time>`, so nothing is lost. A card or cover removed on one console is removed on the others; the console keeps its copy in `data/sync/removed/`.
 
@@ -248,7 +248,7 @@ The DualSense works as a PlayStation controller, button for button; the touch pa
 
 **USB controllers** (an experiment; Settings, Controls, "USB controllers", off at first). PSSwanStation reads some controllers plugged into the console's USB ports itself: a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or another USB gamepad. They can be the next player or play together with player 1. Only devices that say what they are are read; Sony's controllers are left to the console. Not yet tried on my console.
 
-**Closing.** Menu, Close ends the game. In the library, Circle asks whether to close PSSwanStation; Cross answers yes.
+**Closing.** Menu, Close ends the game. In the library, Circle asks whether to close PSSwanStation; Cross answers yes. If your files are being brought up to date with a network share or the cloud just then, PSSwanStation first finishes the file it is copying (a bar along the bottom says which; no button cuts that short, so no file is left half copied) and leaves the rest for the next start.
 
 **Screenshots and video** are the console's own: use the Create button.
 

@@ -36,6 +36,11 @@ From build 27 test 2:
   N KiB of …`). Checked on the PC over FTP only: SMB and NFS go through the same paths (`stat`,
   `probe`, `status`) but no server of either kind was there. A 5 s probe of a server that is off,
   not seen.
+- Closing while the files are being brought up to date (not in a test build yet): the bar, then
+  the boot log's `close: waiting for the files' sync first` … `files: Stopped as PSSwanStation
+  closed: …` … `close: the files' sync stopped N s after the close was asked; closing`, and the
+  next start's sync bringing the rest. Checked on the PC against an SMB share (impacket's server)
+  only; not with NFS or a cloud storage.
 
 ## Known limits, by how the emulator is built
 
@@ -79,6 +84,13 @@ Offered to the owner and not asked for, or found in OGBox and not ported:
   cache is the only one, sparing the console's storage.
 - **No session links in commits**: from build 27 on, the commits carry only the Co-Authored-By
   trailer (the unpushed build 27 commits were rewritten on the owner's word).
+- **A close waits for the file the sync is copying; Circle does not cut it short** (OGBox lets
+  Circle leave only its cache drives' last bytes, which the game copies again). On an SMB share a
+  file is replaced by removing the old one and renaming the new one into place, and a folder's
+  lists (the share's `.psswanstation-sync`, `data/sync/<name>.state`) are written when it stops:
+  leaving in between could leave the share without the file, which another console then takes
+  for a removal. A share that stops answering in the middle of a file is waited for until the
+  request times out (`RequestSeconds`, 60 s); not tried.
 
 ## Waiting for the owner
 

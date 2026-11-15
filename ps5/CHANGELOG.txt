@@ -75,6 +75,12 @@ Build 27
     (as OGBox's): a line no longer waits for the file system on the thread
     that wrote it. The log is put on the disk every 30 seconds that had
     lines, and a crash report still writes everything before itself.
+  - Closing PSSwanStation while your files are being brought up to date
+    with the network share or the cloud no longer leaves the screen
+    standing still until all of them are: a bar along the bottom says
+    what is being finished, the sync stops after the file it is copying
+    (never in the middle of one), and the title closes. What was left is
+    brought up to date at the next start. As OGBox does.
   Fixed
   - Safe start's "Stay in the sandbox" left USB controllers on, so the
     title still left its sandbox with them: they are switched off too, as

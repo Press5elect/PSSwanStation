@@ -47,6 +47,14 @@
 	thread of its own; a game cannot start until it is done), when a game
 	closes, and when asked (Settings, Games and saving, "Bring my files up to
 	date now"). A share that does not answer leaves everything as it is.
+
+	Closing the title while a sync runs waits for it, a bar along the bottom
+	saying what it is doing (ui.cpp), as OGBox does: the sync is asked to stop
+	(askStop) and stops before its next file. The file it is copying is
+	finished, and what it did is written down (the share's list and this
+	console's), so the next sync, at the next start, takes up what is left:
+	it compares every file again, and those done are found the same on both
+	sides.
 */
 #include "fe.h"
 #include "tuning.h"
@@ -87,11 +95,26 @@ std::string statusText, lastText;
 std::atomic<bool> busy{false};
 std::atomic<int> conflictsSeen{0};
 std::thread worker;
+// The title closes (askStop): no file is begun after the one being copied.
+// Never cleared: closing is not taken back.
+std::atomic<bool> stopAsked{false};
+// What the bar a close waits with shows (progress()); under statusMutex.
+Progress current;
 
 void say(const std::string& text)
 {
 	std::lock_guard<std::mutex> lock(statusMutex);
 	statusText = text;
+	current = Progress();
+	current.part = text;
+}
+
+// The file being copied now and its size, for the bar ("" once it is done).
+void copying(const std::string& rel, uint64_t bytes)
+{
+	std::lock_guard<std::mutex> lock(statusMutex);
+	current.file = rel;
+	current.bytes = bytes;
 }
 
 std::string hex(uint64_t value)
@@ -297,10 +320,14 @@ void walkLocal(const std::string& top, const std::string& rel, int depth, bool r
 }
 
 // Every file below `dir` on the share. False when a folder could not be
-// listed (then nothing is decided from what is missing).
+// listed (then nothing is decided from what is missing), and when the title
+// closes meanwhile: a listing only reads, and a large folder over a slow
+// share takes a request for each of its folders.
 bool walkRemote(const std::string& top, const std::string& rel, int depth, bool recurse, bool everything,
 		std::map<std::string, uint64_t>& out)
 {
+	if (stopAsked)
+		return false;
 	const unsigned before = smb::failures();
 	const std::vector<smb::Entry> entries = smb::list(top + rel);
 	if (smb::failures() != before)
@@ -336,6 +363,7 @@ struct Report
 {
 	int pulled = 0, pushed = 0, removed = 0, conflicts = 0;
 	bool failed = false;
+	bool stopped = false;	// the title closed (askStop): the rest waits for the next sync
 	std::string error;
 };
 
@@ -380,6 +408,11 @@ struct ShareStore : Store
 void syncPair(Store& store, const std::string& name, const std::string& local, const std::string& remote, Way way,
 		bool recurse, bool dataFolder, Report& report, const std::vector<std::string>& only = {})
 {
+	if (stopAsked)
+	{
+		report.stopped = true;
+		return;
+	}
 	makeDir(local);
 	const std::string statePath = rootDir + "data/sync/" + name + ".state";
 	std::map<std::string, Remembered> state = readState(statePath);
@@ -395,6 +428,12 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 	else
 		for (const std::string& under : only)
 			listedAll = listedAll && store.walkUnder(remote, under, recurse, dataFolder, remoteFiles);
+	if (!listedAll && stopAsked)
+	{
+		// Nothing was changed yet: this pair is left as it was.
+		report.stopped = true;
+		return;
+	}
 	if (!listedAll)
 	{
 		report.failed = true;
@@ -452,9 +491,23 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 	const int total = (int)names.size();
 	for (const std::string& rel : names)
 	{
+		// The title closes: stopped between two files, never in one. What was
+		// done so far is written down below, as at the end.
+		if (stopAsked)
+		{
+			report.stopped = true;
+			break;
+		}
 		done++;
-		if (done % 16 == 0)
-			say(format("%d of %d files", done, total));
+		{
+			std::lock_guard<std::mutex> lock(statusMutex);
+			current.done = done;
+			current.total = total;
+			current.file.clear();
+			current.bytes = 0;
+			if (done % 16 == 0)
+				statusText = format("%d of %d files", done, total);
+		}
 		const std::string lh = localHash(rel);
 		const auto onShare = remoteFiles.find(rel);
 		std::string rh;
@@ -469,6 +522,7 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 		}
 		const std::string base = state.count(rel) != 0 ? state[rel].base : "";
 		const auto pull = [&]() -> bool {
+			copying(rel, onShare != remoteFiles.end() ? onShare->second : 0);
 			std::vector<uint8_t> bytes;
 			if (!store.read(remote + "/" + rel, bytes))
 			{
@@ -500,6 +554,7 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 			return true;
 		};
 		const auto push = [&]() -> bool {
+			copying(rel, localFiles[rel].first);
 			std::vector<uint8_t> bytes;
 			std::string error;
 			if (!readFile(local + rel, bytes) || !store.write(remote + "/" + rel, bytes.data(), bytes.size(), error))
@@ -572,6 +627,7 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 				const int64_t localTime = localFiles[rel].second / 1000000000ll, remoteTime = listed[rel].time;
 				const std::string aside = local + rel + ".conflict-" + stamp();
 				report.conflicts++;
+				copying(rel, onShare->second);
 				if (localTime >= remoteTime)
 				{
 					std::vector<uint8_t> theirs;
@@ -629,6 +685,7 @@ void syncPair(Store& store, const std::string& name, const std::string& local, c
 		if (!ok)
 			break;
 	}
+	copying("", 0);
 	if (manifestChanged && way != Way::Bring)
 	{
 		const std::string text = manifestText(listed);
@@ -659,7 +716,7 @@ std::string runCloud()
 	Report report;
 	say("Memory cards, " + store->name());
 	syncPair(*store, "cloud-memory-cards", rootDir + "data/saves/", "memory cards", Way::Both, false, false, report);
-	if (options::frontend().cloudStates && !report.failed)
+	if (options::frontend().cloudStates && !report.failed && !report.stopped)
 	{
 		say("Save states, " + store->name());
 		syncPair(*store, "cloud-save-states", host::statesFolder(), "save states", Way::Both, false, false, report);
@@ -667,6 +724,9 @@ std::string runCloud()
 	std::string summary;
 	if (report.failed)
 		summary = store->name() + ": not brought up to date: " + report.error + ".";
+	else if (report.stopped)
+		summary = store->name() + format(": stopped as PSSwanStation closed (%d brought here, %d sent); the rest at the "
+				"next start.", report.pulled, report.pushed);
 	else if (report.pulled + report.pushed + report.removed == 0)
 		summary = store->name() + ": up to date.";
 	else
@@ -725,7 +785,7 @@ void runOnce(const char *why, bool quick)
 			say(std::string("Your ") + folder);
 			syncPair(share, std::string("all-") + folder, rootDir + folder + "/", files + "/" + folder, Way::Both, true,
 					strcmp(folder, "data") == 0, report);
-			if (report.failed)
+			if (report.failed || report.stopped)
 				break;
 		}
 	else
@@ -735,14 +795,14 @@ void runOnce(const char *why, bool quick)
 			say("Memory cards");
 			syncPair(share, "memory-cards", rootDir + "data/saves/", files + "/memory cards", Way::Both, false, false, report);
 		}
-		if (f.coversFromShare && !report.failed)
+		if (f.coversFromShare && !report.failed && !report.stopped)
 		{
 			say("Covers");
 			syncPair(share, "covers", rootDir + "covers/", files + "/covers", Way::Both, true, false, report);
 		}
 	}
 	// The cards' backups, from wherever the cards are kept on the share.
-	if (!quick && (f.filesAt == 3 || f.cardsOnShare) && !report.failed)
+	if (!quick && (f.filesAt == 3 || f.cardsOnShare) && !report.failed && !report.stopped)
 	{
 		say("Card backups");
 		syncPair(share, "card-backups", rootDir + "data/saves/backups/", files + "/card backups/" + consoleName(), Way::Send,
@@ -751,6 +811,9 @@ void runOnce(const char *why, bool quick)
 	std::string summary;
 	if (report.failed)
 		summary = "Not brought up to date: " + report.error + ".";
+	else if (report.stopped)
+		summary = format("Stopped as PSSwanStation closed: %d brought here, %d sent to the share%s; the rest at the next "
+				"start.", report.pulled, report.pushed, report.removed > 0 ? format(", %d removed", report.removed).c_str() : "");
 	else if (report.pulled + report.pushed + report.removed == 0)
 		summary = "Up to date: nothing had changed.";
 	else
@@ -819,6 +882,18 @@ void finish()
 {
 	if (worker.joinable())
 		worker.join();
+}
+
+void askStop()
+{
+	if (busy && !stopAsked.exchange(true))
+		diag::mark("files: the title closes: the sync stops after the file it is copying (%s)", status().c_str());
+}
+
+Progress progress()
+{
+	std::lock_guard<std::mutex> lock(statusMutex);
+	return current;
 }
 
 std::string status()
