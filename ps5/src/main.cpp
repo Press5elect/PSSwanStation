@@ -352,6 +352,9 @@ int main(int argc, char **argv)
 		_exit(result);
 	}
 #endif
+	// Each share with games is read a little in the background, so that a
+	// NAS's disks are turning by the time a game is started (as OGBox does).
+	smb::wakeShares();
 	covers::init();
 	ui::init();
 	if (!launchRom.empty())

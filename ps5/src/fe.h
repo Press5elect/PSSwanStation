@@ -930,6 +930,10 @@ std::string wakeAddress();
 // Sends the wake-up packet (Wake-on-LAN) to it. False when none is named or
 // it could not be sent.
 bool wake();
+// As the title starts: each share with games that answers is read a little
+// in the background (the game played last from it, else the first large file
+// found on it), so that a NAS's disks are turning by the time a game starts.
+void wakeShares();
 }
 
 // --------------------------------------------------------------- library.cpp

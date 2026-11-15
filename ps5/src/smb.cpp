@@ -58,6 +58,7 @@
 #include "fe.h"
 #include "net.h"
 #include "netplay.h"
+#include "tuning.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -76,6 +77,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <random>
 #include <string>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -1065,6 +1067,154 @@ bool wake()
 	return sent > 0;
 }
 
+namespace
+{
+constexpr u64 LargeFile = 8u << 20;		// a disc image, for waking a share's disks
+
+// The server a network folder is on, and the port its kind answers on.
+bool serverOf(const std::string& folder, std::string& host, int& port)
+{
+	const size_t scheme = folder.find("://");
+	if (scheme == std::string::npos)
+		return false;
+	const std::string kind = folder.substr(0, scheme);
+	const size_t begin = scheme + 3;
+	host = folder.substr(begin, folder.find('/', begin) - begin);
+	port = kind == "ftp" ? 21 : kind == "nfs" ? 2049 : 445;
+	const size_t colon = host.find(':');
+	if (colon != std::string::npos)
+	{
+		port = atoi(host.c_str() + colon + 1);
+		host.resize(colon);
+	}
+	return !host.empty() && port > 0;
+}
+
+// The first file of LargeFile or more in `folder`, or within `depth` folders
+// below it; "" for none. At most 400 names of a folder and 16 folders below
+// each are looked at.
+std::string firstLargeFile(const std::string& folder, int depth)
+{
+	std::vector<std::string> below;
+	unsigned seen = 0;
+	for (const Entry& entry : list(folder))
+	{
+		if (++seen > 400)
+			break;
+		if (entry.name.empty() || entry.name[0] == '.')
+			continue;
+		if (entry.directory)
+			below.push_back(entry.path);
+		else if (entry.size >= LargeFile)
+			return entry.path;
+	}
+	for (size_t i = 0; depth > 0 && i < below.size() && i < 16; i++)
+	{
+		const std::string found = firstLargeFile(below[i], depth - 1);
+		if (!found.empty())
+			return found;
+	}
+	return "";
+}
+
+// A little of the file, at its start and somewhere inside it (what a NAS
+// keeps in its memory does not wake its disks): the bytes read.
+size_t readALittle(const std::string& path)
+{
+	File *file = open(path);
+	if (file == nullptr)
+		return 0;
+	std::vector<u8> buffer(64 * 1024);
+	size_t got = file->read(buffer.data(), buffer.size());
+	const int64_t bytes = file->size();
+	if (bytes > (int64_t)(4 * buffer.size()))
+	{
+		std::mt19937_64 chance((u64)nowMs());
+		const u64 at = (chance() % (u64)(bytes - (int64_t)buffer.size())) & ~(u64)4095;
+		if (file->seek((int64_t)at, SEEK_SET) == 0)
+			got += file->read(buffer.data(), buffer.size());
+	}
+	delete file;
+	return got;
+}
+}
+
+void wakeShares()
+{
+	const std::vector<std::string> folders = gameFolders();
+	if (folders.empty())
+		return;
+	// The games played lately, the latest first: on each share, the latest
+	// played from it is the file read.
+	const std::vector<std::string> recent = history::recent(64);
+	std::thread(tuning::background([folders, recent] {
+		streamOnThisThread(true);
+		// Not while the title's files are brought from the share or the
+		// Network tab is scanned: those judge the share by the failures
+		// counted meanwhile.
+		while (netfiles::working() || library::scanning(library::Network))
+			std::this_thread::sleep_for(std::chrono::milliseconds(250));
+		std::vector<std::string> asked;
+		for (const std::string& folder : folders)
+		{
+			if (loading)
+			{
+				diag::mark("share: the shares are not woken further: a game is being read from the network");
+				return;
+			}
+			// One read for each SMB share (smb://server/share), whichever of
+			// its folders the games are in.
+			std::string share = folder;
+			if (share.rfind("smb://", 0) == 0)
+			{
+				const size_t serverEnd = share.find('/', 6);
+				share = share.substr(0, serverEnd == std::string::npos ? serverEnd : share.find('/', serverEnd + 1));
+			}
+			if (std::find(asked.begin(), asked.end(), share) != asked.end())
+				continue;
+			asked.push_back(share);
+			std::string host;
+			int port = 0;
+			if (!serverOf(folder, host, port))
+				continue;
+			const long long began = nowMs();
+			// Asked first whether it answers at all: a probe leaves nothing
+			// for the title's own requests to find (no failure counted, no
+			// wait before the next try).
+			if (probe(host, port, "wake") != Probe::Open)
+			{
+				diag::mark("share: %s does not answer: not woken", share.c_str());
+				continue;
+			}
+			std::string file;
+			for (const std::string& game : recent)
+				if (game.rfind(share + "/", 0) == 0)
+				{
+					file = game;
+					break;
+				}
+			if (!file.empty())
+			{
+				// A cue sheet or a playlist is small: a large file beside it
+				// (its track, a disc).
+				Entry entry;
+				if (stat(file, entry) != 1 || entry.size < LargeFile)
+					file = firstLargeFile(file.substr(0, file.find_last_of('/')), 0);
+			}
+			if (file.empty())
+				file = firstLargeFile(folder, 2);
+			if (file.empty())
+			{
+				diag::mark("share: %s: no large file on it to read (to wake its disks)", share.c_str());
+				continue;
+			}
+			const size_t got = readALittle(file);
+			diag::mark("share: %s woken: %zu KiB of %s read in %.1f s", share.c_str(), got / 1024,
+					lastComponent(file).c_str(), (double)(nowMs() - began) / 1000.0);
+		}
+	})).detach();
+}
+
 void loadConfig()
 {
 	// Read into these, then put in place at once.
@@ -1111,7 +1261,8 @@ void loadConfig()
 					"# Remove the # in front of a path line to use it. The folder and the\n"
 					"# folders inside it are scanned for games when PSSwanStation first starts\n"
 					"# with it, and again with Square in the library; the list is kept, so\n"
-					"# the share is not asked again until a game is started. The library has\n"
+					"# the share is not scanned again until you ask (as PSSwanStation starts\n"
+					"# each share is only read a little, to wake its disks). The library has\n"
 					"# a Network tab once games were found.\n"
 					"#\n"
 					"# The account: leave it as guest with no password for an open share (an\n"

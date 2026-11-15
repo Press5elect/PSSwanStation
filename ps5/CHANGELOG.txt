@@ -16,6 +16,10 @@ Build 27
     starts as soon as it answers; Circle goes back to the games. As OGBox
     does. A server that answers but refuses (the account, the share's
     name) still says so at once.
+  - The network shares are woken as PSSwanStation starts: each share with
+    games that answers is read a little in the background (the game played
+    last from it, else the first large file found on it), so that a NAS's
+    disks are turning by the time a game is started. As OGBox does.
   - Logs (Settings, System): written as they come, only when something goes
     wrong (kept in memory, written on a crash, a notice of a problem or
     "Save the log now"), or off; in the title's folder or on a USB drive;
