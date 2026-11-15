@@ -8,12 +8,16 @@
 	(255), the main port, 256-frame grains at 48 kHz, 16-bit stereo, with a
 	thread of its own feeding sceAudioOutOutput, which blocks until the previous
 	grain has been taken. The thread asks audio.cpp for each grain; an empty
-	ring plays silence rather than stalling the port.
+	ring plays silence rather than stalling the port. A call that fails does
+	not block, so the thread then keeps the grains' own time itself (as
+	OGBox's sound output does), instead of spinning and emptying the ring;
+	the boot log says so.
 */
 #include "fe.h"
 #include "../tuning.h"
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 extern "C"
@@ -53,10 +57,31 @@ bool audioOpen()
 	thread = std::thread([] {
 		tuning::setThread(tuning::Role::Sound);
 		alignas(64) int16_t grain[Grain * 2];
+		using Clock = std::chrono::steady_clock;
+		const auto period = std::chrono::nanoseconds(1'000'000'000LL * Grain / 48000);
+		Clock::time_point due{};
+		uint64_t failed = 0;
+		Clock::time_point toldAt{};
 		while (!stop)
 		{
 			audio::render(grain, Grain);
-			sceAudioOutOutput(port, grain);
+			const int rc = sceAudioOutOutput(port, grain);
+			if (rc >= 0)
+			{
+				due = {};
+				continue;
+			}
+			// The grain was not taken and nothing waited: its time is kept here.
+			failed++;
+			const auto now = Clock::now();
+			if (failed <= 3 || now - toldAt >= std::chrono::seconds(10))
+			{
+				diag::mark("audio: sceAudioOutOutput failed (%#x), %llu time(s) so far; the grains are timed by the clock",
+						(unsigned)rc, (unsigned long long)failed);
+				toldAt = now;
+			}
+			due = due == Clock::time_point{} || due < now - period * 4 ? now + period : due + period;
+			std::this_thread::sleep_until(due);
 		}
 	});
 	return true;

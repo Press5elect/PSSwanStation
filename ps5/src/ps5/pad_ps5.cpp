@@ -26,11 +26,19 @@
 	since the PlayStation 4; scePadSetMotionSensorState switches the sensor on.
 	That the readings arrive as described is not established on a console yet:
 	tilt control is offered as an experiment (Settings, Controllers).
+
+	Each frame takes every sample the console kept since the last one
+	(scePadRead, as OGBox reads the pad), not only the newest: the newest is
+	the state, and a button down in any of them is held for at least 50 ms
+	(OGBox's tap latch), so a press that went down and up between two frames,
+	or between two of a 30 fps game's looks at the pad, still reaches it. When
+	scePadRead refuses, that frame's state is read as before (scePadReadState).
 */
 #include "fe.h"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -41,6 +49,7 @@ int scePadInit(void);
 int scePadOpen(int32_t userId, int32_t type, int32_t index, const void *param);
 int scePadGetHandle(int32_t userId, int32_t type, int32_t index);
 int scePadReadState(int32_t handle, void *data);
+int scePadRead(int32_t handle, void *data, int32_t count);
 int scePadClose(int32_t handle);
 int scePadSetVibration(int32_t handle, const void *param);
 int scePadSetVibrationMode(int32_t handle, int32_t mode);
@@ -107,6 +116,38 @@ static_assert(offsetof(PadData, touchCount) == 0x34, "touch count at 0x34");
 static_assert(offsetof(PadData, touch) == 0x3c, "touch points at 0x3c");
 static_assert(offsetof(PadData, connected) == 0x4c, "connection flag at 0x4c");
 static_assert(offsetof(PadData, timestamp) == 0x50, "timestamp at 0x50");
+// One of scePadRead's samples: the state's 120 bytes.
+struct PadSample
+{
+	uint8_t bytes[120];
+};
+
+// A press shorter than a frame held long enough for the game to see it
+// (OGBox's TapLatch): `any`, every button down in any of the frame's samples;
+// `newest`, the newest sample's. The buttons given.
+struct TapLatch
+{
+	static constexpr double MinHold = 0.05;	// seconds: three frames at 60, one and a half at 30
+	uint32_t held = 0;		// what was given last
+	double since[32] = {};	// when each button went down
+	uint32_t update(uint32_t any, uint32_t newest, double now)
+	{
+		any |= newest;
+		uint32_t out = newest;
+		for (int i = 0; i < 32; i++)
+		{
+			const uint32_t bit = 1u << i;
+			if ((any & bit) != 0 && (held & bit) == 0)
+				since[i] = now;
+			// Down in a sample but up in the newest (a tap), or let go: held
+			// until MinHold has passed.
+			if ((newest & bit) == 0 && ((any | held) & bit) != 0 && now - since[i] < MinHold)
+				out |= bit;
+		}
+		held = out;
+		return out;
+	}
+};
 
 struct Device
 {
@@ -116,6 +157,10 @@ struct Device
 	uint8_t sentLarge = 0, sentSmall = 0;
 	uint32_t sentLight = 0;		// 0x01RRGGBB once a colour was set
 	bool motionOn = false;
+	PadData last{};				// the newest sample with the pad there, for a frame with none new
+	bool haveLast = false;
+	bool readRefusedSaid = false;
+	TapLatch latch;
 };
 std::array<Device, MaxPads> devices;
 std::array<Pad, MaxPads> pads;
@@ -280,10 +325,49 @@ void padPoll()
 			continue;
 		}
 		PadData raw{};
-		const int rc = scePadReadState(device.handle, &raw);
+		int rc = -1;
+		uint32_t anyRaw = 0;	// every button down in any of the frame's samples
+		static PadSample samples[64];
+		const int count = scePadRead(device.handle, samples, 64);
+		if (count > 0)
+		{
+			rc = 0;
+			bool found = false;
+			for (int k = 0; k < count && k < 64; k++)
+			{
+				PadData sample{};
+				std::memcpy(&sample, samples[k].bytes, sizeof(samples[k].bytes));
+				raw = sample;	// the newest, whatever it says (gone, or the system's menu)
+				if (sample.connected != 0 && (sample.buttons & RawIntercepted) == 0)
+				{
+					anyRaw |= sample.buttons;
+					device.last = sample;
+					found = true;
+				}
+			}
+			device.haveLast = found || device.haveLast;
+			if (found && raw.connected != 0 && (raw.buttons & RawIntercepted) == 0)
+				raw = device.last;
+		}
+		else if (count == 0 && device.haveLast)
+		{
+			// Nothing new since the last frame: the state as it was.
+			rc = 0;
+			raw = device.last;
+		}
+		else
+		{
+			if (count < 0 && !device.readRefusedSaid)
+			{
+				device.readRefusedSaid = true;
+				diag::mark("pad: %d: scePadRead refused (%#x): the state is read as before", i + 1, (unsigned)count);
+			}
+			rc = scePadReadState(device.handle, &raw);
+		}
 		if (rc < 0 || raw.connected == 0 || (raw.buttons & RawIntercepted) != 0)
 		{
 			// Disconnected, or the system menu has the pad: nothing is held.
+			device.latch = TapLatch();
 			pad = Pad();
 			pad.connected = rc >= 0 && raw.connected != 0;
 			pad.released = before;
@@ -297,6 +381,11 @@ void padPoll()
 			pad.buttons = translate(raw.buttons & ~RawTouchPad, false) | (before & (TouchLeft | TouchRight));
 		else
 			pad.buttons = translate(raw.buttons, device.touchRight);
+		{
+			const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+			const uint32_t any = anyRaw != 0 ? translate(anyRaw, device.touchRight) : 0;
+			pad.buttons = device.latch.update(any, pad.buttons, now);
+		}
 		pad.pressed = pad.buttons & ~before;
 		pad.released = before & ~pad.buttons;
 		pad.lx = (raw.lx - 128) / 127.5f;
