@@ -1,7 +1,7 @@
-From 0664258fc8756699a0bdff2d0b578939e98ac5e3 Mon Sep 17 00:00:00 2001
+From cb1e4f9a6c5c9696a232457b9fecd1a98ed7b208 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:03 +0000
-Subject: [PATCH 07/13] Crux2:
+Subject: [PATCH 07/14] Crux2:
  0011-wsi-videoout-a-title-sets-how-far-it-may-run-ahead-of-the-screen
 
 ---

@@ -1,11 +1,10 @@
-From 22bd533ca26b88ef123d0e9ab8c5509828622132 Mon Sep 17 00:00:00 2001
+From 681139295ef3f34bec48354ef834f0e04413b4e2 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 18 Oct 2026 11:11:33 +0000
-Subject: [PATCH 1/4] build-radv: PS5 Mesa 14c2f44, the 120 Hz settling and
+Subject: [PATCH 1/5] build-radv: PS5 Mesa 14c2f44, the 120 Hz settling and
  timed waits on the barycentrics pin
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
 ---
  NOTICE.md           |  2 +-
  docs/RADV_PHASE.md  | 27 +++++++++++++++++++++++++++
@@ -26,7 +25,7 @@ index be90b03..203e20d 100644
  the next PS5_Mesa commit, `b3588f78dd7fd46fbadc7ecd487e5f14d4213e4b`, which
  fixes persistently mapped buffers on a device without host-visible
 diff --git a/docs/RADV_PHASE.md b/docs/RADV_PHASE.md
-index ff77397..0b258bb 100644
+index 34dc18b..c027467 100644
 --- a/docs/RADV_PHASE.md
 +++ b/docs/RADV_PHASE.md
 @@ -1028,6 +1028,26 @@ Console: PS5_FrameGen's FrameGen Lab on a base PS5, on a 1440p display.
@@ -56,10 +55,10 @@ index ff77397..0b258bb 100644
  ## 2026-10-12 — fragment shader barycentrics, in order
  
  `VK_KHR_fragment_shader_barycentric` is reported again, now put in order by the compiler instead of by hardware that does
-@@ -1043,3 +1063,10 @@ not do it. Mesa fork 1ba9874f478 (`radv/ps5: per-vertex fragment inputs in the p
- 4. The smoke title's survey is now a set of checks (triangle list, strip, fan, lines in both provoking modes, `gl_BaryCoord`).
-    The full smoke on this archive: 127 passed, 1 failed (display: its modes, which counts 2 modes since the console's
-    resolution is 1440p, the 2026-10-10 entry).
+@@ -1057,3 +1077,10 @@ allows. The smoke title now checks that (`test_storage_offset`; `RADV_SMOKE_ONLY
+ On the Pro with the release archive (Mesa fork 47e9eb6): all 25 pass. The full smoke: 127 passed, 1 failed (display: its
+ modes, the 2026-10-10 entry). No fault was found. The check was written while looking for why one title's storage buffer
+ stayed empty when bound from 0x9c0; that was not the driver's handling of the offset, and the check stays as a regression.
 +
 +## 2026-10-18 — the 120 Hz settling and timed waits on the barycentrics pin (PS5 Mesa 14c2f44)
 +

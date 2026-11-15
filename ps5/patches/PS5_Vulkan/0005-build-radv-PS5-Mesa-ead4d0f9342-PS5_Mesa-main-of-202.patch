@@ -1,0 +1,56 @@
+From f274af151e40a6e677f6d66eb713bcf9df699078 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 15 Nov 2026 07:31:03 +0000
+Subject: [PATCH 5/5] build-radv: PS5 Mesa ead4d0f9342 (PS5_Mesa main of
+ 2026-11-10 with Crux2's RADV patches and HDR10 framebuffers); payload SDK
+ 3345cde
+
+- Mesa: PS5_Mesa main 0f86253f674 (a cached graphics pipeline that lost a
+  stage is compiled again instead of crashing; the mesh shaders' scratch
+  ring is 128 MiB, not 320) with the patches of 8f2964be1e6 unchanged and
+  OGBox's wsi/videoout HDR10 framebuffers on request.
+- The payload SDK at 3345cde: upstream's v0.45 binaries, and the title
+  heap giving back what a burst leaves, wherever it lies (55a2de0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ tools/build-radv.sh                | 2 +-
+ tools/setup-native-dependencies.sh | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/tools/build-radv.sh b/tools/build-radv.sh
+index cbb1fcd..ecf4753 100644
+--- a/tools/build-radv.sh
++++ b/tools/build-radv.sh
+@@ -26,7 +26,7 @@ set -euo pipefail
+ 
+ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+ mesa_fork="${PS5_MESA_FORK:-$root/../PS5_Mesa}"
+-mesa_revision=${PS5_MESA_REVISION:-8f2964be1e6bdd886a78f2c0fa8f5edf9a5d5890}
++mesa_revision=${PS5_MESA_REVISION:-ead4d0f93427cb40c7a3540ed6c4bca911247c31}
+ variant=${1:-debug}
+ sdk="$root/.deps/native/ps5-payload-sdk"
+ source_tree="$root/.deps/work/radv-src"
+diff --git a/tools/setup-native-dependencies.sh b/tools/setup-native-dependencies.sh
+index e512554..2e23773 100644
+--- a/tools/setup-native-dependencies.sh
++++ b/tools/setup-native-dependencies.sh
+@@ -18,13 +18,13 @@ zlib_version="1.3.2"
+ zlib_source="$zlib_directory/zlib-$zlib_version"
+ zlib_archive="$zlib_directory/zlib-$zlib_version.tar.gz"
+ zlib_stamp="$zlib_root/.source-version"
+-# The payload SDK is my fork, ../PS5_PayloadSDK: the upstream v0.42 release with
++# The payload SDK is my fork, ../PS5_PayloadSDK: the upstream v0.45 release with
+ # the PS5 platform layer (libps5platform.a, include/ps5platform) and the
+ # console's machine-context layout installed over it (platform/README.md
+ # there). The pinned revision is exported with git archive, so a build never
+ # depends on the fork's working tree, and the SDK directory records it.
+ sdk_fork="${PS5_PAYLOAD_SDK_FORK:-$root/../PS5_PayloadSDK}"
+-sdk_revision=e105cf6f25801d9e9981812a89a3b74021d2d2a2
++sdk_revision=3345cde7441f2d5f5432dd6d4f494cacbc974e28
+ zlib_url="https://zlib.net/fossils/zlib-$zlib_version.tar.gz"
+ zlib_hash="bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+ skip_sdk=false
+-- 
+2.43.0
+

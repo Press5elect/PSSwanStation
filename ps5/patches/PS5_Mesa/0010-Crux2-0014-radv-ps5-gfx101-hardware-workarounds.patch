@@ -1,7 +1,7 @@
-From c6d515850067d2bd6fe2a156d52afc0ab121341a Mon Sep 17 00:00:00 2001
+From 1e8659511fdbefde51d9bc90de8479df3425e7cf Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:11 +0000
-Subject: [PATCH 10/13] Crux2: 0014-radv-ps5-gfx101-hardware-workarounds
+Subject: [PATCH 10/14] Crux2: 0014-radv-ps5-gfx101-hardware-workarounds
 
 ---
  src/amd/common/ac_gpu_info.c                  |  1 +
@@ -30,7 +30,7 @@ index 586a3990dab..48cc98ce3d7 100644
     fprintf(f, "    has_primid_instancing_bug = %i\n", info->compiler_info.has_primid_instancing_bug);
     fprintf(f, "    has_cs_regalloc_hang_bug = %i\n", info->compiler_info.has_cs_regalloc_hang_bug);
 diff --git a/src/amd/common/ac_gpu_info.h b/src/amd/common/ac_gpu_info.h
-index 46848ef859e..917272166cb 100644
+index ec5f42fbb1d..ff7016e507e 100644
 --- a/src/amd/common/ac_gpu_info.h
 +++ b/src/amd/common/ac_gpu_info.h
 @@ -244,6 +244,11 @@ struct ac_compiler_info {

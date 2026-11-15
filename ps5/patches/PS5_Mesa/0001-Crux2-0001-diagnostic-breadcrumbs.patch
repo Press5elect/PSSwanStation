@@ -1,7 +1,7 @@
-From ce73c43f9a39f9f9a8b0cd6c03c4dc2754703f96 Mon Sep 17 00:00:00 2001
+From 888eda363a43722c45dc58ff90fd41a164af1864 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:01 +0000
-Subject: [PATCH 01/13] Crux2: 0001-diagnostic-breadcrumbs
+Subject: [PATCH 01/14] Crux2: 0001-diagnostic-breadcrumbs
 
 ---
  src/amd/vulkan/radv_physical_device.c         | 22 +++++++++++++++++++

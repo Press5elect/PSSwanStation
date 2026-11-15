@@ -1,7 +1,7 @@
-From 5677f969dee0e9321689aa92f4fe5ceea61fe4f9 Mon Sep 17 00:00:00 2001
+From a33bb81923fa53fea68f264c5bef81d651967460 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:02 +0000
-Subject: [PATCH 03/13] Crux2: 0003-videoout-120hz-settle
+Subject: [PATCH 03/14] Crux2: 0003-videoout-120hz-settle
 
 ---
  src/vulkan/wsi/wsi_common_videoout.c | 31 ++++++++++++++++++++++------

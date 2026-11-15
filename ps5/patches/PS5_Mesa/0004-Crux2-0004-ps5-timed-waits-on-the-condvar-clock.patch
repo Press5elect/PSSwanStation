@@ -1,7 +1,7 @@
-From 4b3e649fc0a2f4bf11aa200c30574d7669942c3f Mon Sep 17 00:00:00 2001
+From 5d58fd3d162e3341805c16a526375a4952425237 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:02 +0000
-Subject: [PATCH 04/13] Crux2: 0004-ps5-timed-waits-on-the-condvar-clock
+Subject: [PATCH 04/14] Crux2: 0004-ps5-timed-waits-on-the-condvar-clock
 
 ---
  src/amd/vulkan/winsys/ps5/radv_ps5_sync.c | 10 +--

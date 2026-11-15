@@ -1,7 +1,7 @@
-From cfb88780b538b292e2ee986b8e75e0f350a41505 Mon Sep 17 00:00:00 2001
+From 2730f65d21a3c58c3de2e00e5364412276157a13 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:03 +0000
-Subject: [PATCH 06/13] Crux2:
+Subject: [PATCH 06/14] Crux2:
  0010-radv-threaded-recording-the-worker-reads-the-clock-once-in-64-pauses
 
 ---

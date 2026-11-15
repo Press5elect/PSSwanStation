@@ -1,7 +1,7 @@
-From 843a56a0f48c7d394e8940043f9043fa6b948fb5 Mon Sep 17 00:00:00 2001
+From 70e144e79bc37c6775675e4051f3e6855f41d9e3 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 5 Oct 2026 20:07:48 +0000
-Subject: [PATCH 12/13] wsi/videoout: a title may ask the output to leave its
+Subject: [PATCH 12/14] wsi/videoout: a title may ask the output to leave its
  fixed rate (variable refresh)
 
 With PS5_VIDEOOUT_VRR=1 in the environment before the first Vulkan call, the

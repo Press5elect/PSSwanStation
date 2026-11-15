@@ -1,4 +1,4 @@
-From ea00f4febd38fbaeedc1ba371744d4fc22fd4db1 Mon Sep 17 00:00:00 2001
+From b05fe83e74f40f852a0a6562c0a10b500e3d8442 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Wed, 14 Oct 2026 18:22:33 +0000
 Subject: [PATCH] gfx: an image may turn inside its rect (DrawList::image's
@@ -11,7 +11,6 @@ rect a square picture turns inside its circle: a disc's label that spins.
 batch.vert.inc compiled with glslang 16.6.0.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
 ---
  src/gfx/draw_list.cpp             |   5 +-
  src/gfx/draw_list.hpp             |   5 +-

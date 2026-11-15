@@ -1,7 +1,7 @@
-From 8cf99c9404c5481c3bd6096aa7b3363cf5479a37 Mon Sep 17 00:00:00 2001
+From 68f7cf5f7322d69d9b793ff27aca009b46865a11 Mon Sep 17 00:00:00 2001
 From: Crux2 <noreply@anthropic.com>
 Date: Sat, 31 Oct 2026 20:01:02 +0000
-Subject: [PATCH 02/13] Crux2: 0002-threaded-recording-queues-push-descriptors
+Subject: [PATCH 02/14] Crux2: 0002-threaded-recording-queues-push-descriptors
 
 ---
  src/amd/vulkan/layers/radv_threaded_layer.c   | 137 ++++++++++++++++++

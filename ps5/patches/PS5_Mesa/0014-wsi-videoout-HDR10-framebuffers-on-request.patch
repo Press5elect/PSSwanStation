@@ -1,0 +1,221 @@
+From ead4d0f93427cb40c7a3540ed6c4bca911247c31 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 23:40:33 +0000
+Subject: [PATCH 14/14] wsi/videoout: HDR10 framebuffers on request
+
+wsi_videoout_set_hdr10(1) retypes every registered set of framebuffers in
+place as HDR10 (pixel format 0x8100070400000000: 10:10:10:2 in the buffers'
+B, G, R order, BT.2020, PQ), as VLC-PS5's patches/mesa/0001-videoout-hdr10.patch
+does for its one set; (0) back to SDR. A type applies from a buffer's next
+flip, so the flips queued are submitted first (100 ms at most). A set
+registered later is retyped too, or every set goes back to SDR when it is
+refused; wsi_videoout_hdr10() says which. wsi_videoout_output_range() reads
+sceVideoOutGetOutputStatus's dynamic range (1 SDR, 2 HDR).
+
+sceVideoOutSubmitChangeBufferAttribute2 and sceVideoOutGetOutputStatus are
+reached through weak hooks the title answers (ps5_title_videoout_change_attribute,
+ps5_title_videoout_output_status), as 0017 does for variable refresh: a title
+that imports a function its console lacks does not start. Without them HDR10
+is refused. VideoOut takes the type only from a title whose param.json
+attribute carries 0x20000000 (0x80290003 without it).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/vulkan/wsi/wsi_common_videoout.c | 157 +++++++++++++++++++++++++++
+ 1 file changed, 157 insertions(+)
+
+diff --git a/src/vulkan/wsi/wsi_common_videoout.c b/src/vulkan/wsi/wsi_common_videoout.c
+index 3464f167270..8f2e6be102e 100644
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -237,6 +237,50 @@ videoout_vrr_unpeg(int32_t handle)
+ #define sceVideoOutVrrUnpegFromFixedRate videoout_vrr_unpeg
+ #endif
+ 
++/* HDR10 framebuffers on request (wsi_videoout_set_hdr10), as VLC-PS5 retypes them
++ * (patches/mesa/0001-videoout-hdr10.patch): 10:10:10:2 in the buffers' B, G, R order, BT.2020
++ * primaries and the PQ curve. VideoOut takes the type only from a title whose param.json
++ * attribute carries 0x20000000 (without it: 0x80290003). */
++#define PS5_VIDEO_OUT_PIXEL_FORMAT_HDR10 UINT64_C(0x8100070400000000)
++
++/* sceVideoOutGetOutputStatus's answer: dynamic_range 1 SDR, 2 HDR. */
++struct videoout_output_status {
++   uint32_t resolution;
++   uint32_t dynamic_range;
++   uint64_t refresh_rate;
++   uint64_t flags;
++   uint64_t reserved[3];
++};
++
++#if defined(__PROSPERO__)
++/* sceVideoOutSubmitChangeBufferAttribute2 and sceVideoOutGetOutputStatus, found by the title while
++ * it runs (as sceVideoOutVrrUnpegFromFixedRate is, above): without the hooks, or on a console
++ * without the functions, HDR10 is refused and the output reads as unknown. */
++extern int ps5_title_videoout_change_attribute(int32_t handle, int32_t set, const void *attribute)
++   __attribute__((weak));
++extern int ps5_title_videoout_output_status(int32_t handle, void *status) __attribute__((weak));
++#endif
++
++static int
++videoout_change_attribute(int32_t handle, int32_t set, const void *attribute)
++{
++#if defined(__PROSPERO__)
++   return ps5_title_videoout_change_attribute ? ps5_title_videoout_change_attribute(handle, set, attribute) : -1;
++#else
++   return -1;
++#endif
++}
++
++static int
++videoout_output_status(int32_t handle, struct videoout_output_status *status)
++{
++#if defined(__PROSPERO__)
++   return ps5_title_videoout_output_status ? ps5_title_videoout_output_status(handle, status) : -1;
++#else
++   return -1;
++#endif
++}
++
+ static struct wsi_videoout_display videoout_display;
+ 
+ #define VIDEOOUT_SIZE_MODES(index)                                                                               \
+@@ -300,6 +344,8 @@ struct wsi_videoout_output {
+    bool high_frame_rate;
+    bool modes_settled;
+    bool high_mode_offered;
++   /* The framebuffers are HDR10 (wsi_videoout_set_hdr10), every set. */
++   bool hdr10;
+    /* A set of buffers for each size a swapchain has used, in the order they
+     * were registered; set i's buffers are indices i * VIDEOOUT_BUFFERS on. */
+    struct wsi_videoout_set {
+@@ -560,6 +606,19 @@ videoout_settle_modes(void)
+    mtx_unlock(&videoout_output.lock);
+ }
+ 
++/* Set set's buffers retyped in place, HDR10 or SDR, from its next flip. VideoOut's answer: 0 when
++ * taken. Under lock. */
++static int
++videoout_retype_locked(uint32_t set, bool hdr10)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   const struct wsi_videoout_size *size = out->sets[set].size;
++   uint8_t attribute[PS5_VIDEO_OUT_ATTRIBUTE_BYTES] = {0};
++   sceVideoOutSetBufferAttribute2(attribute, hdr10 ? PS5_VIDEO_OUT_PIXEL_FORMAT_HDR10 : PS5_VIDEO_OUT_PIXEL_FORMAT_B8G8R8A8_SDR,
++                                  PS5_VIDEO_OUT_TILING_64KB_R_X, size->extent.width, size->extent.height, 0, 0, 0);
++   return videoout_change_attribute(out->handle, (int32_t)set, attribute);
++}
++
+ /* The set of buffers of a size, cleared and registered the first time a
+  * swapchain of that size is made, and kept. Under lock. */
+ static VkResult
+@@ -624,9 +683,107 @@ videoout_register_locked(const struct wsi_videoout_size *size, const struct wsi_
+    out->sets[index] = (struct wsi_videoout_set){.size = size, .buffers = buffers};
+    out->set_count = index + 1;
+    *set_out = &out->sets[index];
++   if (out->hdr10) {
++      /* The others are HDR10: this one too, or all of them back to SDR (the title reads which
++       * with wsi_videoout_hdr10). */
++      const int retyped = videoout_retype_locked(index, true);
++      if (retyped != 0) {
++         for (uint32_t i = 0; i < index; i++)
++            videoout_retype_locked(i, false);
++         out->hdr10 = false;
++         fprintf(stderr, "wsi/videoout: set %u not made HDR10 (0x%08x): every set SDR again\n", index,
++                 (unsigned)retyped);
++      }
++   }
+    return VK_SUCCESS;
+ }
+ 
++PUBLIC int wsi_videoout_set_hdr10(int enable);
++PUBLIC int wsi_videoout_hdr10(void);
++PUBLIC int wsi_videoout_output_range(void);
++
++/* The framebuffers' pixels read as HDR10 (enable 1: the PQ curve, BT.2020) or as SDR (0), every
++ * set registered and every set registered after. The buffers stay registered (registering them
++ * again is refused while one is on screen) and are retyped in place; a type applies from a
++ * buffer's next flip. The title waits for its GPU work first, so the frames it drew before are
++ * presented; their flips are submitted before the change (100 ms at most), and the frames it draws
++ * after are in the new type. Returns 0 when VideoOut took it (the sets all retyped), else
++ * VideoOut's error with the sets as they were; -1 before any set is registered. */
++PUBLIC int
++wsi_videoout_set_hdr10(int enable)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   const bool want = enable != 0;
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&out->lock);
++   if (want == out->hdr10) {
++      mtx_unlock(&out->lock);
++      return 0;
++   }
++   if (out->set_count == 0 || out->handle < 0) {
++      mtx_unlock(&out->lock);
++      fprintf(stderr, "wsi/videoout: framebuffers %s asked for before any were registered\n", want ? "HDR10" : "SDR");
++      return -1;
++   }
++   const uint64_t deadline = os_time_get_nano() + UINT64_C(100000000);
++   while (out->queue_count > 0) {
++      const uint64_t now = os_time_get_nano();
++      if (now >= deadline)
++         break;
++      ps5_cnd_wait_ns(&out->changed, &out->lock, deadline - now);
++   }
++   int result = 0;
++   uint32_t done = 0;
++   for (; done < out->set_count; done++) {
++      result = videoout_retype_locked(done, want);
++      if (result != 0)
++         break;
++   }
++   if (result != 0) {
++      for (uint32_t i = 0; i < done; i++)
++         videoout_retype_locked(i, out->hdr10);
++   } else {
++      out->hdr10 = want;
++   }
++   const uint32_t sets = out->set_count;
++   mtx_unlock(&out->lock);
++   fprintf(stderr, "wsi/videoout: framebuffers %s: %s (0x%08x), %u set(s)\n", want ? "HDR10" : "SDR",
++           result == 0 ? "taken" : "refused, as they were", (unsigned)result, sets);
++   return result;
++}
++
++/* 1 while the framebuffers are HDR10. */
++PUBLIC int
++wsi_videoout_hdr10(void)
++{
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&videoout_output.lock);
++   const int on = videoout_output.hdr10 ? 1 : 0;
++   mtx_unlock(&videoout_output.lock);
++   return on;
++}
++
++/* What the console's output carries: 1 SDR, 2 HDR, 0 unknown; -1 with no answer (VideoOut not
++ * open yet, or no sceVideoOutGetOutputStatus). Logged. */
++PUBLIC int
++wsi_videoout_output_range(void)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&out->lock);
++   int result = -1;
++   if (out->opened && out->handle >= 0) {
++      struct videoout_output_status status;
++      memset(&status, 0, sizeof(status));
++      const int rc = videoout_output_status(out->handle, &status);
++      result = rc == 0 ? (int)status.dynamic_range : -1;
++      fprintf(stderr, "wsi/videoout: output status 0x%08x: range %u, flags 0x%" PRIx64 "\n", (unsigned)rc,
++              status.dynamic_range, status.flags);
++   }
++   mtx_unlock(&out->lock);
++   return result;
++}
++
+ static int64_t
+ videoout_shown_argument_locked(void)
+ {
+-- 
+2.43.0
+

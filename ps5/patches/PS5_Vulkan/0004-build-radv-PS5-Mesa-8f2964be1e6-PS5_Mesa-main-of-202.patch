@@ -1,7 +1,7 @@
-From 224fc460cc5d796a27efc3e401901bc1332c62e7 Mon Sep 17 00:00:00 2001
+From fb97929542a4667875944170348c8bbf39781164 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 6 Nov 2026 02:54:10 +0000
-Subject: [PATCH 4/4] build-radv: PS5 Mesa 8f2964be1e6 (PS5_Mesa main of
+Subject: [PATCH 4/5] build-radv: PS5 Mesa 8f2964be1e6 (PS5_Mesa main of
  2026-11-03 with Crux2's RADV patches); payload SDK e105cf6
 
 - Mesa: PS5_Mesa main f5610fe2709 (a freed buffer keeps its memory until
@@ -15,7 +15,6 @@ Subject: [PATCH 4/4] build-radv: PS5 Mesa 8f2964be1e6 (PS5_Mesa main of
   descriptor slots).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
 ---
  tools/build-radv.sh                | 4 ++--
  tools/setup-native-dependencies.sh | 2 +-

@@ -26,13 +26,17 @@ Build 27
     driver's (the emulator's pipeline cache file, rewritten whole after
     every session, is removed); an update unpacks and replaces only the
     files that changed.
-  - The graphics driver is PS5_Mesa main of 3 November 2026 with Crux2's
+  - The graphics driver is PS5_Mesa main of 10 November 2026 with Crux2's
     patches: a buffer that is freed keeps its memory until the GPU has run
-    the work submitted before (a GPU fault when memory ran short), and a
-    buffer piece is mapped only where nothing else is.
-  - Newer parts: the payload SDK's platform layer (e105cf6: the title's
-    heap grows in 2 MiB pieces) and libsmb2 (4d9ce67: an out-of-bounds read
-    with an empty user fixed, a server that disconnects reported as such).
+    the work submitted before (a GPU fault when memory ran short), a buffer
+    piece is mapped only where nothing else is, and a cached pipeline that
+    lost a stage is compiled again instead of crashing at every start.
+    With OGBox's HDR10 framebuffers (after VLC for PS5's).
+  - Newer parts: the payload SDK (3345cde: upstream's v0.45 binaries; the
+    title's heap grows in 2 MiB pieces and gives back what a burst leaves),
+    libsmb2 (177a9de: zero-length reads and writes, lease breaks, file times
+    before 1970) and libnfs (331d391: a lost NFSv4.0 state fails cleanly,
+    file handles freed when a close cannot be sent).
   - Network games read faster: every SMB, NFS and FTP connection gets large
     TCP buffers (up to 4 MiB) before it connects, as OGBox does; with the
     console's small default ones a share was held to one small window per

@@ -1,7 +1,7 @@
-From 390c075a26081d935b45aafcdc23472c33e8caa8 Mon Sep 17 00:00:00 2001
+From 25b84da3a7b5c28bfa65d1e0d9936f09c76ccfb2 Mon Sep 17 00:00:00 2001
 From: Press5elect <noreply@anthropic.com>
 Date: Sat, 24 Oct 2026 20:58:29 +0000
-Subject: [PATCH 2/4] build-radv: PS5 Mesa 8bbcea3, Mesa 27.0-devel with
+Subject: [PATCH 2/5] build-radv: PS5 Mesa 8bbcea3, Mesa 27.0-devel with
  Crux2's RADV patches
 
 PS5 Mesa branch ps5-mesa-27: main (1ba9874) with Crux2's ps5/patches/mesa-27 applied
@@ -12,7 +12,6 @@ merge, the shader cache index without MAP_FIXED), then 0ffa07e's 119.88 Hz settl
 keeps the mode under VRR, which Crux2's 0003 lacks.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01K82DTxFUMseW5GoRiRC7kV
 ---
  tools/build-radv.sh | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
