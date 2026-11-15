@@ -273,9 +273,12 @@ if(SWANSTATION_PS5)
 		src/ps5/vrr_ps5.cpp
 		src/ps5/drive_ps5.cpp
 		src/ps5/usbdrive_ps5.cpp
+		src/ps5/sinden_ps5.cpp
+		src/sinden_usb.cpp
+		src/sinden_mjpeg.cpp
 		src/ps5/elevation/elevation.cpp)
 else()
-	list(APPEND frontend_sources src/host/platform_host.cpp)
+	list(APPEND frontend_sources src/host/platform_host.cpp src/host/sinden_host.cpp)
 endif()
 
 # With the core's C++17: its disc header does not compile as C++20.
@@ -306,8 +309,9 @@ set_source_files_properties(${HUI_DIR}/src/gfx/vk/vk_renderer.cpp PROPERTIES COM
 	"-include;${ROOT}/dep/vulkan-loader/include/vulkan_loader.h")
 
 # FFmpeg's MP4 demuxer and H.264, AAC and MP3 decoders (LGPL-2.1-or-later),
-# for ES-DE themes' videos: built by tools/build-ffmpeg.sh into the build
-# folder (once; again when its revision or the script changes).
+# for ES-DE themes' videos, and its MJPEG decoder for the Sinden Lightgun's
+# camera: built by tools/build-ffmpeg.sh into the build folder (once; again
+# when its revision or the script changes).
 if(SWANSTATION_PS5)
 	set(FFMPEG_TARGET ps5)
 else()
@@ -321,7 +325,7 @@ if(NOT ffmpeg_result EQUAL 0)
 endif()
 set(FFMPEG_LIBRARIES "${FFMPEG_PREFIX}/lib/libavformat.a" "${FFMPEG_PREFIX}/lib/libavcodec.a"
 	"${FFMPEG_PREFIX}/lib/libavutil.a")
-set_source_files_properties(src/video_ffmpeg.cpp PROPERTIES INCLUDE_DIRECTORIES "${FFMPEG_PREFIX}/include")
+set_source_files_properties(src/video_ffmpeg.cpp src/sinden_mjpeg.cpp PROPERTIES INCLUDE_DIRECTORIES "${FFMPEG_PREFIX}/include")
 
 add_executable(swanstation ${frontend_sources} ${frontend_cxx17_sources} ${core_glue_sources})
 target_link_libraries(swanstation PRIVATE hui core common glad vulkan-loader libretro-common stb xxhash miniz smb2 nfs rcheevos mbedtls_fe

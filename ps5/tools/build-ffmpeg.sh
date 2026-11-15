@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # PSSwanStation: build the part of FFmpeg the title plays ES-DE themes'
 # videos with: libavformat (the MP4 container), libavcodec (the H.264, AAC
-# and MP3 decoders and their parsers) and libavutil, as static libraries,
-# LGPL-2.1-or-later (no --enable-gpl, no --enable-nonfree).
+# and MP3 decoders and their parsers; the MJPEG decoder for the Sinden
+# Lightgun's camera, src/sinden_mjpeg.cpp) and libavutil, as static
+# libraries, LGPL-2.1-or-later (no --enable-gpl, no --enable-nonfree).
 #
 #   ps5/tools/build-ffmpeg.sh ps5|host OUT_DIR
 #
@@ -47,7 +48,7 @@ common=(
     --disable-avdevice --disable-avfilter --disable-swscale --disable-swresample
     --disable-everything --disable-debug
     --enable-pthreads
-    --enable-decoder=h264,aac,aac_fixed,mp3,mp3float
+    --enable-decoder=h264,aac,aac_fixed,mp3,mp3float,mjpeg
     --enable-parser=h264,aac,mpegaudio
     --enable-demuxer=mov
 )

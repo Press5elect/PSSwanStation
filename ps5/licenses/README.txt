@@ -49,9 +49,10 @@ libnfs                       LGPL-2.1;        LGPL-2.1.txt,            github.co
                              protocol files   BSD-2-Clause.txt
                              BSD-2-Clause
 FFmpeg 9.0.2 (ES-DE themes' LGPL-2.1         LGPL-2.1.txt             github.com/FFmpeg/FFmpeg at n9.0.2: libavformat
-videos): libavformat,                                                  (the MP4 demuxer), libavcodec (the H.264, AAC
-libavcodec, libavutil                                                  and MP3 decoders and their parsers) and
-                                                                       libavutil, unmodified, configured by
+videos, the Sinden                                                     (the MP4 demuxer), libavcodec (the H.264, AAC
+Lightgun's camera):                                                    and MP3 decoders and their parsers, and the
+libavformat, libavcodec,                                               MJPEG decoder) and libavutil, unmodified,
+libavutil                                                              configured by
                                                                        ps5/tools/build-ffmpeg.sh (no --enable-gpl,
                                                                        no --enable-nonfree); linked statically, the
                                                                        title's whole source is published, so it can

@@ -24,6 +24,7 @@
 	A title must not exit(): the shell is asked to close it.
 */
 #include "fe.h"
+#include "sinden.h"
 
 #include <algorithm>
 #include <cctype>
@@ -495,6 +496,9 @@ void lateInit()
 {
 	diag::mark("hide splash screen: %d", sceSystemServiceHideSplashScreen());
 	padOpen();
+	// Before the USB controllers, so that they leave the gun alone. A test
+	// switch until the gun has its setting (sinden.h).
+	sinden::startIfAsked();
 	usbPadStart(options::frontend().usbPads);
 }
 

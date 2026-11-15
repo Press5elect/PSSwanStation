@@ -109,9 +109,10 @@ def main():
     parts.append(dict(id="mbedtls", name="mbedTLS 3.6 (HTTPS once the sandbox elevator has run: RetroAchievements, "
                       "covers, the updater)", licence="Apache-2.0 (licenses/Apache-2.0.txt)", artifacts=["eboot.bin"],
                       source=at(mbedtls)))
-    parts.append(dict(id="ffmpeg", name="FFmpeg 9.0.2 (ES-DE themes' videos): libavformat with the MP4 demuxer, libavcodec "
-                      "with the H.264, AAC and MP3 decoders and their parsers, and libavutil, configured by "
-                      "ps5/tools/build-ffmpeg.sh", licence="LGPL-2.1-or-later (licenses/LGPL-2.1.txt)",
+    parts.append(dict(id="ffmpeg", name="FFmpeg 9.0.2 (ES-DE themes' videos, the Sinden Lightgun's camera): libavformat "
+                      "with the MP4 demuxer, libavcodec with the H.264, AAC and MP3 decoders and their parsers and the "
+                      "MJPEG decoder, and libavutil, configured by ps5/tools/build-ffmpeg.sh",
+                      licence="LGPL-2.1-or-later (licenses/LGPL-2.1.txt)",
                       artifacts=["eboot.bin"], source=at(ffmpeg, "https://github.com/FFmpeg/FFmpeg")))
     parts.append(dict(id="glslang", name="glslang (shader presets brought in from a USB drive are compiled with it)",
                       licence="BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache-2.0 and GPL-3.0-or-later with the "

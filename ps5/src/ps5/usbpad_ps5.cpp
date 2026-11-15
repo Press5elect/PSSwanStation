@@ -36,6 +36,7 @@
 	controller sends.
 */
 #include "fe.h"
+#include "../sinden.h"
 #include "../tuning.h"
 
 #include "OrbisUsbPadDecode.h"
@@ -167,6 +168,13 @@ void closeDevice(Device& d)
 // Which decoding a device gets. False: not a controller of ours.
 bool classify(Device& d, const uint8_t *reportDescriptor, size_t length)
 {
+	// The Sinden Lightgun's thread reads the gun (in its joystick mode it would
+	// look like a gamepad here).
+	if (sinden::claims(d.vid, d.pid))
+	{
+		diag::mark("usbpad: %s: %04x:%04x is the Sinden Lightgun: left to its own reading", d.name.c_str(), d.vid, d.pid);
+		return false;
+	}
 	if (SystemOwned(d.vid, d.pid))
 	{
 		diag::mark("usbpad: %s: %04x:%04x is one of Sony's PS4/PS5 controllers: the system's", d.name.c_str(), d.vid, d.pid);

@@ -49,6 +49,14 @@ From build 27 test 2:
   clock runs on while the console suspends the title (a second of the watchdog's that took more
   than five starts its count again).
 
+From the `sinden-usb` branch (not in a test build yet):
+
+- The Sinden Lightgun read by the console itself (switched on by `data/sinden.txt`; the boot
+  log's `sinden:` lines, [`sinden-lightgun.md`](sinden-lightgun.md), "The console side"): whether
+  libSceUsbd loads and lists the gun, whether ugen's nodes are there, the gun's descriptors, the
+  serial port's answers, the buttons' reports, and whether the camera streams either way (its
+  rate, or the counts that say where it stops). Checked on the PC against a simulated gun only.
+
 ## Known limits, by how the emulator is built
 
 - **A share that stalls during play**: the panel ("Waiting for the network share (N s)",
