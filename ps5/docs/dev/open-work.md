@@ -27,6 +27,8 @@ From build 27 test 2:
 - The pad read through `scePadRead` with the tap latch (boot log: no `scePadRead refused`).
 - Sound output's failed calls timed by the clock (boot log: `sceAudioOutOutput failed` only if
   it happens).
+- The stick dead zone round the stick's middle, and Vibration strength (9d43cd0): how analog
+  games feel at the usual 10%; a game's vibration at 50%.
 - Safe start's "Stay in the sandbox" switching USB controllers off too (6ebe6f5, after test 2:
   not in its ZIP).
 - Waiting for a network share at a game's start (boot log: `does not answer: the game waits for
@@ -53,12 +55,16 @@ Offered to the owner and not asked for, or found in OGBox and not ported:
 - GPU timing of the presenter's passes in the boot log (OGBox 2ae7417, 20600bb).
 - Dual Analog joystick mode; core pinning; Mesa's single-file/database shader cache (needs timing
   on the console).
-- From OGBox: a radial stick dead zone per stick (88d9998; PSSwanStation's is per axis), the
-  in-memory log written after 15 s without a frame and keeping the session's first 512 KiB
-  (f521b35), quitting that waits for a save sync with a bar and stops it after the current file
-  (5fa1abd), rumble strength 0-100% (05f29b3), Debanding (8723618), Lanczos-2 down-sampling for
-  pictures larger than the screen (96e7ec4), a USB drive recommended for data with the console's
-  write slowdown explained (ce39c0d).
+- From OGBox, not ported yet:
+  - Debanding (8723618): its thresholds are for the Xbox's 16- and 32-bit colour (2 and 5 levels
+    of 255); the PlayStation's 5-bit channels step by about 8 levels, so the values need finding
+    again on test gradients, and the pass belongs in `look_signal.frag` (the picture at its own
+    size, before scaling).
+  - Lanczos-2 down-sampling for pictures larger than the screen (96e7ec4; `look_down.frag` is an
+    even average now), as a choice.
+  - A dead zone set for each stick and the triggers (88d9998): the one setting is round now (build
+    27), for both sticks.
+  - The rumble strength's test buzz (05f29b3): the strength is there (build 27), without it.
 
 ## Decisions on record
 
