@@ -1,10 +1,10 @@
 # PSSwanStation Manual
 
-For build 21 · October 2026
+For build 27 · November 2026
 
 ## About PSSwanStation
 
-PSSwanStation plays PlayStation (PS1) games on a jailbroken PS5, with an interface made for the controller. Inside it is SwanStation, the libretro fork of DuckStation; it draws with Vulkan through the RADV driver built into the title. This manual covers build 21.
+PSSwanStation plays PlayStation (PS1) games on a jailbroken PS5, with an interface made for the controller. Inside it is SwanStation, the libretro fork of DuckStation; it draws with Vulkan through the RADV driver built into the title. This manual covers build 27.
 
 **What you need**
 
@@ -35,7 +35,7 @@ Copy the `PPSA99248` folder to the console and let your homebrew loader register
 
 **What's new.** The first start after an update, by the updater or by copying the folder over, opens a list of what was added, changed and fixed since the build you had, build by build, with a count of each at the top. Up and Down or a stick scroll it, L1 and R1 a page at a time, and Cross closes it. Settings, About, "What's new" shows every build's changes again. A first install skips it.
 
-**Safe start.** Hold L1 and R1 while PSSwanStation starts. The display goes back to 60 Hz for the next start, and a page offers to turn off leaving the sandbox (USB drives and files kept outside), or to put the interface's or the emulator's settings back to the usual. If a start never reaches the library, the next start does this by itself, once, and says so.
+**Safe start.** Hold L1 and R1 while PSSwanStation starts. The display goes back to 60 Hz and HDR off for the next start, and a page offers to turn off leaving the sandbox (USB drives, the disc drive, USB controllers and files kept outside), or to put the interface's or the emulator's settings back to the usual. If a start never reaches the library, the next start does this by itself, once, and says so.
 
 **Cheats and patches, once.** A release does not carry the cheat database. Settings, Games and saving, "Fetch the newest cheat database" downloads it from its project when you want it.
 
@@ -52,13 +52,14 @@ Everything lives in `/data/homebrew/PPSA99248/` unless you choose to keep your f
 | `textures/` | Texture packs, one folder per game: `textures/<serial>/` |
 | `layouts/` | Aurora cover layouts (`.cfljson`), offered as library views |
 | `borders/` | Pictures beside a 4:3 picture: `<serial>.png` or `default.png` |
-| `music/` | Your own menu music: `menu.ogg`, `menu.mp3` or `menu.wav` |
+| `music/` | Your own menu music: any `.ogg`, `.mp3` or `.wav` files, played shuffled with Menu music "My music folder" (Sound) |
+| `mods/`, `themes/`, `media/` | Mods for games; ES-DE themes; ES-DE's pictures and videos |
 | `memcards/` | `import/` for cards and saves to bring in, `export/` for saves put out |
 | `network.cfg` | The network shares or FTP servers to read games from |
 | `data/` | Memory cards, their backups, save states and settings (written by the title) |
 | `logs/` | The emulator's log of the last two runs |
 
-**Game formats:** `.chd`, `.cue` with its `.bin` files, `.iso`, `.img`, `.pbp`, `.ecm`, `.mds`, and PlayStation programs (`.exe`, `.psexe`). A game on several discs shows once, and its discs share one memory card ("Multi-disc games as one", Settings, Interface, View; on). Its discs are found by their names, "... (Disc 1)", "... [CD 2]", "... (Disc 2 of 3)", or "... CD2" or "... Disc 2" at the end, in one folder, each in a folder named after the disc, or in folders named only `CD1`, `CD2` inside the game's folder. Change disc in the menu over the game.
+**Game formats:** `.chd`, `.cue` with its `.bin` files, `.iso`, `.img`, `.pbp`, `.ecm`, `.mds`, and PlayStation programs (`.exe`, `.psexe`). A game on several discs shows once, and its discs share one memory card ("Multi-disc games as one", Settings, Library, View; on). Its discs are found by their names, "... (Disc 1)", "... [CD 2]", "... (Disc 2 of 3)", or "... CD2" or "... Disc 2" at the end, in one folder, each in a folder named after the disc, or in folders named only `CD1`, `CD2` inside the game's folder. Change disc in the menu over the game.
 
 **USB drives.** Switch on "USB drives" in Settings, Games and saving; it takes effect at the next start. It needs a resident Lapy service, or the ELF loader listening on port 9021. Games are read from a folder named `psx`, `ps1` or `playstation` at the top of the drive.
 
@@ -181,15 +182,15 @@ The library shows your games from four places, each a tab once it has games: Int
 | Square | Sort and filter, views, "Scan for games" |
 | L2, R2 | The letter before, the letter after |
 | Touch pad | Search |
-| OPTIONS | The menu: Search, Scan for games, Memory cards, Start the BIOS; Settings, Update, About, Close PSSwanStation |
+| OPTIONS | The menu: Settings, Search, Memory cards, Scan for games, Start the BIOS; Update, About, Close PSSwanStation |
 
 **Views.** Shelves (the game under the cursor large at the top, with shelves of lately played games, favourites and every game under it; Up and Down change shelf), Covers (a grid, with lately played games on a shelf above), List, and five that stand the covers in space as cases: Flow, Row, Wall, Cascade and Wheel. Aurora layout files (`.cfljson`) in `layouts/` are offered too. Choose a view under Square or in Settings, Library, "Library view".
 
 **Game videos.** When the cursor stays on a game for a moment (2 seconds at first), its video plays: in the cover's place in Shelves, List and the game's details, and behind the covers, as the page's backdrop, in Covers and the views in space. The menu music is lowered meanwhile. Settings, Library, Videos switches them on and off and sets their sound and the wait; Square has the switch too. The videos are the ones ES-DE themes use (below): `videos/<file name>.mp4` in a games folder, `media/videos`, or ES-DE's `downloaded_media/psx/videos`, on the console, a USB drive or a network share.
 
-**Search.** Press the touch pad: type with the D-pad keyboard on the left (Cross types, Square deletes, Triangle is a space). Every game from all three places whose name has those letters is listed on the right as you type.
+**Search.** Press the touch pad: type with the D-pad keyboard on the left (Cross types, Square deletes, Triangle is a space). Every game from every place whose name has those letters is listed on the right as you type.
 
-**Sort and filter (Square).** Order by name, last played, most played, year or size; show everything, favourites, games not played yet or hidden games; one region alone; and "Scan for games", which looks through all three places again.
+**Sort and filter (Square).** Order by name, last played, most played, year or size; show everything, favourites, games not played yet or hidden games; one region alone; and "Scan for games", which looks through every place again.
 
 **A game's details (Triangle).** Its description, maker and date from the game database, and how long you have played. Then:
 
@@ -213,7 +214,7 @@ Themes made for [ES-DE](https://es-de.org) (EmulationStation Desktop Edition) ca
   - in every games folder: the console's `games`, each USB drive's games folder, and every network folder in `network.cfg` (SMB, NFS or FTP): the kinds' folders straight inside it (`smb://nas/roms/psx/videos`, `.../covers`), `media/`, `media/psx/` or `downloaded_media/psx/` inside it, or `downloaded_media/psx/` beside it, as ES-DE lays out its ROMs and media side by side on a NAS; and Batocera's `images/` folder (`<game>-thumb.png`, `-marquee`, `-image`) with its `videos/<game>-video.mp4`.
 
   The folders are listed once in the background (Settings, Library, ES-DE themes, "Pictures and videos found" says how many files), again when the library changes and every few minutes, so a share is not asked for each picture. Pictures and videos on a share are read straight from it. A game without a cover there shows its library cover; with "Download covers" on, title screens and screenshots are fetched from the libretro thumbnails collection too.
-- **Videos.** A theme's video plays the game's video (ES-DE's `videos` folder, from any of the places below: the console, a USB drive or a network share), once the cursor has stayed on the game for the theme's delay; its picture shows until then, and after the video when the theme says so. PSSwanStation decodes them itself with FFmpeg (MP4 files with H.264 pictures and AAC or MP3 sound, 8-bit 4:2:0, as scrapers make them), because the console refuses a homebrew title its own video player. The sound plays under the menu music, which is lowered meanwhile. "ES-DE themes" has a switch for the videos and one for their sound. A video that cannot be played leaves the picture in its place, and the boot log's `video:` lines say why.
+- **Videos.** A theme's video plays the game's video (ES-DE's `videos` folder, from any of the places above: the console, a USB drive or a network share), once the cursor has stayed on the game for the theme's delay; its picture shows until then, and after the video when the theme says so. PSSwanStation decodes them itself with FFmpeg (MP4 files with H.264 pictures and AAC or MP3 sound, 8-bit 4:2:0, as scrapers make them), because the console refuses a homebrew title its own video player. The sound plays under the menu music, which is lowered meanwhile. "ES-DE themes" has a switch for the videos and one for their sound. A video that cannot be played leaves the picture in its place, and the boot log's `video:` lines say why.
 - **What is shown.** Pictures (PNG, JPEG and SVG), texts, the game's name, developer, publisher, genre, players, description (scrolling as in ES-DE) and release date from the game database, when it was last played, the number of games, the favourite badge, a clock, and the help line with the library's buttons. Animations are not played. Ratings are not shown (the game database has none). The system view (ES-DE's carousel of systems) is not used: the library opens on the PlayStation's games.
 - **If a theme cannot be used** (a theme for an older EmulationStation, without `capabilities.xml`, or one that cannot be read), "ES-DE themes" says why, and the library uses its own view. The boot log's `themes:` lines say what was read.
 
@@ -237,15 +238,15 @@ The DualSense works as a PlayStation controller, button for button; the touch pa
 
 **Buttons** (Settings, Controls) remaps them: which button of the pad presses each of the PlayStation's, OPTIONS included, and which fire by themselves while held (turbo). "The menu opens with" there gives the menu (and the shortcuts' key) to OPTIONS, to either half of the touch pad, or to OPTIONS held for a second. The button that opens the menu is not the game's, so to make OPTIONS the PlayStation's START, first give the menu to a half of the touch pad; with "OPTIONS, held for a second" OPTIONS is both (a tap is the game's, held it opens the menu) and there are no shortcuts. Shortcuts, in the menu, shows the buttons as they are set. When the speedrun timer is on, OPTIONS held with Cross, Square, Triangle and Circle are its controls instead (see Extras).
 
-**The menu (OPTIONS).** Resume, then three groups. The game: Save state, Load state, Change disc (a game on several discs), Cheats and patches, Game settings. Extras: Achievements (when RetroAchievements is on), Netplay, Speedrun timer, Find in memory, Shortcuts. PSSwanStation: Settings, Reset the game, Close the game. "Settings" changes a setting for every game; "Game settings" for this game only.
+**The menu (OPTIONS).** Resume, then three groups. The game: Save state, Load state, Change disc (a game on several discs), Cheats and patches, Look, Game settings. Extras: Achievements (when RetroAchievements is on), Netplay, Speedrun timer, Find in memory, Shortcuts. PSSwanStation: Settings, Reset the game, Close the game. "Settings" changes a setting for every game; "Game settings" for this game only.
 
 **Fast forward and rewind.** Fast forward runs at 2x to 8x, or as fast as the console manages (Settings, Controls). Rewind is off at first. When on, it keeps the last while of play in memory (128 MB to 1 GB), never on the console's storage; it is gone when the game closes.
 
-**The PlayStation Mouse** (Settings, Controllers, a player's controller), for the games made for it: slide a finger on the touch pad to move it, or use the right stick; the touch pad pressed down, Cross or R1 is its left button, Circle or L1 its right.
+**The PlayStation Mouse** (Settings, Controls, Players, a player's controller), for the games made for it: slide a finger on the touch pad to move it, or use the right stick; the touch pad pressed down, Cross or R1 is its left button, Circle or L1 its right.
 
-**More players.** Player 1 is whoever started PSSwanStation. A second person presses the PS button on their controller and chooses a user, and becomes player 2 within a couple of seconds. For three or four players, switch the Multitap on in Settings, Controllers: "In port 1" suits most four-player games. Leave it off otherwise, as some one- or two-player games don't see a controller behind a multitap.
+**More players.** Player 1 is whoever started PSSwanStation. A second person presses the PS button on their controller and chooses a user, and becomes player 2 within a couple of seconds. For three or four players, switch the Multitap on in Settings, Controls, Players: "In port 1" suits most four-player games. Leave it off otherwise, as some one- or two-player games don't see a controller behind a multitap.
 
-**USB controllers** (an experiment; Settings, Controllers, "USB controllers", off at first). PSSwanStation reads some controllers plugged into the console's USB ports itself: a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or another USB gamepad. They can be the next player or play together with player 1. Only devices that say what they are are read; Sony's controllers are left to the console. Not yet tried on my console.
+**USB controllers** (an experiment; Settings, Controls, "USB controllers", off at first). PSSwanStation reads some controllers plugged into the console's USB ports itself: a PS3 pad, a DualShock 3 on a cable, an Xbox 360 pad or another USB gamepad. They can be the next player or play together with player 1. Only devices that say what they are are read; Sony's controllers are left to the console. Not yet tried on my console.
 
 **Closing.** Menu, Close ends the game. In the library, Circle asks whether to close PSSwanStation; Cross answers yes.
 
@@ -253,7 +254,7 @@ The DualSense works as a PlayStation controller, button for button; the touch pa
 
 ## Saving
 
-Each game has ten save-state slots and its own memory card; both are kept in `data/`.
+Each game has ten save-state slots and its own memory card; both are kept in `data/` (the states on a USB drive with "Save states on a USB drive").
 
 **Save states.** Menu, Save state and Load state, each slot shown with the picture it was saved at. With "Save when a game is closed" on (Settings, Games and saving), one more state is written when you close a game, and "Continue where I left off" starts from it next time. A game's details (Triangle) can still start it from the beginning.
 
@@ -298,7 +299,7 @@ At first a game looks and runs as on the PlayStation (the Original preset): draw
 
 **Scaling filters.** Smooth blends neighbouring pixels; square pixels shows them as squares; sharp bilinear keeps pixels even and crisp at any size. FSR 1 and NIS follow edges, then sharpen; CAS sharpens fine detail without halos. FSR and NIS pay off most at a lower internal resolution (3x or 4x). MMPX is for pixel art at the PlayStation's own resolution (Internal Resolution Scale 1x, or the software renderer): it doubles each pixel the way an artist draws pixel art larger, keeping lines one colour and corners sharp, then grows it with sharp bilinear. A picture larger than the screen (8x on a 1080p screen) is made smaller by averaging, whichever filter is chosen.
 
-**Gaps between polygons.** Above 1x, "Close Gaps Between Polygons" (Settings, Emulator, Enhancement; on at first) covers the hairline gaps where a game's polygons meet unevenly: the sparkles along their edges. 3D objects' outlines become a quarter of a pixel fuller; 2D pictures and see-through polygons are left as they are. The Speedrun preset switches it off.
+**Gaps between polygons.** Above 1x, "Close Gaps Between Polygons" (Settings, Emulator, Enhancement; off at first, on in the Normal, Enhanced and Beautiful presets) covers the hairline gaps where a game's polygons meet unevenly: the sparkles along their edges. 3D objects' outlines become a quarter of a pixel fuller; 2D pictures and see-through polygons are left as they are. The Speedrun preset switches it off.
 
 **Shader presets from USB.** Settings, Picture, "Shader presets from USB" brings in a libretro slang preset (`.slangp`) from `PSSwanStation/shaders/` on a USB drive. It is compiled on the console and becomes one of the Picture tube's choices. Not every preset runs fast enough at 4K.
 
@@ -308,7 +309,7 @@ At first a game looks and runs as on the PlayStation (the Original preset): draw
 
 **Frame generation** (Off or On) makes pictures between the game's own: a 30 fps game moves at 60 on a 60 Hz screen, or up to 120 at 120 Hz. It never changes the game's speed or sound. Its settings:
 
-- **Generation method:** the title's own, which is the default, AMD FSR3's optical flow, or MihawkGen (a trained network of 0.43 million parameters that reads the game's two pictures alone; its quality, ahead and movement-view settings do not apply, and it makes none ahead). On my test pictures its frames are about half as far from the true ones as the title's own. Its frames take the picture's look (film grain, colours, scaling filter, sharpening and picture tube) like the title's own;
+- **Generation method:** the title's own, which is the default, AMD FSR3's optical flow, or MihawkGen (a trained network of 0.43 million parameters that reads the game's two pictures alone; its quality, ahead and movement-view settings do not apply, and it makes none ahead). AMD FSR3's optical flow: on my test pictures its frames are about half as far from the true ones as the title's own. Its frames take the picture's look (film grain, colours, scaling filter, sharpening and picture tube) like the title's own;
 - **Quality:** Performance, Balanced, or Quality (checks each movement from both pictures' side);
 - **Mode:** between the game's last two pictures, or ahead of the latest (no waiting, more mistakes where movement turns);
 - **Up to the screen's rate**, or up to 60 a second at 120 Hz;
@@ -319,7 +320,7 @@ It makes nothing across a cut to another scene, starts again after a state is lo
 
 ## Extras
 
-**Cheats and patches.** After the cheat database is fetched (Settings, Games and saving), a game's cheats and patches are in its details and in the menu under Cheats, found by the disc's serial number. Cross switches one on or off; Left and Right choose a value where a cheat has one. What is on is kept for that game. A game the database has no codes for gets the libretro database's cheats instead; they may not fit your version. Your own GameShark codes can be typed in: "Add a GameShark code" at the end of the list asks for a name, then the code on a keypad (8 digits, a space and 4 more, a line for each code, a new line begun by itself after twelve digits). It is switched on at once and kept in `cheats/<serial>.cht`; Square on one of your codes edits it, and emptied it is removed. Your own codes go in `cheats/<serial>.cht`:
+**Cheats and patches.** After the cheat database is fetched (Settings, Games and saving), a game's cheats and patches are in its details and in the menu under Cheats and patches, found by the disc's serial number. Cross switches one on or off; Left and Right choose a value where a cheat has one. What is on is kept for that game. A game the database has no codes for gets the libretro database's cheats instead; they may not fit your version. Your own GameShark codes can be typed in: "Add a GameShark code" at the end of the list asks for a name, then the code on a keypad (8 digits, a space and 4 more, a line for each code, a new line begun by itself after twelve digits). It is switched on at once and kept in `cheats/<serial>.cht`; Square on one of your codes edits it, and emptied it is removed. The file's form, for codes written on a computer:
 
 ```
 [Infinite Health]
@@ -354,16 +355,16 @@ A `patch` writes the new bytes only where the old ones are found, so a part of t
 
 **Find in memory** (menu, while a game runs). The classic cheat search: look for a value (a byte, two or four), or one that went up, down, changed or stayed the same, and narrow it down while you play. What is left can be watched over the game, set, frozen at a value, or made a cheat in the game's own cheat file. Not available in RetroAchievements' hardcore mode.
 
-**Speedrun timer** (menu, "Speedrun timer"). A timer at the top right, in game time (pauses and loading don't count) or real time. OPTIONS held with Cross splits (and starts), with Square takes the last split back, with Triangle stops and resets. Splits can trigger by themselves when a value in the game's memory becomes a number (found with Find in memory), and the timer can start the same way. The best run and best splits are kept for each game; a run with fast forward, rewind or a state load counts as practice.
+**Speedrun timer** (menu, "Speedrun timer"). A timer at the top right, in game time (pauses and loading don't count) or real time. OPTIONS held with Cross splits (and starts), with Square takes the last split back, with Triangle passes a split by, with Circle stops and resets. Splits can trigger by themselves when a value in the game's memory becomes a number (found with Find in memory), and the timer can start the same way. The best run and best splits are kept for each game; a run with fast forward, rewind or a state load counts as practice.
 
 **Recordings** (Settings, System). "Record what I press" keeps every player's buttons, frame by frame, from a state taken when it starts. "Play back a recording" starts the game from that state and runs it the same way again: to show a run, or to bring back the moment something went wrong. Playback needs the same settings, cheats and build.
 
 **Texture packs.** A game's pack goes in `textures/<serial>/`, or in `PSSwanStation/textures/<serial>/` on a USB drive (pictures may be in folders inside it). Two kinds are read:
 
-- **Texture blocks** (Vulkan renderer; "HD Texture Packs", Enhancement, on by default): the PlayStation's GPU reads textures through a cache that holds a texture page in blocks, 64x64 texels of a 4-bit texture, 32x64 of an 8-bit one, 32x32 of a 15-bit one. A picture named `block-<4|8|15>-<16 hex digits>.png` replaces the block whose hash those digits are (XXH3-64 of the block's 16-bit words, row by row, then its palette's 16 or 256), in 2D and 3D alike. Pictures may be larger than the block, up to 256 x 256, and are drawn smoothly; transparent pixels (alpha below one half) stay transparent. A primitive that reads more than 2 x 2 blocks, uses a texture window, or a texture the game drew itself keeps the original. To make a pack, switch on "Write Out Texture Blocks": each block a game shows is written once to `textures/<serial>/dump/`, already named; draw over it and move it up a folder.
-- **Whole uploads** (`vram-write-<number>.png`): replacement art for a picture the game sends to video memory in one piece. Switch on "Enable VRAM Write Texture Replacement" (Enhancement).
+- **Texture blocks** (Vulkan renderer; "HD Texture Packs (Texture Blocks)", Emulator, Advanced; off at first): the PlayStation's GPU reads textures through a cache that holds a texture page in blocks, 64x64 texels of a 4-bit texture, 32x64 of an 8-bit one, 32x32 of a 15-bit one. A picture named `block-<4|8|15>-<16 hex digits>.png` replaces the block whose hash those digits are (XXH3-64 of the block's 16-bit words, row by row, then its palette's 16 or 256), in 2D and 3D alike. Pictures may be larger than the block, up to 256 x 256, and are drawn smoothly; transparent pixels (alpha below one half) stay transparent. A primitive that reads more than 2 x 2 blocks, uses a texture window, or a texture the game drew itself keeps the original. To make a pack, switch on "Write Out Texture Blocks": each block a game shows is written once to `textures/<serial>/dump/`, already named; draw over it and move it up a folder.
+- **Whole uploads** (`vram-write-<number>.png`): replacement art for a picture the game sends to video memory in one piece. Switch on "Enable VRAM Write Texture Replacement" (Emulator, Advanced).
 
-**RetroAchievements.** Settings, RetroAchievements: switch it on and sign in with your retroachievements.org account. The password is typed once; only the token the server returns is kept. Hardcore mode earns more, and switches off state loading, cheats and rewind. The message at a game's start says which mode it is in ("Hardcore mode" or "Softcore"). In hardcore mode a recording cannot be played back, and playback stops if hardcore comes on. An unlock made while the server cannot be reached is sent when it comes back; if the title is closed first, the unlock is kept in `data/achievements-unsent.txt` and sent after the next sign-in. What is sent, and what is kept, is in [PRIVACY.md](PRIVACY.md) (also in the title folder).
+**RetroAchievements.** Settings, Games and saving, RetroAchievements: switch it on and sign in with your retroachievements.org account. The password is typed once; only the token the server returns is kept. Hardcore mode earns more, and switches off state loading, cheats and rewind. The message at a game's start says which mode it is in ("Hardcore mode" or "Softcore"). In hardcore mode a recording cannot be played back, and playback stops if hardcore comes on. An unlock made while the server cannot be reached is sent when it comes back; if the title is closed first, the unlock is kept in `data/achievements-unsent.txt` and sent after the next sign-in. What is sent, and what is kept, is in [PRIVACY.md](PRIVACY.md) (also in the title folder).
 
 **Starting a game from a forwarder.** A PS5 forwarder (an icon on the home screen for one game), or anything else that starts the title, can name the game with launch arguments:
 
@@ -383,12 +384,12 @@ Settings (first in the menu) has nine sections. L1 and R1 move between sections,
 
 | Section | What it holds |
 | --- | --- |
-| Library | View: the library view, ES-DE themes. Videos: game videos on or off, their sound, how long the cursor stays on a game before its video starts. Covers and header: cover downloads, clock, update check |
+| Library | View: the library view, ES-DE themes, multi-disc games as one. Videos: game videos on or off, their sound, how long the cursor stays on a game before its video starts. Covers and header: cover downloads, clock, update check |
 | Look | Interface: theme, accent colour, size (up to 140%), animations. Easier to see: high contrast, colour-blind safe colours. The swan: lively, calm or still; dressed for the theme; seasonal touches; the start-up animation; the screen saver |
 | Sound | Volume: the game, menu sounds, music, videos. Sound delay: how far ahead of the speakers the game's sound is kept (60, 32 or 16 ms; lower for rhythm games and wireless headphones, Normal should it crackle). What plays: menu music (the title's own, your `music/` folder, or the kit's songs), the menus' sound set, the start-up sound |
-| Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, black frame insertion, frame generation (the title's own, AMD FSR3's optical flow, or MihawkGen); the frame rate counter |
+| Picture | Presets, picture size, scaling filter and sharpening, picture tube, shader presets from USB, video signal, colours, film grain, beside the picture, frame pacing, display output, HDR (its white level, highlights and Adjust HDR brightness), black frame insertion, frame generation (the title's own, AMD FSR3's optical flow, or MihawkGen), adaptive resolution, the game's own widescreen; differs from the original; the frame rate counter |
 | Controls | The confirm button. Players: multitap and each player's controller type. USB controllers (an experiment). The pad: buttons (remapping, OPTIONS and the touch pad included; which opens the menu; turbo), stick dead zone, vibration, player lights, tilt steering. Shortcuts: the held-OPTIONS shortcuts and fast forward speed. Rewind and its memory |
-| Games and saving | Where the games are: folders, USB drives, the USB disc drive, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, save states on a USB drive, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. More: phone and web control, the cheat database. RetroAchievements: sign in, hardcore mode |
+| Games and saving | Where the games are: folders, USB drives, the USB disc drive, the network share, games into memory, Wake-on-LAN. Saving: save when closed, continue where I left off, save states on a USB drive, sleep-safe saving, card backups. My files: where they are kept, memory cards and covers on the share. Cloud: cloud saves. More: mods, drive speed, network shares, bringing my files up to date now, phone and web control, the cheat database. RetroAchievements: sign in, hardcore mode |
 | Emulator | The emulator's own settings in one list, a part for each of its sections (Console, Enhancement, Display, Port, Advanced): CPU and BIOS options, internal resolution, texture filtering, PGXP, Close Gaps Between Polygons, widescreen hack, texture replacement and the rest |
 | System | Console notices. Console tuning: sound and controls before the emulator (off; the sound and USB controllers' threads run first, downloads, covers and copies last), the graphics driver on its own thread (off), the GPU wait's checks and sleeps (the driver's 1500 and 1000 µs, or shorter or longer), and measuring the game in the boot log (a line every five seconds of play: speed, worst frame, each part of a frame, draws, passes and barriers per frame), all but the last from the next start. Logs: how they are kept, where, and what they keep. Recordings of what you press |
 | About | Build number and date, licences |
@@ -416,7 +417,7 @@ To send a log of a problem that did not crash with "Only when something goes wro
 | Black screen after choosing the icon | Look for `psswanstation-boot.log`. None means the title did not start at all: check kstuff, and the folder's place and name |
 | Dark screen after choosing 120 Hz | Start holding L1 and R1, wait ten seconds, close it and start it again |
 | PSSwanStation stops when a game starts | Switch off sleep-safe saving; then try Safe start (hold L1 and R1) |
-| A game crashes at once | Try CPU Execution Mode "Cached Interpreter" (Settings, Console) and GPU Renderer "Software" (Enhancement) |
+| A game crashes at once | Try CPU Execution Mode "Cached Interpreter" (Settings, Emulator, Console) and, if it is set to Vulkan, GPU Renderer "Software" (Emulator) |
 | A game is too slow | Lower the Internal Resolution Scale (Enhancement); FSR 1 or NIS keeps it sharp |
 | No USB tab | Switch on "USB drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; a Lapy service or the ELF loader must be running |
 | No Network tab | Check the folders under Settings, Games and saving, "Network shares" (or the `path` lines in `network.cfg`, server by IP address); a server the page does not find may be asleep or have file sharing off |

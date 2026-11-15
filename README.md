@@ -16,7 +16,7 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 #### Added
 
 - **The renderer changes while a game runs.** Software and Vulkan, both ways: the game goes on where it was, with no restart. The picture presets that change the renderer apply at once too.
-- **Multi-disc games as one** (Settings, Interface, View; on): the discs of a game are one entry, sharing one memory card. Discs are now also found when each is in a folder of its own named after the disc (`Game (Disc 1)/...`), in folders named only `CD1`, `CD2` (`Game/CD1/...`), and by "CD2" or "Disc 2" at the end of a name. Off: each disc is an entry of its own.
+- **Multi-disc games as one** (Settings, Library, View; on): the discs of a game are one entry, sharing one memory card. Discs are now also found when each is in a folder of its own named after the disc (`Game (Disc 1)/...`), in folders named only `CD1`, `CD2` (`Game/CD1/...`), and by "CD2" or "Disc 2" at the end of a name. Off: each disc is an entry of its own.
 - **Variable refresh, really asked for**: "120 Hz, variable refresh rate" (Display output) now asks the output to leave its fixed rate, so on a TV with VRR each frame is shown as soon as it is ready, where the console's firmware offers it (the boot log says whether it does).
 
 #### Changed

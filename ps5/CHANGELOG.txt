@@ -97,7 +97,7 @@ Build 26
     (Display output) now asks the output to leave its fixed rate, so on a TV
     with VRR each frame is shown as soon as it is ready, where the console's
     firmware offers it (the boot log says whether it does). As Crux2 does.
-  - "Multi-disc games as one" (Settings, Interface, View; on): the discs of
+  - "Multi-disc games as one" (Settings, Library, View; on): the discs of
     a game are one entry, sharing one memory card. Discs are now also found
     when each is in a folder of its own named after the disc
     ("Game (Disc 1)/..."), in folders named only CD1, CD2 ("Game/CD1/..."),
@@ -194,7 +194,7 @@ Build 24
     textures/<serial>/). Pictures up to four times the block's size (eight
     for 15-bit) are drawn smoothly. A primitive reading up to 2 x 2 blocks
     is replaced; textures the game draws itself never are. Vulkan renderer.
-    Emulator, Enhancement: "HD Texture Packs" (on) and "Write Out Texture
+    Emulator, Advanced: "HD Texture Packs" (on) and "Write Out Texture
     Blocks", which puts each block a game shows in textures/<serial>/dump/
     for pack makers.
   - Accurate blending (Emulator, Enhancement, on): semi-transparency and

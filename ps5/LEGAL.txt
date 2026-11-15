@@ -21,7 +21,7 @@ licenses/components.json.
 
 The cheat and patch database of the chtdb project is not part of this title:
 its entries belong to their authors. The title can fetch it from that
-project's own releases (Settings, Games and network).
+project's own releases (Settings, Games and saving).
 
 Not affiliated with or endorsed by Sony Interactive Entertainment, the
 libretro team or the DuckStation project. "PlayStation" and "PS5" are
