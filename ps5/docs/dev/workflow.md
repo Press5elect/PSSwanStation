@@ -66,6 +66,43 @@ written here is his standing word unless he says otherwise for one change.
    [`open-work.md`](open-work.md)'s untested list to its record.
 6. **Push or release only on his word** ([`releasing.md`](releasing.md)).
 
+## Which documents a change updates
+
+In the same commit as the change:
+
+| A change to | Updates |
+| --- | --- |
+| A setting (its name, place, choices or default) | `ps5/MANUAL.md` (its page and the settings reference), `ps5/README.txt` where it names it, the setting's own text in the code, `ps5/CHANGELOG.txt` |
+| What leaves the console, or where files are kept | `ps5/PRIVACY.md`, the MANUAL's folder table, README.txt's "Where things go" |
+| A pin (driver, SDK, a library) | [`building.md`](building.md)'s table, `ps5/patches/README.md` and `BASE`, the CHANGELOG's "Newer parts" |
+| A test, a switch, a tool | [`testing.md`](testing.md), and the tool's or test's own head |
+| Something confirmed or refuted on the console | [`open-work.md`](open-work.md) (out of "Untested", into the record) |
+| How work is done | this file |
+
+`ps5/README.txt` is the guide that ships in the title folder (plain text, 78 columns); the manual
+is the full reference and is not shipped. The two drifted apart once (build 27's review found
+about 45 stale statements): when they say the same thing, change both, or let README.txt point to
+the manual.
+
+## Starting a session (for agents)
+
+1. Read `CLAUDE.md` (local; if it is missing, [`../README.md`](../README.md) and this file), then
+   [`open-work.md`](open-work.md): what is waiting, untested, decided.
+2. Restore what the hand-over note lists: apply the bundles (`git fetch <bundle> <branch>:<branch>`),
+   and rebuild the environment from [`building.md`](building.md).
+3. Check the upstreams and the siblings (OGBox first) for what is newer, and say what you found
+   before changing pins.
+4. Work in small commits; check each on the PC; say what was not checked.
+5. When a test build is asked for, give the owner: its name and SHA-256 (the ZIP's and
+   `eboot.bin`'s), what changed since the last one, how it was checked, and exactly what to test,
+   with the boot log lines that say whether each thing worked.
+6. Before the session ends: bundles of every unpushed branch, and a short hand-over note (see
+   below). Never push to save work: only on the owner's word.
+
+Subagents are useful for wide read-only surveys (a sibling's changes, documents against the code)
+and for a feature that touches files nobody else is editing, in a git worktree of its own; review
+their diff before merging it, and run the checks again after.
+
 ## Handing over to the next session
 
 The container is reset between sessions; nothing unpushed survives unless it travels.

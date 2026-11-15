@@ -27,6 +27,8 @@ From build 27 test 2:
 - The pad read through `scePadRead` with the tap latch (boot log: no `scePadRead refused`).
 - Sound output's failed calls timed by the clock (boot log: `sceAudioOutOutput failed` only if
   it happens).
+- Safe start's "Stay in the sandbox" switching USB controllers off too (409f5d2, after test 2:
+  not in its ZIP).
 - Waiting for a network share at a game's start (boot log: `does not answer: the game waits for
   it, asking each second` … `answered after N s`), and the shares woken at start (`share: … woken:
   N KiB of …`). Checked on the PC over FTP only: SMB and NFS go through the same paths (`stat`,
