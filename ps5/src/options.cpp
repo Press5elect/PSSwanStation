@@ -212,7 +212,7 @@ void adapt(Option& option)
 	}
 	else if (key == "swanstation_Logging_LogLevel")
 	{
-		// "Verbose logging" (Settings, System) sets it.
+		// "What the logs keep" (Settings, System, Logs) sets it: "Everything" is what "Verbose logging" was.
 		option.hidden = true;
 	}
 	else if (key == "swanstation_Display_AspectRatio")

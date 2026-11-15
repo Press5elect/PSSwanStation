@@ -1617,6 +1617,7 @@ void safeStartPage(Frame& f)
 				options::Frontend& o = options::frontend();
 				o.usb = false;
 				o.discDrive = false;
+				o.usbPads = 0;	// USB controllers too, as the text says: each one makes it leave
 				o.filesAt = 0;
 				options::saveFrontend();
 				inform("Done", "From the next start PSSwanStation stays in its sandbox and uses the files in its own folder.");
@@ -3378,14 +3379,14 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 			"for one game (SLUS-12345.png), or default.png for all; .jpg works too.",
 			[] { display::forgetAmbient(); }));
 	items.push_back(pictureChoice(forGame, "dynamic_resolution", "Adaptive resolution", { "Off", "On" },
-			"While a game cannot keep its own speed at the resolution chosen (Emulation, Resolution scale), the "
+			"While a game cannot keep its own speed at the resolution chosen (Emulator, Internal Resolution Scale), the "
 			"resolution is lowered a step at a time until it can, and raised again, a step at a time, once it has kept "
 			"its speed for a while; never above the one chosen, nor below half of it. A step remakes the picture "
 			"memory: a moment's hitch. A step that did not hold is not tried again until the game is started anew. "
 			"Not while fast forwarding, rewinding or paused.",
 			[] { host::resetAdaptiveResolution(); }));
 	items.push_back(pictureChoice(forGame, "widescreen_patch", "Use the game's own widescreen", { "Off", "On" },
-			"With the aspect ratio set wide (16:9 and wider, Emulation) or the widescreen hack on, a game that has a "
+			"With the aspect ratio set wide (16:9 and wider, Emulator) or the widescreen hack on, a game that has a "
 			"widescreen patch in the patch database uses it by itself: the game's own camera and culling made wide, "
 			"rather than the emulator's general widescreen hack, which can leave things popping in at the edges. "
 			"The patch for the ratio chosen is preferred; one marked as crashing, or for menus only, is never picked. "
@@ -3409,8 +3410,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"becomes possible; a display that cannot do 120 Hz stays at 60. The third declares, as games "
 				"that support it do, that a variable refresh rate may stay on, and asks the output to leave its "
 				"fixed rate, so each frame is shown as soon as it is ready on a TV with VRR (where the console "
-				"offers it: the boot log says): use it with \"by the clock\" above. An experiment, not yet run "
-				"on a console: if the screen stays dark afterwards, hold "
+				"offers it: the boot log says): use it with \"by the clock\" above. If the screen stays dark afterwards, hold "
 				"L1 and R1 while PSSwanStation starts. This one is for every game: the console reads it when "
 				"PSSwanStation starts, before any game is chosen.", display::outputRefreshRate()),
 				[](int i) {
@@ -3591,7 +3591,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 		items.push_back(pictureChoice(forGame, "fg_runahead", "Take back the delay", { "Off", "With run-ahead" },
 				"While frame generation is on, the emulator runs one frame ahead and shows that (run-ahead): the "
 				"game answers the pad a frame sooner, which takes back the delay of pictures made between the "
-				"game's. It costs about twice the emulator's work. Not when run-ahead is set by itself (Emulation), "
+				"game's. It costs about twice the emulator's work. Not when run-ahead is set by itself (Emulator), "
 				"and not in netplay."));
 		items.push_back(pictureChoice(forGame, "fg_debug", "Show the movement", { "Off", "On" },
 				"A view for checking frame generation: over the made pictures, the movement found is shown as a "

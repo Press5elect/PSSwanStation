@@ -67,6 +67,9 @@ Build 27
     that wrote it. The log is put on the disk every 30 seconds that had
     lines, and a crash report still writes everything before itself.
   Fixed
+  - Safe start's "Stay in the sandbox" left USB controllers on, so the
+    title still left its sandbox with them: they are switched off too, as
+    the option says.
   - A quick tap on the controller could miss the game: only the newest
     state was read each frame. Every reading the console kept since the
     last frame is taken now, and a button pressed in any of them is held
