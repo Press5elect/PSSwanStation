@@ -3774,6 +3774,25 @@ void moreSettings(int kind, std::vector<Item>& items)
 			items.push_back(std::move(item));
 		}
 
+		items.push_back(header("Sinden Lightgun"));
+		{
+			Item item = choice("Sinden Lightgun", std::clamp(f.sinden, 0, 2), { "Off", "Player 1's GunCon", "Player 2's GunCon" },
+					"An experiment, not yet working: the Sinden Lightgun aims a player's GunCon (set that player's "
+					"controller to the GunCon above). Its camera finds the white border drawn round the game's picture, "
+					"and the gun's position follows. PSSwanStation does the gun's tracking itself, without Sinden's "
+					"software; for now only the border and the aim's way into the game are there, and the gun's camera "
+					"over USB is being worked on.",
+					[](int i) { options::frontend().sinden = i; });
+			items.push_back(item);
+			Item band = choice("Border", std::clamp(f.sindenBorder, 1, 8) - 1, { "1%", "2%", "3%", "4%", "5%", "6%", "7%", "8%" },
+					"How thick the white border round the game's picture is, in parts of the screen's height. The "
+					"picture is made that much smaller, so none of it is covered. Thicker is easier for the gun's camera "
+					"to find from far away.",
+					[](int i) { options::frontend().sindenBorder = i + 1; });
+			band.enabled = f.sinden != 0;
+			items.push_back(band);
+		}
+
 		items.push_back(header("USB controllers"));
 		{
 			Item item = choice("USB controllers", f.usbPads, { "Off", "On", "On, and look harder" },

@@ -59,6 +59,23 @@ an **absolute position** from outside (today it is aimed with the sticks and the
    safe step: a test build that only lists the gun's USB descriptors in the boot log (its
    interfaces, endpoints and their kinds), reading nothing else.
 
+## The title's side (build 27, after test 2)
+
+- **The setting**: Settings, Controls, Players: "Sinden Lightgun" (Off, player 1's or player 2's
+  GunCon; that player's controller must be the GunCon) and its "Border" (1-8% of the screen's
+  height, 3% at first). Marked as an experiment that does not work yet until the camera side is
+  in.
+- **The border** (`ui.cpp`, `drawGame`): while it is on and that player has the GunCon, the game's
+  picture is made smaller by the border on each side and a plain white frame is drawn just
+  outside it: none of the picture is covered, and the frame's inner edge is the picture's edge,
+  which is what the tracker maps the aim to. Checked on the PC (a screenshot at 1920 x 1080:
+  a 32-pixel frame round the 4:3 picture).
+- **The aim's way in** (`host::lightgunAim(port, x, y, offscreen)`): x, y in -1..1 across and
+  down the picture, as libretro's light gun coordinates; used while newer than a tenth of a
+  second, the sticks aiming again after that. A shot while the gun points off the picture is
+  given to the game as the GunCon's shot away from the screen (its reload): the fire buttons
+  become L2, so the netplay record is unchanged.
+
 ## Sources
 
 - [MrLightgun/MiSTerSindenDriver](https://github.com/MrLightgun/MiSTerSindenDriver), at 458775e

@@ -360,6 +360,8 @@ std::vector<Field> fields()
 		{ "controller4", &c.controller[3], nullptr, 0, 6 },
 		{ "rumble", nullptr, &c.rumble, 0, 1 },
 		{ "rumble_strength", &c.rumbleStrength, nullptr, 10, 100 },
+		{ "sinden", &c.sinden, nullptr, 0, 2 },
+		{ "sinden_border", &c.sindenBorder, nullptr, 1, 8 },
 		{ "player_lights", nullptr, &c.playerLights, 0, 1 },
 		{ "turbo_rate", &c.turboRate, nullptr, 0, 2 },
 		{ "hotkeys", nullptr, &c.hotkeys, 0, 1 },

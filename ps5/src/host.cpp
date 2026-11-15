@@ -192,6 +192,19 @@ struct Aim
 	float x = 0, y = 0;
 };
 Aim aims[platform::MaxPads];
+// An aim from outside the pad (lightgunAim: the Sinden Lightgun), and when it
+// came: used while it is newer than a tenth of a second.
+struct ExternalAim
+{
+	float x = 0, y = 0;
+	bool offscreen = false;
+	double at = -1;
+};
+ExternalAim externalAims[platform::MaxPads];
+bool externalAimFresh(int port)
+{
+	return port >= 0 && port < platform::MaxPads && externalAims[port].at >= 0 && now() - externalAims[port].at < 0.1;
+}
 
 // Netplay: the two players' buttons for the frame being run, and what the
 // session changed that is put back when it ends.
@@ -436,6 +449,14 @@ netplay::Input localInput(int port)
 	if (!pad.connected || inputBlocked)
 		return in;
 	in.buttons = gameButtons(pad);
+	// The Sinden Lightgun pointing off the picture: its shot is the one that
+	// reloads (the GunCon's games reload on a shot away from the screen).
+	if (options::frontend().controller[port] == 5 && externalAimFresh(port) && externalAims[port].offscreen)
+	{
+		const uint16_t fire = (1u << RETRO_DEVICE_ID_JOYPAD_R2) | (1u << RETRO_DEVICE_ID_JOYPAD_B);
+		if ((in.buttons & fire) != 0)
+			in.buttons = (uint16_t)((in.buttons & ~fire) | (1u << RETRO_DEVICE_ID_JOYPAD_L2));
+	}
 	stick(pad.lx, pad.ly, in.lx, in.ly);
 	stick(pad.rx, pad.ry, in.rx, in.ry);
 	if (port == 0)
@@ -618,8 +639,15 @@ void moveAims()
 	{
 		if (options::frontend().controller[port] != 5)
 			continue;
-		const platform::Pad& pad = platform::pad(port);
 		Aim& aim = aims[port];
+		// The Sinden Lightgun's aim, where it points, while it comes.
+		if (externalAimFresh(port))
+		{
+			aim.x = std::clamp(externalAims[port].x, -1.f, 1.f);
+			aim.y = std::clamp(externalAims[port].y, -1.f, 1.f);
+			continue;
+		}
+		const platform::Pad& pad = platform::pad(port);
 		const float dead = options::frontend().deadZone;
 		const float rx = std::fabs(pad.rx) > dead ? pad.rx : 0.f, ry = std::fabs(pad.ry) > dead ? pad.ry : 0.f;
 		const float lx = std::fabs(pad.lx) > dead ? pad.lx : 0.f, ly = std::fabs(pad.ly) > dead ? pad.ly : 0.f;
@@ -2171,6 +2199,17 @@ void runFrame()
 		for (int i = 0; i < platform::MaxPads; i++)
 			platform::padRumble(i, rumble[i][0] * strength, rumble[i][1] * strength);
 	}
+}
+
+void lightgunAim(int port, float x, float y, bool offscreen)
+{
+	if (port < 0 || port >= platform::MaxPads)
+		return;
+	ExternalAim& aim = externalAims[port];
+	aim.x = x;
+	aim.y = y;
+	aim.offscreen = offscreen;
+	aim.at = now();
 }
 
 void setFastForward(bool on)

@@ -478,6 +478,12 @@ struct Frontend
 	// Players 1 to 4: 0 digital, 1 DualShock, 2 analog joystick, 3 none,
 	// 4 neGcon, 5 GunCon, 6 PlayStation Mouse (the touch pad).
 	int controller[4] = {1, 1, 1, 1};
+	// The Sinden Lightgun (an experiment: ps5/docs/dev/sinden-lightgun.md): the
+	// player whose GunCon it aims (0 none, 1 player 1, 2 player 2), and the
+	// border drawn round the game's picture for its camera to find, in per
+	// cent of the screen's height.
+	int sinden = 0;
+	int sindenBorder = 3;
 	float deadZone = 0.10f;
 	bool rumble = true;
 	int rumbleStrength = 100;	// the game's vibration scaled, in percent (as OGBox's rumble strength)
@@ -669,6 +675,11 @@ std::string sbiPathFor(const std::string& imagePath);
 // Fast forward and rewind, while they are held. Rewind steps back through
 // the states kept in memory (settings); it is refused when none are kept.
 void setFastForward(bool on);
+// An aim from outside the pad (the Sinden Lightgun): player `port`'s light
+// gun at x, y (-1..1 across and down the game's picture), and whether it
+// points off the picture, where a shot reloads. Used while it is newer than
+// a tenth of a second; the sticks aim again after that.
+void lightgunAim(int port, float x, float y, bool offscreen);
 bool fastForward();
 void setRewinding(bool on);
 bool rewinding();

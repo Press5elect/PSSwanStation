@@ -692,20 +692,27 @@ void drawGame(float dim)
 		host::frameSize(w, h, aspect);
 		float u = 1, v = 1;
 		host::frameUv(u, v);
-		float dw = W, dh = H;
 		const options::Frontend& f = options::frontend();
+		// The Sinden Lightgun's border (an experiment): a plain white frame
+		// round the game's picture, which its camera finds to tell where the gun
+		// points; the picture is made smaller to leave room for it, so none of
+		// it is covered, and the frame's inner edge is the picture's edge.
+		const bool sindenBorder = f.sinden >= 1 && f.sinden <= 2 && f.controller[f.sinden - 1] == 5;
+		const float band = sindenBorder ? std::max(2.f, std::round(H * (float)std::clamp(f.sindenBorder, 1, 8) / 100.f)) : 0.f;
+		const float roomW = W - 2 * band, roomH = H - 2 * band;
+		float dw = roomW, dh = roomH;
 		// (3 was "fit, with FSR 1" before build 15.)
 		const int scaling = f.scaling == 3 ? 0 : f.scaling;
 		if (scaling != 2)
 		{
-			dh = H;
-			if (scaling == 1 && h > 0 && (int)H / h >= 1)
-				dh = (float)(((int)H / h) * h);
+			dh = roomH;
+			if (scaling == 1 && h > 0 && (int)roomH / h >= 1)
+				dh = (float)(((int)roomH / h) * h);
 			dw = dh * aspect;
-			if (dw > W)
+			if (dw > roomW)
 			{
-				dw = W;
-				dh = W / aspect;
+				dw = roomW;
+				dh = roomW / aspect;
 			}
 		}
 		const ImVec2 p0(std::floor((W - dw) * 0.5f), std::floor((H - dh) * 0.5f));
@@ -762,6 +769,14 @@ void drawGame(float dim)
 		else
 			display::present(shown, p0.x, p0.y, p1.x, p1.y, 0, 0, shownU, shownV, 1.f, squares);
 		drawScanlines(list, p0, p1);
+		if (band > 0)
+		{
+			const ImU32 white = IM_COL32(255, 255, 255, 255);
+			list->AddRectFilled(ImVec2(p0.x - band, p0.y - band), ImVec2(p1.x + band, p0.y), white);
+			list->AddRectFilled(ImVec2(p0.x - band, p1.y), ImVec2(p1.x + band, p1.y + band), white);
+			list->AddRectFilled(ImVec2(p0.x - band, p0.y), ImVec2(p0.x, p1.y), white);
+			list->AddRectFilled(ImVec2(p1.x, p0.y), ImVec2(p1.x + band, p1.y), white);
+		}
 	}
 	if (dim > 0)
 		list->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(6, 8, 14, (int)(dim * 255)));
