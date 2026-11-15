@@ -45,6 +45,7 @@ Each folder has a `run.sh`; most build a small test program against the front en
 | `memcard` | Memory cards |
 | `netplay` | Sessions between two copies of a test program on 127.0.0.1, their outputs compared |
 | `pacing` | The pacing wait (`src/pacing_wait.h`) |
+| `sinden` | The Sinden Lightgun tracker (`src/sinden_track.cpp`) against camera frames it draws with a known aim: the error, found rate, off-screen calls and time in each condition, the edge cases, the Tracker over sequences (`run.sh [quick|full|asan]`; both a quick run under the sanitizers and the full run by default, about two minutes; `SINDEN_OUT=<folder>` writes frames as PGM and PPM) |
 | `sinden-usb` | The Sinden Lightgun's USB: descriptors decoded (a composite UVC camera, CDC serial port and HID mouse written after the specifications), the camera's format and alternate setting chosen, UVC payloads put together into pictures, the serial frames, HID reports, libSceUsbd's transfer layout found in libusb's and FreeBSD's layouts, MJPEG decoded with the host build's FFmpeg (skipped without it); then `src/ps5/sinden_ps5.cpp` itself against a stand-in libSceUsbd with a simulated gun (the stages, pictures at 60 a second, a gun pulled out and back, `find`, a silent and a stalling camera), with ASan/UBSan and then ThreadSanitizer |
 | `tls` | The title's own HTTPS client (`src/tls_client.cpp`) |
 | `tuning` | The console tuning (`src/tuning.h`) |
