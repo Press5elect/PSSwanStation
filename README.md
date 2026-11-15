@@ -6,9 +6,10 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 - The manual, every screen and setting: [`ps5/MANUAL.md`](ps5/MANUAL.md)
 - What it does and how to use it: [`ps5/README.txt`](ps5/README.txt)
 - What changed in each build: [`ps5/CHANGELOG.txt`](ps5/CHANGELOG.txt)
-- How it is built: the head of [`ps5/tools/build.sh`](ps5/tools/build.sh); a release is made by [`ps5/tools/release.py`](ps5/tools/release.py)
+- How it is built: [`ps5/docs/dev/building.md`](ps5/docs/dev/building.md); a release: [`ps5/docs/dev/releasing.md`](ps5/docs/dev/releasing.md)
 - What leaves the console and what is kept: [`ps5/PRIVACY.md`](ps5/PRIVACY.md)
 - Licences of every part: [`ps5/licenses/README.txt`](ps5/licenses/README.txt)
+- Working on it (building, testing, releasing, open work): [`ps5/docs/README.md`](ps5/docs/README.md)
 
 ### Build 26
 
