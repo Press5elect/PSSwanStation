@@ -593,6 +593,16 @@ int systemUiOverlaid()
 	return status[4] != 0 ? 1 : 0;
 }
 
+int systemMenuOrBackground()
+{
+	// As above, with whether the title runs in the background; nothing kept
+	// between calls, nothing marked: the watchdog's thread asks.
+	alignas(8) uint8_t status[512] = {};
+	if (sceSystemServiceGetStatus(status) != 0)
+		return -1;
+	return status[4] != 0 || status[5] != 0 ? 1 : 0;
+}
+
 uint64_t freeMemory()
 {
 	int64_t start = 0;

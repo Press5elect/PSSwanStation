@@ -81,6 +81,14 @@ Build 27
     what is being finished, the sync stops after the file it is copying
     (never in the middle of one), and the title closes. What was left is
     brought up to date at the next start. As OGBox does.
+  - Logs kept "only when something goes wrong" keep the session's first
+    512 KiB (the build, the console, the set-up) as well as its last 8 MiB,
+    so a long session does not lose its start. A game that gives no new
+    frame for 15 s (a disc read waiting for a share that does not answer,
+    say) writes the log by itself, and the session's lines are written as
+    they come from then on: a title that stands still and is closed from
+    the console's menu leaves its log. PSSwanStation's menus and the
+    console's own menu are not counted. As OGBox does.
   Fixed
   - Safe start's "Stay in the sandbox" left USB controllers on, so the
     title still left its sandbox with them: they are switched off too, as

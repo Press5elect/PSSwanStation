@@ -404,11 +404,11 @@ Settings, System, Logs decides how (from the next start):
 
 | Setting | Choices |
 | --- | --- |
-| Logs | **Written as they come** (the usual: everything for finding a problem). **Only when something goes wrong**: the lines are kept in memory (the last megabyte) and written only on a crash, a notice of a problem, or "Save the log now"; nothing is written otherwise, and the logs of the runs before stay. **Off**: nothing, not even a crash report |
+| Logs | **Written as they come** (the usual: everything for finding a problem). **Only when something goes wrong**: the lines are kept in memory (the session's first 512 KB, with its start-up, and its last 8 MB) and written only on a crash, a notice of a problem, a game that stands still for 15 seconds, or "Save the log now"; nothing is written otherwise, and the logs of the runs before stay. **Off**: nothing, not even a crash report |
 | Where the logs are kept | The title's folder, or a USB drive (off the console's storage; the title's folder when no drive can be written to) |
 | What the logs keep | **The boot log** alone (start-up, problems, each game's summary). **Boot log and emulator's log** (the usual). **Everything**: all the emulator says, and a line every ten seconds about a game's speed (what "Verbose logging" was) |
 
-To send a log of a problem that did not crash with "Only when something goes wrong", choose "Save the log now" right after it.
+To send a log of a problem that did not crash with "Only when something goes wrong", choose "Save the log now" right after it. A game that gives no new frame for 15 seconds (PSSwanStation's menus and the console's own menu not counted) writes the log by itself, with a line saying so ("watchdog: no frame for 15 s"), and the rest of the session's lines are written as they come: the log is there even when the console then closes PSSwanStation.
 
 **Sparing the console's storage.** Settings are kept in memory as they change and written when PSSwanStation closes and when the console's menu opens (the console can close the title from there); a file is not written again when nothing in it changed. The graphics driver keeps the one shader cache (`radv-shader-cache`, written once for each new shader); the emulator's own pipeline cache file is gone. An update unpacks and replaces only the files that changed. Save states can go to a USB drive (Settings, Games and saving, "Save states on a USB drive"), and so can the logs.
 

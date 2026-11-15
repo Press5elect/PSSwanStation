@@ -60,6 +60,11 @@ bool open(const std::string& dir);
 // Kept in memory: what it holds into the file now (false when the log is
 // not kept in memory, or the file cannot be made).
 bool saveNow(const char *why);
+// The frame loop, once a frame, before the emulator runs: whether a game
+// runs in it (no menu over it). Kept in memory, a watchdog thread writes the
+// log after 15 s with no frame while a game runs, and from then on as it
+// comes (as OGBox does).
+void frameStarted(bool game);
 // One line of the boot log: into memory, and from there into the file on
 // a thread of its own (straight into the file before open()).
 void mark(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -197,6 +202,9 @@ std::string usbDataDir();
 // Whether the console's own menu (the PS button's) is over the title: 1 it
 // is, 0 it is not, -1 the console does not say.
 int systemUiOverlaid();
+// The same, or the title in the background: for the boot log's watchdog
+// (diag.cpp), which asks from a thread of its own.
+int systemMenuOrBackground();
 // Free memory, for the About page: bytes, or 0 when unknown.
 uint64_t freeMemory();
 // Whether memory can be made executable (the recompiler needs it).
@@ -445,9 +453,10 @@ struct Frontend
 	bool verboseLog = false;	// logDetail == 2, kept as its own field for the files of before
 	// The logs (diag.cpp): 0 written as they come, 1 kept in memory and
 	// written only when something goes wrong (a crash, a notice of a problem,
-	// "Save the log now"), 2 off. Where: 0 the title's folder, 1 a USB drive.
-	// What: 0 the boot log, 1 and the emulator's log (logs/psswanstation.log),
-	// 2 everything (the emulator at Developer level, a speed line every 10 s).
+	// 15 s without a frame in a game, "Save the log now"), 2 off. Where: 0 the
+	// title's folder, 1 a USB drive. What: 0 the boot log, 1 and the
+	// emulator's log (logs/psswanstation.log), 2 everything (the emulator at
+	// Developer level, a speed line every 10 s).
 	int logMode = 0;
 	int logPlace = 0;
 	int logDetail = 1;

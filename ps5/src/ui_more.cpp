@@ -3613,7 +3613,8 @@ void moreSettings(int kind, std::vector<Item>& items)
 				{ "Written as they come", "Only when something goes wrong", "Off" },
 				"Written as they come: the boot log (psswanstation-boot.log, kept for this run and the two before it) "
 				"is written while PSSwanStation runs, for finding any problem. Only when something goes wrong: its "
-				"lines are kept in memory (the last megabyte) and written only on a crash, a notice of a problem, or "
+				"lines are kept in memory (the session's first 512 KB and its last 8 MB) and written only on a crash, "
+				"a notice of a problem, a game that gives no new frame for 15 seconds (then as they come), or "
 				"\"Save the log now\": nothing is written otherwise, and the logs of the runs before stay. Off: "
 				"nothing is written, not even a crash report. Used from the next start of PSSwanStation.",
 				[](int i) { options::frontend().logMode = i; }));

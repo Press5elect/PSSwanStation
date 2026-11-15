@@ -15,9 +15,11 @@
 	  system, on whatever thread wrote it, and the frame thread writes some.
 	  The writer puts the file on the disk every 30 seconds that had lines;
 	  a crash report writes what memory still holds, then itself, straight.
-	  Settings, System, Logs can keep the lines in memory instead, written
-	  only when something goes wrong (a crash, a notice of a problem, or
-	  "Save the log now"), or write none at all;
+	  Settings, System, Logs can keep the lines in memory instead (the
+	  session's first 512 KiB and its last 8 MiB, as OGBox does), written
+	  only when something goes wrong (a crash, a notice of a problem, 15 s
+	  without a frame while a game runs, or "Save the log now"), or write
+	  none at all;
 	- on a fatal signal, the faulting instruction as an offset in eboot.bin
 	  (ps5/tools/symbolize.sh turns it into a function), the registers, the
 	  return addresses on the stack and the last step reached;
@@ -28,6 +30,7 @@
 */
 #include "fe.h"
 
+#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstdarg>
@@ -90,42 +93,82 @@ bool writerBusy;					// a chunk taken out, being written
 pthread_mutex_t ringLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t ringFilled = PTHREAD_COND_INITIALIZER;
 pthread_cond_t ringEmptied = PTHREAD_COND_INITIALIZER;
-volatile bool writerUp;
+std::atomic<bool> writerUp{ false };
 
-// Settings, System, Logs: 0 written as they come, 1 kept in memory (the
-// ring, its oldest lines making room) and written when something goes
-// wrong, 2 none written.
+// Settings, System, Logs: 0 written as they come, 1 kept in memory and
+// written when something goes wrong, 2 none written. Memory becomes Live
+// when the watchdog writes the log (writeFromNow), under ringLock.
 enum Mode { Live, Memory, Off };
-volatile int mode = Live;
+std::atomic<int> mode{ Live };
 // The file and the two kept before it, made ready by open(): a crash in
 // Memory mode opens the file from a signal handler.
 char logPath[512], logPath1[512], logPath2[512];
 
-// Memory mode: the oldest bytes make room.
-void ringKeep(const char *text, size_t length)
+// Memory mode: the session's first FirstBytes of lines whole (the build,
+// the console, the set-up) and its last LastBytes after them, the oldest of
+// those making room, so a long session keeps its start (as OGBox does).
+// From the title's heap, in this mode only: the heap is in the console's
+// direct memory, 12 GiB (the payload SDK fork's platform/docs/PROBE.md),
+// where the title sets up to 3 GiB aside for a network game read into
+// memory (smb.cpp) and 256 MiB for rewind (rewind.cpp); 8.5 MiB is nothing
+// beside them. What limits it is the file: more would be a larger log for
+// the player to send and a longer write for the crash report. Made by
+// open() and never freed: the crash report writes it from a signal handler.
+// Under ringLock while the mode is Memory.
+constexpr size_t FirstBytes = 512u << 10;
+constexpr size_t LastBytes = 8u << 20;
+char *first, *last;
+size_t firstLength;
+bool firstFull;						// a line did not fit: the rest go to last
+size_t lastHead, lastLength;		// the oldest byte, and how many
+bool lastCut;						// the oldest line kept lost its start
+unsigned long long keptDropped;		// bytes of lines between the two let go
+// The watchdog's write: what memory holds waits for the writer thread,
+// which writes it before any other line.
+bool keptWaiting;
+const char *keptWhy = "";
+
+// Memory mode, under ringLock: a line into the first part while it has room
+// for it whole, then into the last, its oldest bytes making room.
+void keepPut(const char *text, size_t length)
 {
-	if (length > RingBytes)
+	if (!firstFull)
 	{
-		text += length - RingBytes;
-		length = RingBytes;
+		if (firstLength + length <= FirstBytes)
+		{
+			memcpy(first + firstLength, text, length);
+			firstLength += length;
+			return;
+		}
+		firstFull = true;
 	}
-	pthread_mutex_lock(&ringLock);
-	if (ringLength + length > RingBytes)
+	// (A line is a few hundred bytes; the early marks, 8 KiB at most.)
+	const bool tooLong = length > LastBytes;
+	if (tooLong)
 	{
-		const size_t drop = ringLength + length - RingBytes;
-		ringHead = (ringHead + drop) % RingBytes;
-		ringLength -= drop;
+		keptDropped += length - LastBytes;
+		text += length - LastBytes;
+		length = LastBytes;
 	}
-	size_t at = (ringHead + ringLength) % RingBytes;
+	if (lastLength + length > LastBytes)
+	{
+		const size_t drop = lastLength + length - LastBytes;
+		lastCut = last[(lastHead + drop - 1) % LastBytes] != '\n';
+		lastHead = (lastHead + drop) % LastBytes;
+		lastLength -= drop;
+		keptDropped += drop;
+	}
+	if (tooLong)
+		lastCut = true;
+	size_t at = (lastHead + lastLength) % LastBytes;
 	for (size_t done = 0; done < length;)
 	{
-		const size_t n = length - done < RingBytes - at ? length - done : RingBytes - at;
-		memcpy(ring + at, text + done, n);
+		const size_t n = length - done < LastBytes - at ? length - done : LastBytes - at;
+		memcpy(last + at, text + done, n);
 		done += n;
-		at = (at + n) % RingBytes;
+		at = (at + n) % LastBytes;
 	}
-	ringLength += length;
-	pthread_mutex_unlock(&ringLock);
+	lastLength += length;
 }
 
 // This run's file, the two before it kept (rename and open: a signal
@@ -173,6 +216,36 @@ void writef(const char *format, ...)
 		writeAll(line, (size_t)n < sizeof(line) ? (size_t)n : sizeof(line) - 1);
 }
 
+// What memory holds into the file, a line saying why after it, and memory
+// emptied: by the caller holding ringLock in Memory mode, the writer thread
+// the lines were handed to, or the crash report.
+void writeKept(const char *why)
+{
+	writeAll(first, firstLength);
+	size_t skip = 0;
+	if (keptDropped != 0)
+	{
+		// From the first whole line after the ones let go.
+		if (lastCut)
+		{
+			while (skip < lastLength && last[(lastHead + skip) % LastBytes] != '\n')
+				skip++;
+			skip = skip < lastLength ? skip + 1 : 0;
+		}
+		writef("[log: %llu bytes of lines from the middle of the session not kept]\n", keptDropped + skip);
+	}
+	const size_t from = (lastHead + skip) % LastBytes, length = lastLength - skip;
+	const size_t n = length < LastBytes - from ? length : LastBytes - from;
+	writeAll(last + from, n);
+	writeAll(last, length - n);
+	writef("[log: the lines kept in memory, written: %s]\n", why);
+	firstLength = 0;
+	firstFull = false;
+	lastHead = lastLength = 0;
+	lastCut = false;
+	keptDropped = 0;
+}
+
 void ringPut(const char *text, size_t length)
 {
 	pthread_mutex_lock(&ringLock);
@@ -201,8 +274,14 @@ void lineOut(const char *text, size_t length)
 		return;
 	if (mode == Memory && logPath[0] != 0)
 	{
-		ringKeep(text, length);
-		return;
+		pthread_mutex_lock(&ringLock);
+		const bool kept = mode == Memory;
+		if (kept)
+			keepPut(text, length);
+		pthread_mutex_unlock(&ringLock);
+		if (kept)
+			return;
+		// (The watchdog wrote the log meanwhile: from now on, to the writer.)
 	}
 	if (writerUp && logFd >= 0)
 		ringPut(text, length);
@@ -220,6 +299,18 @@ void *writerMain(void *)
 	clock_gettime(CLOCK_MONOTONIC, &lastSync);
 	bool unsynced = false;
 	pthread_mutex_lock(&ringLock);
+	// Started by the watchdog: what memory held first, then the lines that
+	// came meanwhile (in the ring).
+	if (keptWaiting)
+	{
+		keptWaiting = false;
+		writerBusy = true;
+		pthread_mutex_unlock(&ringLock);
+		writeKept(keptWhy);
+		fsync(logFd);
+		pthread_mutex_lock(&ringLock);
+		writerBusy = false;
+	}
 	for (;;)
 	{
 		if (ringLength == 0)
@@ -288,6 +379,11 @@ void drainForCrash()
 		logFd = openLogFile();
 	if (logFd < 0 || pthread_mutex_trylock(&ringLock) != 0)
 		return;
+	if (mode == Memory || keptWaiting)
+	{
+		keptWaiting = false;
+		writeKept("a crash (its report follows)");
+	}
 	while (ringLength > 0)
 	{
 		const size_t n = ringLength < RingBytes - ringHead ? ringLength : RingBytes - ringHead;
@@ -297,6 +393,103 @@ void drainForCrash()
 	}
 	writerUp = false;	// what follows goes straight to the file
 	pthread_mutex_unlock(&ringLock);
+}
+
+// The watchdog's: what memory holds into the file, and every line from then
+// on as it comes, as in Live mode (as OGBox does: a title that stands still
+// is closed from the console's menu, which runs no crash report). The file
+// is opened here; a writer thread writes what memory held, then the lines
+// that came meanwhile, so no thread that logs waits for that write.
+void writeFromNow(const char *why)
+{
+	pthread_mutex_lock(&ringLock);
+	if (mode == Memory && logFd < 0)
+		logFd = openLogFile();
+	if (mode != Memory || logFd < 0)
+	{
+		pthread_mutex_unlock(&ringLock);
+		return;
+	}
+	keptWhy = why;
+	keptWaiting = true;
+	pthread_t writer;
+	if (pthread_create(&writer, nullptr, writerMain, nullptr) == 0)
+	{
+		pthread_detach(writer);
+		// The writer first: a thread that finds the mode Live finds it up.
+		writerUp = true;
+		mode = Live;
+	}
+	else
+	{
+		// No thread for it: written here, and kept in memory as before.
+		keptWaiting = false;
+		writeKept(why);
+	}
+	pthread_mutex_unlock(&ringLock);
+}
+
+// The watchdog: the frame loop counts its frames here (frameStarted), and
+// says whether a game runs in the frame without a menu over it.
+std::atomic<unsigned> loopFrames{ 0 };
+std::atomic<bool> loopPlaying{ false };
+constexpr double StillSeconds = 15.0;
+
+// Memory mode, once a second: StillSeconds with no new frame while a game
+// runs is a title that stands still (a disc read that waits for a share
+// that does not answer, CDROM::WaitForReadToComplete in src/core/cdrom.cpp,
+// say). The emulator runs on the frame loop's thread, so only another
+// thread can see that. The log is written then, once, and from then on as
+// it comes. Not counted: the title's own menus (they draw, or no game
+// runs); the console's menu over the title, or the title in the background,
+// from about when the frames stopped (the console holds the title then);
+// and a second that took more than five (the console stopped the whole
+// title, this thread too).
+void *watchMain(void *)
+{
+#if defined(SWANSTATION_PS5)
+	pthread_set_name_np(pthread_self(), "psswan-watch");
+#endif
+	unsigned seen = loopFrames.load(std::memory_order_acquire);
+	double looked = now(), lastFrame = looked, asideSince = -1;
+	while (mode == Memory)
+	{
+		const timespec second = { 1, 0 };
+		nanosleep(&second, nullptr);
+		const double t = now();
+		const bool titleStopped = t - looked > 5.0;
+		looked = t;
+		const unsigned frames = loopFrames.load(std::memory_order_acquire);
+		if (frames != seen || titleStopped || !loopPlaying.load(std::memory_order_relaxed))
+		{
+			seen = frames;
+			lastFrame = t;
+			asideSince = -1;
+			continue;
+		}
+		if (platform::systemMenuOrBackground() == 1)
+		{
+			if (asideSince < 0)
+				asideSince = t;
+			// The frames stopped with it (it was seen within a second or two):
+			// the console's doing. Frames that had stopped before it still count.
+			if (lastFrame > asideSince - 3.0)
+			{
+				lastFrame = t;
+				continue;
+			}
+		}
+		else
+			asideSince = -1;
+		if (t - lastFrame >= StillSeconds)
+		{
+			mark("watchdog: no frame for %.0f s while a game runs (frozen?): the log is written, and from here on as "
+					"it comes", t - lastFrame);
+			writeFromNow("no frame for 15 s while a game ran");
+			break;
+		}
+	}
+	return nullptr;
 }
 
 void sendNotification(const char *text)
@@ -448,6 +641,23 @@ bool open(const std::string& dir)
 {
 	if (logFd >= 0 || logPath[0] != 0)
 		return true;
+	// Kept in memory: its two parts first (a line from another thread is
+	// kept as soon as the path is set). Refused, the lines are written as
+	// they come.
+	bool refused = false;
+	if (mode == Memory)
+	{
+		first = static_cast<char *>(malloc(FirstBytes));
+		last = static_cast<char *>(malloc(LastBytes));
+		if (first == nullptr || last == nullptr)
+		{
+			free(first);
+			free(last);
+			first = last = nullptr;
+			mode = Live;
+			refused = true;
+		}
+	}
 	snprintf(logPath, sizeof(logPath), "%spsswanstation-boot.log", dir.c_str());
 	snprintf(logPath1, sizeof(logPath1), "%spsswanstation-boot.1.log", dir.c_str());
 	snprintf(logPath2, sizeof(logPath2), "%spsswanstation-boot.2.log", dir.c_str());
@@ -459,8 +669,15 @@ bool open(const std::string& dir)
 	if (mode == Memory)
 	{
 		// Nothing written now: the files of the runs before stay as they are.
-		ringKeep(early, earlyUsed);
+		pthread_mutex_lock(&ringLock);
+		keepPut(early, earlyUsed);
 		earlyUsed = 0;
+		pthread_mutex_unlock(&ringLock);
+		pthread_t watchdog;
+		if (pthread_create(&watchdog, nullptr, watchMain, nullptr) == 0)
+			pthread_detach(watchdog);
+		else
+			mark("logs: no thread for the watchdog: a game that stands still does not write the log");
 		return true;
 	}
 	const int fd = openLogFile();
@@ -479,6 +696,8 @@ bool open(const std::string& dir)
 		pthread_detach(writer);
 		writerUp = true;
 	}
+	if (refused)
+		mark("logs: no memory to keep them in: written as they come");
 	return true;
 }
 
@@ -487,23 +706,17 @@ bool saveNow(const char *why)
 	if (mode != Memory || logPath[0] == 0)
 		return false;
 	pthread_mutex_lock(&ringLock);
+	if (mode != Memory)
+	{
+		// The watchdog wrote it meanwhile, and the lines go to the file now.
+		pthread_mutex_unlock(&ringLock);
+		return true;
+	}
 	if (logFd < 0)
 		logFd = openLogFile();
 	const bool opened = logFd >= 0;
 	if (opened)
-	{
-		char note[160];
-		const int k = snprintf(note, sizeof(note), "[log: the lines kept in memory, written: %s]\n", why);
-		while (ringLength > 0)
-		{
-			const size_t n = ringLength < RingBytes - ringHead ? ringLength : RingBytes - ringHead;
-			writeAll(ring + ringHead, n);
-			ringHead = (ringHead + n) % RingBytes;
-			ringLength -= n;
-		}
-		if (k > 0)
-			writeAll(note, (size_t)k);
-	}
+		writeKept(why);
 	pthread_mutex_unlock(&ringLock);
 	if (opened)
 		fsync(logFd);
@@ -515,7 +728,7 @@ void flush()
 	if (!writerUp)
 		return;
 	pthread_mutex_lock(&ringLock);
-	for (int i = 0; i < 40 && (ringLength > 0 || writerBusy); i++)
+	for (int i = 0; i < 40 && (ringLength > 0 || writerBusy || keptWaiting); i++)
 	{
 		pthread_cond_signal(&ringFilled);
 		timespec until;
@@ -531,6 +744,37 @@ void flush()
 	pthread_mutex_unlock(&ringLock);
 	if (logFd >= 0)
 		fsync(logFd);
+}
+
+void frameStarted(bool game)
+{
+	loopPlaying.store(game, std::memory_order_relaxed);
+	loopFrames.fetch_add(1, std::memory_order_release);
+#if !defined(SWANSTATION_PS5)
+	// PC tests (ps5/docs/dev/testing.md). SWANSTATION_LOG_FILL=<MiB>: at a
+	// game's first frame, that many MiB of lines, then a notice (which writes
+	// what memory holds). SWANSTATION_STALL_TEST=<seconds>: the frame loop
+	// held that long once, at a game's 300th frame, as a disc read that waits
+	// for a share holds it.
+	static const char *fill = getenv("SWANSTATION_LOG_FILL");
+	static const char *stall = getenv("SWANSTATION_STALL_TEST");
+	static unsigned gameFrames;
+	if (!game)
+		return;
+	gameFrames++;
+	if (fill != nullptr && gameFrames == 1)
+	{
+		const unsigned lines = (unsigned)(strtoull(fill, nullptr, 10) * 1048576 / 100);
+		for (unsigned i = 1; i <= lines; i++)
+			mark("log fill test: line %u of %u, a line of about a hundred bytes as the others", i, lines);
+		notify("log fill test: %u lines marked", lines);
+	}
+	if (stall != nullptr && gameFrames == 300)
+	{
+		mark("stall test: the frame loop held for %s s", stall);
+		sleep((unsigned)atoi(stall));
+	}
+#endif
 }
 
 void mark(const char *format, ...)

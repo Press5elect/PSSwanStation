@@ -515,6 +515,12 @@ int systemUiOverlaid()
 	return fileExists(file) ? 1 : 0;
 }
 
+int systemMenuOrBackground()
+{
+	// The test's "menu" stands for both.
+	return systemUiOverlaid();
+}
+
 uint64_t freeMemory()
 {
 	return 0;

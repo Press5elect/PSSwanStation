@@ -56,6 +56,14 @@ Switches for a run by hand:
 - A test ROM as BIOS: build `tests/guest/pad_poll.c` (`crt0.S`, `rom.ld`) and make it a ROM with
   `tests/guest/mkrom.py` into `bios/`, so scripted games run without a console's BIOS.
 - `SWANSTATION_FAKE_DRIVE`, `SWANSTATION_FAKE_SANDBOX`: the disc drive's code without a drive.
+- The logs kept in memory (`log_mode = 1` in the root's `frontend.cfg`), with a game started at
+  once (`SWANSTATION_GAME=<cue>`, `SWANSTATION_FRAMES=1500`):
+  `SWANSTATION_LOG_FILL=<MiB>` marks that many MiB of lines at the game's first frame, then a
+  notice writes the log: its first 512 KiB (the start-up), `[log: N bytes of lines from the middle
+  of the session not kept]`, its last 8 MiB. `SWANSTATION_STALL_TEST=<seconds>` holds the frame
+  loop once, at the game's 300th frame: after 15 s the watchdog writes the log (`watchdog: no
+  frame for 15 s while a game runs`) and the lines go to the file from then on. With
+  `SWANSTATION_OVERLAY=<file>` there from the start (the console's menu), it writes nothing.
 
 ## What the PC cannot show
 

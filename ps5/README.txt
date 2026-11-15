@@ -671,7 +671,8 @@ while one is made or played.
 
 Settings, System, Logs decides how the logs are kept, from the next start:
 written as they come (the usual), only when something goes wrong (kept in
-memory, written on a crash, a notice of a problem or "Save the log now"), or
+memory, the start-up and the last 8 MB, written on a crash, a notice of a
+problem, a game that stands still for 15 seconds or "Save the log now"), or
 off; in the title's folder or on a USB drive; and what they keep: the boot
 log alone, the boot log and the emulator's log (the usual), or everything the
 emulator says with a line every ten seconds about a game's speed (what
@@ -843,11 +844,12 @@ When something goes wrong
 moment of every start (the two starts before it are kept as .1.log and
 .2.log); a crash writes its report there. logs/psswanstation.log is the
 emulator's own log. That is how Settings, System, Logs has them at first; with
-"only when something goes wrong" they are written on a problem or with "Save
-the log now", and they can be on a USB drive. Those two files say what
-happened. If the picture ever stands still, the first one has a line saying
-when and for how long ("the screen stood still for ..."), after the lines that
-say what was being done.
+"only when something goes wrong" they are written on a problem (a game that
+gives no new frame for 15 seconds is one) or with "Save the log now", and
+they can be on a USB drive. Those two files say what happened. If the picture
+ever stands still, the first one has a line saying when and for how long
+("the screen stood still for ..."), after the lines that say what was being
+done.
 
   The screen stays black after the icon is chosen: look at
   psswanstation-boot.log; if there is none, the title did not start at all

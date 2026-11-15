@@ -41,6 +41,13 @@ From build 27 test 2:
   closed: …` … `close: the files' sync stopped N s after the close was asked; closing`, and the
   next start's sync bringing the rest. Checked on the PC against an SMB share (impacket's server)
   only; not with NFS or a cloud storage.
+- Logs kept in memory keeping the session's first 512 KiB and its last 8 MiB, and the watchdog
+  writing them after 15 s without a frame in a game (not in a test build yet; boot log:
+  `watchdog: no frame for 15 s while a game runs`, then `[log: the lines kept in memory,
+  written: …]`). Not known yet: whether the console's menu over a game, or the title in the
+  background, stops the title's frames (the watchdog does not count that time), and whether the
+  clock runs on while the console suspends the title (a second of the watchdog's that took more
+  than five starts its count again).
 
 ## Known limits, by how the emulator is built
 
@@ -51,7 +58,8 @@ From build 27 test 2:
   answers. With "Load network games into memory" (the default) a game reads nothing from the
   share while it plays, except streamed games and a multi-disc game's later discs. A way out:
   let the emulated drive wait for a slow network read as `CDROM::WaitForSlowMedia` does for USB
-  drives; it changes the emulation's timing, so it needs a test build of its own.
+  drives; it changes the emulation's timing, so it needs a test build of its own. With the logs
+  kept in memory, the watchdog (`diag.cpp`) writes the log after 15 s of it.
 
 ## Ideas not taken up yet
 

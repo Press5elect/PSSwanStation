@@ -402,6 +402,8 @@ int main(int argc, char **argv)
 		}
 		at[2] = now();
 		const bool playing = !ui::blocksEmulation() && host::running();
+		// For the boot log's watchdog (diag.cpp): a frame, and whether a game runs in it.
+		diag::frameStarted(playing);
 		if (!ui::blocksEmulation())
 			host::runFrame();
 		at[3] = now();
