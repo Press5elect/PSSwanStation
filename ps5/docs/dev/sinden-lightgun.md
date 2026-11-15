@@ -179,7 +179,9 @@ again as fast as it fails.
 
 ### The first test
 
-`data/sinden.txt` with `on`; the gun plugged in before the title starts; 20 s in the library;
+Settings, Controls, Players: player 1's controller the GunCon, "Sinden Lightgun" on player 1's
+GunCon (or `data/sinden.txt` with `on`, which also works without the setting); restart; the gun
+plugged in before the title starts; 20 s in the library;
 then each of the gun's buttons pressed once, in a known order, a second apart, the gun pointed
 at the screen; then Settings, System, Logs, "Save the log now", and the boot log sent. If the
 title or the console stops answering, the next try with `find` says how far the first stage
@@ -201,6 +203,21 @@ gets. The `sinden:` lines are all that is needed (`grep sinden: psswanstation-bo
   second, the sticks aiming again after that. A shot while the gun points off the picture is
   given to the game as the GunCon's shot away from the screen (its reload): the fire buttons
   become L2, so the netplay record is unchanged.
+
+## How the pieces join (`src/sinden_aim.cpp`)
+
+Once a frame, on the frame's thread (`host.cpp`'s `moveAims`, before the GunCon's aim moves),
+while the setting is on and that player has the GunCon: the newest camera picture
+(`sinden::latestFrame`) goes through a `track::Tracker` made for the picture's shape and the
+border's thickness as `ui.cpp` draws them (`ui::sindenPicture`; made again when they change),
+with the gun's calibration from its serial port, and its aim into `host::lightgunAim`; a
+picture without the screen, or an aim off the picture, is an aim off the screen (a shot
+reloads). The gun's buttons (`sinden::buttons`, mouse or joystick bits): the first fires (R2),
+the second is the GunCon's A (Y), the third its B (X), through `host::lightgunButtons`. Every ten
+seconds of play: `sinden: aim: N pictures in 10 s, the screen found in N (N off the picture);
+quality Q, the border's level L of 255; the tracker T ms a picture`. Not done yet: the camera's
+exposure set from the border's level (the tracker reports it; the USB side has no UVC exposure
+control yet), and the gun's keys.
 
 ## The tracker
 

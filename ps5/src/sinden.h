@@ -133,4 +133,10 @@ struct Calibration
 };
 Calibration calibration();
 
+// Once a frame on the frame's thread (host.cpp), while the gun's setting is on
+// and its player has the GunCon: the newest picture through the tracker into
+// the GunCon's aim (host::lightgunAim), and the gun's buttons
+// (host::lightgunButtons). sinden_aim.cpp.
+void aimFrame();
+
 }

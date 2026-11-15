@@ -680,6 +680,10 @@ void setFastForward(bool on);
 // points off the picture, where a shot reloads. Used while it is newer than
 // a tenth of a second; the sticks aim again after that.
 void lightgunAim(int port, float x, float y, bool offscreen);
+// The gun's own buttons for that player (libretro's joypad bits, as the light
+// gun reads them: R2 fires, Y and X its two buttons), added to the pad's while
+// newer than a tenth of a second.
+void lightgunButtons(int port, uint16_t buttons);
 bool fastForward();
 void setRewinding(bool on);
 bool rewinding();

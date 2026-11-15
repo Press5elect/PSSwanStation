@@ -24,6 +24,11 @@
 namespace fe::ui
 {
 
+// The game's picture as drawGame last drew it, for the Sinden Lightgun's
+// tracker: its width over its height on the screen, and the border's thickness
+// as a fraction of its width and of its height (0 when no border is drawn).
+void sindenPicture(float& aspect, float& borderX, float& borderY);
+
 // ---------------------------------------------------------------- texture.cpp
 
 struct Image

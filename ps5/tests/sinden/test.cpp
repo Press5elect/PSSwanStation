@@ -39,7 +39,7 @@
 #include <thread>
 #include <vector>
 
-using namespace fe::sinden;
+using namespace fe::sinden::track;
 
 namespace
 {

@@ -205,6 +205,8 @@ target_compile_options(rcheevos PRIVATE -w)
 
 set(frontend_sources
 	src/main.cpp
+	src/sinden_track.cpp
+	src/sinden_aim.cpp
 	src/storage.cpp
 	src/rewind.cpp
 	src/recorder.cpp

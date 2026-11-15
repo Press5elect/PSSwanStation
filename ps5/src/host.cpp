@@ -37,6 +37,7 @@
 	players' buttons come from netplay.cpp instead, the same on both consoles.
 */
 #include "fe.h"
+#include "sinden.h"
 #include "achievements.h"
 #include "display.h"
 #include "memcard.h"
@@ -199,6 +200,8 @@ struct ExternalAim
 	float x = 0, y = 0;
 	bool offscreen = false;
 	double at = -1;
+	uint16_t buttons = 0;
+	double buttonsAt = -1;
 };
 ExternalAim externalAims[platform::MaxPads];
 bool externalAimFresh(int port)
@@ -449,6 +452,10 @@ netplay::Input localInput(int port)
 	if (!pad.connected || inputBlocked)
 		return in;
 	in.buttons = gameButtons(pad);
+	// The Sinden Lightgun's own buttons, with the pad's.
+	if (options::frontend().controller[port] == 5 && port < platform::MaxPads && externalAims[port].buttonsAt >= 0
+			&& now() - externalAims[port].buttonsAt < 0.1)
+		in.buttons |= externalAims[port].buttons;
 	// The Sinden Lightgun pointing off the picture: its shot is the one that
 	// reloads (the GunCon's games reload on a shot away from the screen).
 	if (options::frontend().controller[port] == 5 && externalAimFresh(port) && externalAims[port].offscreen)
@@ -635,6 +642,8 @@ int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id)
 // picture, and, when the pad's motion sensor answers, by turning the pad.
 void moveAims()
 {
+	// The Sinden Lightgun's picture through the tracker, when it is on.
+	sinden::aimFrame();
 	for (int port = 0; port < platform::MaxPads; port++)
 	{
 		if (options::frontend().controller[port] != 5)
@@ -2210,6 +2219,14 @@ void lightgunAim(int port, float x, float y, bool offscreen)
 	aim.y = y;
 	aim.offscreen = offscreen;
 	aim.at = now();
+}
+
+void lightgunButtons(int port, uint16_t buttons)
+{
+	if (port < 0 || port >= platform::MaxPads)
+		return;
+	externalAims[port].buttons = buttons;
+	externalAims[port].buttonsAt = now();
 }
 
 void setFastForward(bool on)

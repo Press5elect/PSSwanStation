@@ -674,6 +674,15 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 // ------------------------------------------------------------ the game view
 
 ImVec2 gameA, gameB;
+// The picture's shape and the Sinden border's fractions, as drawGame drew them.
+float sindenShape[3] = { 4.f / 3.f, 0.f, 0.f };
+
+void sindenPicture(float& aspect, float& borderX, float& borderY)
+{
+	aspect = sindenShape[0];
+	borderX = sindenShape[1];
+	borderY = sindenShape[2];
+}
 bool optionsSpent;
 
 void drawGame(float dim)
@@ -717,6 +726,9 @@ void drawGame(float dim)
 		}
 		const ImVec2 p0(std::floor((W - dw) * 0.5f), std::floor((H - dh) * 0.5f));
 		const ImVec2 p1(p0.x + dw, p0.y + dh);
+		sindenShape[0] = dh > 0 ? dw / dh : 4.f / 3.f;
+		sindenShape[1] = dw > 0 ? band / dw : 0.f;
+		sindenShape[2] = dh > 0 ? band / dh : 0.f;
 		gameA = p0;
 		gameB = p1;
 		// What is beside the picture, then the picture, then the lines of a

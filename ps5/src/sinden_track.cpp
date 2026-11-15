@@ -12,7 +12,7 @@
 #include <cmath>
 #include <vector>
 
-namespace fe::sinden
+namespace fe::sinden::track
 {
 
 namespace

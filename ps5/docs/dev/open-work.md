@@ -51,11 +51,14 @@ From build 27 test 2:
 
 From the `sinden-usb` branch (not in a test build yet):
 
-- The Sinden Lightgun read by the console itself (switched on by `data/sinden.txt`; the boot
+- The Sinden Lightgun read by the console itself (its setting, or `data/sinden.txt`; the boot
   log's `sinden:` lines, [`sinden-lightgun.md`](sinden-lightgun.md), "The console side"): whether
   libSceUsbd loads and lists the gun, whether ugen's nodes are there, the gun's descriptors, the
   serial port's answers, the buttons' reports, and whether the camera streams either way (its
   rate, or the counts that say where it stops). Checked on the PC against a simulated gun only.
+  Then the aim: `sinden: aim:` lines (the screen found, the quality, the border's level, the
+  tracker's time), the GunCon following the gun in a game, and its buttons. The tracker was
+  measured on drawn frames only (sinden-lightgun.md, "The tracker").
 
 ## Known limits, by how the emulator is built
 

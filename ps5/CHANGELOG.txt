@@ -28,6 +28,13 @@ Build 27
   - Save states on a USB drive (Settings, Games and saving): the states and
     the resume state off the console's storage. States saved before are
     still found.
+  - The Sinden Lightgun, an experiment (Settings, Controls, Players): it
+    aims player 1's or player 2's GunCon. PSSwanStation reads the gun's
+    camera over USB and finds the white border it draws round the game's
+    picture (1-8% of the screen's height) by itself, without Sinden's
+    software; a shot off the screen reloads. Not yet seen to work on a
+    console: the boot log's "sinden:" lines say what the console and the
+    gun did.
   - HDR (Settings, Picture; off), as OGBox has it: the picture goes to an
     HDR TV as HDR10, white at the HDR white level (203 nits at first) and
     the game's brightest parts raised toward the TV's peak (HDR highlights,

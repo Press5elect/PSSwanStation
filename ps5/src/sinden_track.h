@@ -32,7 +32,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace fe::sinden
+namespace fe::sinden::track
 {
 
 struct Point
