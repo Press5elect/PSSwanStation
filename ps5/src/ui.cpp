@@ -5203,6 +5203,8 @@ void startFromArguments(const std::string& rom, bool exitAfterGame)
 
 void frame()
 {
+	// Adjust HDR brightness's pattern is drawn only while its page is drawn.
+	display::hdrTest(0, 0);
 	widgetsFrame();
 	imagesFrame();
 	video::frame();
@@ -5232,6 +5234,14 @@ void frame()
 		// A display output the screen cannot show leaves this page unseen: that
 		// one is put back without being asked for, for the next start.
 		options::Frontend& o = options::frontend();
+		// HDR output too, which the console is asked for as the title starts.
+		if (o.hdr)
+		{
+			o.hdr = false;
+			options::saveFrontend();
+			storage::syncHdr(appDir + "sce_sys/param.json", false);
+			diag::mark("safe start: HDR output is off from the next start");
+		}
 		if (o.displayMode != 0)
 		{
 			o.displayMode = 0;
@@ -5323,6 +5333,7 @@ void frame()
 		case Page::Original: originalPage(f); break;
 		case Page::Shaders: shadersPage(f); break;
 		case Page::Shares: sharesPage(f); break;
+		case Page::HdrTest: hdrTestPage(f); break;
 		case Page::WhatsNew: whatsNewPage(f); break;
 		case Page::DiscDrive: discDrivePage(f); break;
 		case Page::Themes: themesPage(f); break;
@@ -5334,7 +5345,7 @@ void frame()
 		// that have a use of their own for Circle, or that must be answered,
 		// see to it themselves.
 		if (!deferred && page != Page::Loading && page != Page::Launch && page != Page::Text && page != Page::Update
-				&& page != Page::Netplay)
+				&& page != Page::Netplay && page != Page::HdrTest)
 		{
 			if (hit(cancelButton) && page != Page::Details)
 				pop();

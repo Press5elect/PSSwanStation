@@ -17,6 +17,13 @@ Build 27
   - Save states on a USB drive (Settings, Games and saving): the states and
     the resume state off the console's storage. States saved before are
     still found.
+  - HDR (Settings, Picture; off), as OGBox has it: the picture goes to an
+    HDR TV as HDR10, white at the HDR white level (203 nits at first) and
+    the game's brightest parts raised toward the TV's peak (HDR highlights,
+    1000 nits at first, or off). Adjust HDR brightness finds both with two
+    test pictures. It begins at the next start, when the console asks the
+    TV for HDR; with it off, the TV is not asked. Needs the console's own
+    HDR on and a TV that takes it.
   Changed
   - Fewer writes to the console's storage: settings are written when
     PSSwanStation closes and when the console's menu opens, not at every

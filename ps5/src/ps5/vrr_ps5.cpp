@@ -1,6 +1,7 @@
 /*
-	PSSwanStation - variable refresh, as the graphics driver asks for it (from
-	Crux2's ps5_host.cpp and ps5_keyboard.cpp).
+	PSSwanStation - variable refresh and HDR output, as the graphics driver asks
+	for them (from Crux2's ps5_host.cpp and ps5_keyboard.cpp, and OGBox's
+	ps5_modules.cpp).
 
 	SPDX-FileCopyrightText: 2026 Press5elect
 	SPDX-License-Identifier: GPL-3.0-or-later
@@ -69,4 +70,34 @@ extern "C" int ps5_title_videoout_vrr_unpeg(int32_t handle)
 		return found;
 	}();
 	return unpeg != nullptr ? unpeg(handle) : -1;
+}
+
+// HDR output (from OGBox 0.0.9's ps5_modules.cpp): the driver retypes the
+// framebuffers through sceVideoOutSubmitChangeBufferAttribute2 and reads the
+// output's dynamic range through sceVideoOutGetOutputStatus (PS5_Mesa: the
+// wsi/videoout HDR10 framebuffers patch), both looked up here as the variable
+// refresh one is. -1 when the console has no such call: HDR is then refused,
+// and the output reads as unknown.
+extern "C" int ps5_title_videoout_change_attribute(int32_t handle, int32_t set, const void *attribute)
+{
+	using Change = int (*)(int32_t, int32_t, const void *, const void *);
+	static const Change change = [] {
+		const Change found = reinterpret_cast<Change>(find("sceVideoOutSubmitChangeBufferAttribute2", "HuViW4HnrOw"));
+		fe::diag::mark("display: sceVideoOutSubmitChangeBufferAttribute2 %s",
+				found != nullptr ? "found" : "not on this console: no HDR output");
+		return found;
+	}();
+	return change != nullptr ? change(handle, set, attribute, nullptr) : -1;
+}
+
+extern "C" int ps5_title_videoout_output_status(int32_t handle, void *status)
+{
+	using Status = int (*)(int32_t, void *);
+	static const Status get = [] {
+		const Status found = reinterpret_cast<Status>(find("sceVideoOutGetOutputStatus", "utPrVdxio-8"));
+		fe::diag::mark("display: sceVideoOutGetOutputStatus %s",
+				found != nullptr ? "found" : "not on this console: the output's range unknown");
+		return found;
+	}();
+	return get != nullptr ? get(handle, status) : -1;
 }

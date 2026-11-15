@@ -160,6 +160,39 @@ struct Target
 	bool drawn = false;
 };
 Target captureTarget, ambientTarget;
+// HDR output (Settings, Picture: HDR), as OGBox 0.0.9 has it. The graphics
+// driver retypes the framebuffers as HDR10 (ps5/patches/PS5_Mesa: BT.2020 and
+// the PQ curve, as VLC-PS5 does; param.json's attribute 0x20000000, which
+// storage::syncHdr keeps, lets VideoOut take them). The frame is drawn as for
+// an SDR screen, the game's picture into `picture` and the interface into
+// `ui` (over nothing: its colours premultiplied, its cover in alpha, as the
+// kit blends); OGBox's hdr.frag makes HDR10's pixels of both in `ten` (the
+// menus at the white's level, the game's highlights raised toward the peak),
+// which is copied into the framebuffer: the same 32-bit pixels.
+constexpr VkFormat HdrFormat = VK_FORMAT_A2R10G10B10_UNORM_PACK32;
+struct Hdr
+{
+	bool offered = false;		// the driver has HDR10 framebuffers
+	VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	VkDescriptorSet set = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
+	VkRenderPass tenPass = VK_NULL_HANDLE;
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	Target picture, ui, ten;
+	bool on = false;			// the framebuffers are HDR10: each frame is drawn for them
+	bool askedOnce = false, asked = false;
+	float white = 203.f, peak = 1000.f;
+	int testKind = 0, testNits = 0;	// Adjust HDR brightness's pattern: 1 the highlights', 2 the white level's
+	std::string why;			// why it is not on, for the settings
+} hdr;
+// The framebuffers can be copied into (made so only while HDR is declared).
+bool canWrite = false;
+void hdrPrepare();
+void hdrUpdate();
+void hdrRecord(VkCommandBuffer cmd);
+void hdrShutdown();
 // The picture's light (ambient): the blur's levels, 256 x 192 down to 16 x
 // 12, and two frames of its history.
 constexpr int BlurLevels = 5;
@@ -450,6 +483,9 @@ bool createSwapchain()
 	if (caps.maxImageCount != 0)
 		imageCount = std::min(imageCount, caps.maxImageCount);
 	canReadBack = (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
+	// HDR output copies its frame into the framebuffers: only while it is
+	// declared, so the usual swapchain stays as it was.
+	canWrite = hdrDeclared && (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0;
 
 	VkSwapchainCreateInfoKHR info{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
 	info.surface = surface;
@@ -458,7 +494,8 @@ bool createSwapchain()
 	info.imageColorSpace = chosen.colorSpace;
 	info.imageExtent = extent;
 	info.imageArrayLayers = 1;
-	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (canReadBack ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
+	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (canReadBack ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0)
+			| (canWrite ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0);
 	info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.preTransform = (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
 			? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : caps.currentTransform;
@@ -635,6 +672,7 @@ bool init()
 		return false;
 	if (!initInterface())
 		return false;
+	hdrPrepare();
 	diag::mark("vulkan: ready");
 	return true;
 }
@@ -651,6 +689,7 @@ void shutdown()
 	flowShutdown();
 	mihawkShutdown();
 	fsrShutdown();
+	hdrShutdown();
 	std::vector<Target *> targets = { &captureTarget, &ambientTarget };
 	for (Target& level : blurLevels)
 		targets.push_back(&level);
@@ -733,6 +772,9 @@ void *vkInstance()
 
 bool beginFrame()
 {
+	// HDR output turned on or off between frames, the GPU idle, so no frame
+	// is shown as the other kind.
+	hdrUpdate();
 	VkDevice device = g_vulkan_context->GetDevice();
 	semaphoreIndex = (semaphoreIndex + 1) % acquireSemaphores.size();
 	const VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, acquireSemaphores[semaphoreIndex],
@@ -759,19 +801,24 @@ void endFrame()
 	// The kit's uploads and frosted-glass copies, outside the pass; its layers
 	// are laid out in the screen's own pixels.
 	kit.prepare(cmd, g_vulkan_context->GetCurrentCommandBufferIndex(), (float)extent.width, (float)extent.height);
-	VkClearValue clear{};
-	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
-	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-	begin.renderPass = renderPass;
-	begin.framebuffer = framebuffers[imageIndex];
-	begin.renderArea = { { 0, 0 }, extent };
-	begin.clearValueCount = 1;
-	begin.pClearValues = &clear;
-	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
-	for (const Presented& p : presented)
-		presentRecord(cmd, p, (int)extent.width, (int)extent.height);
-	kit.draw(cmd, (int)extent.width, (int)extent.height);
-	vkCmdEndRenderPass(cmd);
+	if (hdr.on)
+		hdrRecord(cmd);
+	else
+	{
+		VkClearValue clear{};
+		clear.color = { { 0.f, 0.f, 0.f, 1.f } };
+		VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+		begin.renderPass = renderPass;
+		begin.framebuffer = framebuffers[imageIndex];
+		begin.renderArea = { { 0, 0 }, extent };
+		begin.clearValueCount = 1;
+		begin.pClearValues = &clear;
+		vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+		for (const Presented& p : presented)
+			presentRecord(cmd, p, (int)extent.width, (int)extent.height);
+		kit.draw(cmd, (int)extent.width, (int)extent.height);
+		vkCmdEndRenderPass(cmd);
+	}
 	presented.clear();
 
 	g_vulkan_context->SubmitCommandBuffer(acquireSemaphores[semaphoreIndex], renderSemaphores[semaphoreIndex]);
@@ -3149,11 +3196,15 @@ bool saveScreenshot(const std::string& path)
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT, &buffer, &memory, &coherent))
 		return false;
 	VkCommandBuffer cmd = g_vulkan_context->GetCurrentCommandBuffer();
-	const VkImage image = images[imageIndex];
+	// With HDR output on, the framebuffer holds HDR10's pixels: the game's
+	// picture as drawn for an SDR screen is taken instead (without the menus).
+	const bool fromHdr = hdr.on && hdr.picture.framebuffer != VK_NULL_HANDLE;
+	const VkImage image = fromHdr ? hdr.picture.texture.GetImage() : images[imageIndex];
+	const VkImageLayout kept = fromHdr ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	barrier.srcAccessMask = 0;
 	barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-	barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	barrier.oldLayout = kept;
 	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 	barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.image = image;
@@ -3167,7 +3218,7 @@ bool saveScreenshot(const std::string& path)
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 	barrier.dstAccessMask = 0;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-	barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	barrier.newLayout = kept;
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0,
 			nullptr, 1, &barrier);
 	g_vulkan_context->ExecuteCommandBuffer(true);
@@ -3679,6 +3730,353 @@ void sceneRelease()
 {
 	if (sc.tried)
 		sceneShutdown();
+}
+
+} // namespace fe::display
+
+// ------------------------------------------------------------- HDR output
+
+// The graphics driver's (ps5/patches/PS5_Mesa: wsi/videoout HDR10 framebuffers
+// on request); weak, so a driver without them, or a PC, links and reads as no
+// HDR output.
+extern "C" int wsi_videoout_set_hdr10(int enable) __attribute__((weak));
+extern "C" int wsi_videoout_hdr10(void) __attribute__((weak));
+extern "C" int wsi_videoout_output_range(void) __attribute__((weak));
+
+namespace fe::display
+{
+namespace
+{
+#include "hdr_spirv.inc"
+
+// hdr.frag's pipeline, its pass and its set, when the driver has HDR10
+// framebuffers; the images are made when HDR output is first turned on.
+void hdrPrepare()
+{
+	if (wsi_videoout_set_hdr10 == nullptr || wsi_videoout_output_range == nullptr)
+	{
+		hdr.why = "This graphics driver has no HDR output.";
+		diag::mark("display: HDR output not offered (the graphics driver has no HDR10 framebuffers)");
+		return;
+	}
+	VkDevice device = g_vulkan_context->GetDevice();
+	VkFormatProperties properties{};
+	vkGetPhysicalDeviceFormatProperties(gpu, HdrFormat, &properties);
+	const VkFormatFeatureFlags needed = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+	if ((properties.optimalTilingFeatures & needed) != needed)
+	{
+		hdr.why = "The graphics processor cannot draw the 10-bit picture HDR output needs.";
+		diag::mark("display: HDR output not offered (no 10-bit target: features %#x)",
+				(unsigned)properties.optimalTilingFeatures);
+		return;
+	}
+	VkDescriptorSetLayoutBinding bindings[2] = {};
+	for (uint32_t i = 0; i < 2; i++)
+	{
+		bindings[i].binding = i;
+		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 2;
+	layoutInfo.pBindings = bindings;
+	VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 };
+	VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	poolInfo.maxSets = 1;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &poolSize;
+	// hdr.frag reads each pixel as it is (texelFetch); the sampler is the set's.
+	VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerInfo.magFilter = samplerInfo.minFilter = VK_FILTER_NEAREST;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.maxAnisotropy = 1.f;
+	// hdr.frag's two vec4s: the metrics and the test pattern.
+	VkPushConstantRange range{ VK_SHADER_STAGE_FRAGMENT_BIT, 0, 32 };
+	VkPipelineLayoutCreateInfo pipelineLayout{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayout.setLayoutCount = 1;
+	pipelineLayout.pSetLayouts = &hdr.setLayout;
+	pipelineLayout.pushConstantRangeCount = 1;
+	pipelineLayout.pPushConstantRanges = &range;
+	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &hdr.setLayout) != VK_SUCCESS
+			|| vkCreateDescriptorPool(device, &poolInfo, nullptr, &hdr.pool) != VK_SUCCESS
+			|| vkCreateSampler(device, &samplerInfo, nullptr, &hdr.sampler) != VK_SUCCESS
+			|| vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &hdr.layout) != VK_SUCCESS)
+	{
+		hdr.why = "The graphics driver refused what HDR output needs (the boot log says).";
+		diag::mark("display: HDR output not offered (a layout, a pool or a sampler refused)");
+		return;
+	}
+	VkDescriptorSetAllocateInfo allocate{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = hdr.pool;
+	allocate.descriptorSetCount = 1;
+	allocate.pSetLayouts = &hdr.setLayout;
+	// The 10-bit picture's pass: every pixel written, then copied into the
+	// framebuffer. It waits for the last frame's copy out of it.
+	VkAttachmentDescription attachment{};
+	attachment.format = HdrFormat;
+	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	VkAttachmentReference reference{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+	VkSubpassDescription subpass{};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &reference;
+	VkSubpassDependency around[2] = {};
+	around[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	around[0].dstSubpass = 0;
+	around[0].srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	around[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	around[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	around[1].srcSubpass = 0;
+	around[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	around[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	around[1].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	around[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	around[1].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	VkRenderPassCreateInfo passInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+	passInfo.attachmentCount = 1;
+	passInfo.pAttachments = &attachment;
+	passInfo.subpassCount = 1;
+	passInfo.pSubpasses = &subpass;
+	passInfo.dependencyCount = 2;
+	passInfo.pDependencies = around;
+	if (vkAllocateDescriptorSets(device, &allocate, &hdr.set) != VK_SUCCESS
+			|| vkCreateRenderPass(device, &passInfo, nullptr, &hdr.tenPass) != VK_SUCCESS)
+	{
+		hdr.why = "The graphics driver refused what HDR output needs (the boot log says).";
+		diag::mark("display: HDR output not offered (its set or its pass refused)");
+		return;
+	}
+	const VkShaderModule vertex = shaderModule(fsr_vertex_spirv, sizeof(fsr_vertex_spirv));
+	const VkShaderModule fragment = shaderModule(hdr_spirv, sizeof(hdr_spirv));
+	if (vertex != VK_NULL_HANDLE && fragment != VK_NULL_HANDLE)
+		hdr.pipeline = fsrPipeline(vertex, fragment, hdr.layout, hdr.tenPass);
+	for (VkShaderModule module : { vertex, fragment })
+		if (module != VK_NULL_HANDLE)
+			vkDestroyShaderModule(device, module, nullptr);
+	hdr.offered = hdr.pipeline != VK_NULL_HANDLE;
+	if (!hdr.offered)
+		hdr.why = "The graphics driver refused HDR output's shader (the boot log says).";
+	diag::mark("display: HDR output %s", hdr.offered ? "offered (Settings, Picture)" : "not offered (hdr.frag's pipeline refused)");
+}
+
+// The two layers and the 10-bit picture, the screen's size, and the set that
+// reads the layers. The GPU idle.
+bool hdrImages()
+{
+	const int w = (int)extent.width, h = (int)extent.height;
+	if (!ensureTarget(hdr.picture, w, h, swapFormat, shaderPass, false) || !ensureTarget(hdr.ui, w, h, swapFormat, shaderPass, false)
+			|| !ensureTarget(hdr.ten, w, h, HdrFormat, hdr.tenPass, false))
+		return false;
+	VkDescriptorImageInfo infos[2] = {
+		{ hdr.sampler, hdr.picture.texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+		{ hdr.sampler, hdr.ui.texture.GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+	};
+	VkWriteDescriptorSet writes[2] = {};
+	for (uint32_t i = 0; i < 2; i++)
+	{
+		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[i].dstSet = hdr.set;
+		writes[i].dstBinding = i;
+		writes[i].descriptorCount = 1;
+		writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[i].pImageInfo = &infos[i];
+	}
+	vkUpdateDescriptorSets(g_vulkan_context->GetDevice(), 2, writes, 0, nullptr);
+	diag::mark("display: HDR targets %d x %d", w, h);
+	return true;
+}
+
+// Before each frame: the setting acted on when it changes (and at the start).
+// On only while this start declared it (param.json) and the console sends HDR
+// (its own HDR setting, and a TV that takes it).
+void hdrUpdate()
+{
+	if (!hdr.offered)
+		return;
+	const options::Frontend& f = options::frontend();
+	hdr.white = (float)std::clamp(f.hdrWhite, 80, 400);
+	hdr.peak = f.hdrHighlights > 0 ? (float)f.hdrHighlights : 0.f;
+	if (hdr.testKind == 2 && hdr.testNits > 0)
+		hdr.white = (float)std::clamp(hdr.testNits, 80, 400);	// the menus show the level being chosen
+	if (hdr.on && wsi_videoout_hdr10 != nullptr && wsi_videoout_hdr10() == 0)
+	{
+		hdr.on = false;	// the driver went back to SDR (a new set of framebuffers refused HDR10)
+		hdr.why = "The console took the framebuffers back to SDR.";
+		diag::mark("display: HDR output off: the driver's framebuffers are SDR again");
+	}
+	const bool want = f.hdr;
+	if (hdr.askedOnce && want == hdr.asked)
+		return;
+	hdr.askedOnce = true;
+	hdr.asked = want;
+	if (want && !hdr.on)
+	{
+		const int range = wsi_videoout_output_range();
+		if (!hdrDeclared)
+		{
+			hdr.why = "HDR output begins at the next start of PSSwanStation: the console is asked for it as a title starts.";
+			diag::mark("display: HDR output asked for; it is declared from the next start");
+		}
+		else if (!canWrite)
+		{
+			hdr.why = "The console's framebuffers cannot be written into, which HDR output needs.";
+			diag::mark("display: HDR output asked for, but the framebuffers cannot be copied into");
+		}
+		else if (range != 2)
+		{
+			hdr.why = range == 1 ? "The console is sending SDR: HDR needs the console's own HDR on (Settings, Screen and "
+					"Video, Video Output) and a TV that takes it."
+					: "The console did not say what it sends, so the picture stays SDR.";
+			diag::mark("display: HDR output asked for, but the console's output is %s: the picture stays SDR",
+					range == 1 ? "SDR" : "of an unknown range");
+		}
+		else
+		{
+			g_vulkan_context->WaitForGPUIdle();
+			const bool images = hdrImages();
+			const int result = images ? wsi_videoout_set_hdr10(1) : -1;
+			hdr.on = images && result == 0;
+			hdr.why = hdr.on ? "" : "The console refused HDR10 framebuffers (the boot log says); the picture stays SDR.";
+			diag::mark("display: HDR output %s (%d; white %.0f nits, highlights %s)", hdr.on ? "on" : "refused", result,
+					hdr.white, hdr.peak > hdr.white ? (std::to_string((int)hdr.peak) + " nits").c_str() : "off");
+		}
+	}
+	else if (!want && hdr.on)
+	{
+		g_vulkan_context->WaitForGPUIdle();
+		const int result = wsi_videoout_set_hdr10(0);
+		hdr.on = result != 0;	// refused: the framebuffers stay HDR10, and so do the frames
+		diag::mark("display: HDR output %s (%d)", hdr.on ? "kept: VideoOut refused SDR" : "off", result);
+	}
+	else if (!want)
+		hdr.why = "";
+}
+
+// endFrame's pass when HDR output is on: the picture's layer, the interface's,
+// hdr.frag into the 10-bit picture, copied into the framebuffer.
+void hdrRecord(VkCommandBuffer cmd)
+{
+	const int w = (int)extent.width, h = (int)extent.height;
+	VkClearValue clear{};
+	VkRenderPassBeginInfo begin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+	begin.renderPass = shaderPass;
+	begin.renderArea = { { 0, 0 }, extent };
+	begin.clearValueCount = 1;
+	begin.pClearValues = &clear;
+	// The game's picture, on black.
+	clear.color = { { 0.f, 0.f, 0.f, 1.f } };
+	begin.framebuffer = hdr.picture.framebuffer;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	for (const Presented& p : presented)
+		presentRecord(cmd, p, w, h);
+	vkCmdEndRenderPass(cmd);
+	// The interface over nothing.
+	clear.color = { { 0.f, 0.f, 0.f, 0.f } };
+	begin.framebuffer = hdr.ui.framebuffer;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	kit.draw(cmd, w, h);
+	vkCmdEndRenderPass(cmd);
+	hdr.picture.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	hdr.ui.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	begin.renderPass = hdr.tenPass;
+	begin.framebuffer = hdr.ten.framebuffer;
+	begin.clearValueCount = 0;
+	begin.pClearValues = nullptr;
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hdr.pipeline);
+	const VkViewport viewport{ 0.f, 0.f, (float)w, (float)h, 0.f, 1.f };
+	const VkRect2D scissor{ { 0, 0 }, extent };
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hdr.layout, 0, 1, &hdr.set, 0, nullptr);
+	const bool srgb = swapFormat == VK_FORMAT_B8G8R8A8_SRGB || swapFormat == VK_FORMAT_R8G8B8A8_SRGB;
+	// The white, the highlights' peak, sRGB layers, the game's picture showing
+	// (its highlights raised); the test pattern and its level.
+	const float constants[8] = { hdr.white, hdr.peak, srgb ? 1.f : 0.f, presented.empty() ? 0.f : 1.f,
+		(float)hdr.testKind, (float)hdr.testNits, 0.f, 0.f };
+	vkCmdPushConstants(cmd, hdr.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), constants);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdEndRenderPass(cmd);
+	hdr.ten.texture.OverrideImageLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+	// Into the framebuffer, after the acquire (whose semaphore the submit
+	// waits for at the colour output stage, which this barrier follows).
+	const VkImage frame = images[imageIndex];
+	VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+	barrier.srcAccessMask = 0;
+	barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = frame;
+	barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+			0, nullptr, 1, &barrier);
+	VkImageCopy region{};
+	region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	region.extent = { extent.width, extent.height, 1 };
+	vkCmdCopyImage(cmd, hdr.ten.texture.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frame,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barrier.dstAccessMask = 0;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
+			nullptr, 1, &barrier);
+}
+
+void hdrShutdown()
+{
+	VkDevice device = g_vulkan_context->GetDevice();
+	if (hdr.on && wsi_videoout_set_hdr10 != nullptr)
+		wsi_videoout_set_hdr10(0);
+	for (Target *target : { &hdr.picture, &hdr.ui, &hdr.ten })
+		destroyTarget(*target);
+	if (hdr.pipeline != VK_NULL_HANDLE)
+		vkDestroyPipeline(device, hdr.pipeline, nullptr);
+	if (hdr.tenPass != VK_NULL_HANDLE)
+		vkDestroyRenderPass(device, hdr.tenPass, nullptr);
+	if (hdr.layout != VK_NULL_HANDLE)
+		vkDestroyPipelineLayout(device, hdr.layout, nullptr);
+	if (hdr.sampler != VK_NULL_HANDLE)
+		vkDestroySampler(device, hdr.sampler, nullptr);
+	if (hdr.pool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(device, hdr.pool, nullptr);
+	if (hdr.setLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(device, hdr.setLayout, nullptr);
+	hdr = Hdr();
+}
+} // namespace
+
+bool hdrOffered()
+{
+	return hdr.offered;
+}
+
+bool hdrOn()
+{
+	return hdr.on;
+}
+
+std::string hdrWhy()
+{
+	return hdr.why;
+}
+
+void hdrTest(int kind, int nits)
+{
+	hdr.testKind = std::clamp(kind, 0, 2);
+	hdr.testNits = kind != 0 ? nits : 0;
 }
 
 } // namespace fe::display

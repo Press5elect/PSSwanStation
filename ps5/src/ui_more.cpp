@@ -3419,6 +3419,75 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				});
 		items.push_back(item);
 	}
+	// HDR output (as OGBox has it): for every game and the menus, declared
+	// in param.json so the console asks the TV for HDR as the title starts.
+	if (!forGame)
+	{
+		options::Frontend& f = options::frontend();
+		const std::string why = display::hdrWhy();
+		Item item = toggle("HDR", &f.hdr,
+				"Sends the picture to the TV as HDR10, with the game's brightest parts brighter (HDR highlights). Needs "
+				"the console's own HDR on (Settings, Screen and Video, Video Output) and a TV that takes HDR; without them "
+				"the picture stays SDR. Turned on, it begins at the next start of PSSwanStation: the console asks the TV for "
+				"HDR as a title starts, and the TV then stays in HDR while PSSwanStation runs, even if this is turned off "
+				"meanwhile. Off: the picture as it always was, and the TV is not asked for HDR."
+				+ (why.empty() ? std::string() : "\n\nNow: " + why),
+				[] { storage::syncHdr(appDir + "sce_sys/param.json", options::frontend().hdr); });
+		if (!display::hdrOffered())
+		{
+			item.enabled = false;
+			item.value = "Not offered";
+		}
+		else if (f.hdr && !display::hdrOn())
+			item.value = "On, not yet";
+		items.push_back(item);
+		if (display::hdrOffered() && f.hdr)
+		{
+			// OGBox's choices: 80 to 400 nits (and BT.2408's 203), and the peak
+			// from 400 to 4000 nits or off.
+			static const std::vector<int> whites = [] {
+				std::vector<int> v;
+				for (int n = 80; n <= 400; n += 10)
+				{
+					v.push_back(n);
+					if (n == 200)
+						v.push_back(203);
+				}
+				return v;
+			}();
+			static const std::vector<int> peaks = { 0, 400, 500, 600, 700, 800, 900, 1000, 1250, 1500, 1750, 2000, 2500,
+				3000, 4000 };
+			const auto names = [](const std::vector<int>& values) {
+				std::vector<std::string> out;
+				for (int n : values)
+					out.push_back(n == 0 ? std::string("Off") : n == 203 ? std::string("203 nits (reference)")
+							: std::to_string(n) + " nits");
+				return out;
+			};
+			const auto nearest = [](const std::vector<int>& values, int n) {
+				int at = 0;
+				for (int i = 0; i < (int)values.size(); i++)
+					if (std::abs(values[(size_t)i] - n) < std::abs(values[(size_t)at] - n))
+						at = i;
+				return at;
+			};
+			items.push_back(choice("HDR white level", nearest(whites, f.hdrWhite), names(whites),
+					"How bright white is, the menus' and the game's: 203 nits is HDR's reference level; raise it if the "
+					"picture looks dim.", [](int i) { options::frontend().hdrWhite = whites[(size_t)i]; }));
+			items.push_back(choice("HDR highlights", nearest(peaks, f.hdrHighlights), names(peaks),
+					"How far the game's brightest parts are raised: set it to the TV's peak brightness (Adjust HDR "
+					"brightness finds it). Off: the picture as an SDR screen shows it, nothing raised.",
+					[](int i) { options::frontend().hdrHighlights = peaks[(size_t)i]; }));
+			items.push_back(action(icon::Screen, "Adjust HDR brightness",
+					"Two test pictures: the TV's peak (for HDR highlights), then the white level.",
+					[] {
+						if (display::hdrOn())
+							push(Page::HdrTest);
+						else
+							inform("Adjust HDR brightness", "HDR output is not on yet. " + display::hdrWhy());
+					}));
+		}
+	}
 	const int generation = now_("frame_generation");
 	{
 		Item item = pictureChoice(forGame, "black_frames", "Black frame insertion", { "Off", "On" },
@@ -4271,6 +4340,102 @@ void discDrivePage(Frame& f)
 		note += " Copies made from this drive lose the same.";
 	const Item *focused = panelList(f, "Play the disc", items, 860, 4 * 60 + 10, note);
 	standardHints(focused);
+}
+
+// ------------------------------------------------------ Adjust HDR brightness
+
+// OGBox's test screen: the highlights' step (an X in a square at the
+// brightest, which can no longer be seen where its level reaches the TV's
+// peak), then the white level's (grey steps and white). hdr.frag draws the
+// pattern in the middle over this page; the values are the settings'
+// choices, saved at the end.
+void hdrTestPage(Frame& f)
+{
+	static int peak, white;
+	options::Frontend& o = options::frontend();
+	if (!display::hdrOn())
+	{
+		pop();
+		return;
+	}
+	if (f.fresh)
+	{
+		peak = o.hdrHighlights > 0 ? o.hdrHighlights : 1000;
+		white = o.hdrWhite;
+		diag::mark("hdr test: opened (highlights %d, white %d nits)", peak, white);
+	}
+	static const std::vector<int> peaks = { 400, 500, 600, 700, 800, 900, 1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000 };
+	static const std::vector<int> whites = [] {
+		std::vector<int> v;
+		for (int n = 80; n <= 400; n += 10)
+		{
+			v.push_back(n);
+			if (n == 200)
+				v.push_back(203);
+		}
+		return v;
+	}();
+	const bool peakStep = f.a == 0;
+	int& value = peakStep ? peak : white;
+	const std::vector<int>& list = peakStep ? peaks : whites;
+	if (nav(Left) || nav(Right))
+	{
+		int at = 0;
+		for (int i = 0; i < (int)list.size(); i++)
+			if (std::abs(list[(size_t)i] - value) < std::abs(list[(size_t)at] - value))
+				at = i;
+		at = std::clamp(at + (nav(Right) ? 1 : -1), 0, (int)list.size() - 1);
+		if (list[(size_t)at] != value)
+		{
+			value = list[(size_t)at];
+			cue(sound::Move);
+		}
+	}
+	if (hit(Triangle))
+		value = peakStep ? 1000 : 203;
+	if (hit(confirmButton))
+	{
+		if (peakStep)
+			f.a = 1;
+		else
+		{
+			o.hdrHighlights = peak;
+			o.hdrWhite = white;
+			options::saveFrontend();
+			diag::mark("hdr test: saved: highlights %d nits, white %d nits", peak, white);
+			pop();
+			inform("HDR", "Highlights " + std::to_string(peak) + " nits, white " + std::to_string(white) + " nits.");
+			return;
+		}
+	}
+	else if (hit(cancelButton))
+	{
+		if (peakStep)
+		{
+			diag::mark("hdr test: left without a change");
+			pop();
+			return;
+		}
+		f.a = 0;
+	}
+	display::hdrTest(f.a == 0 ? 1 : 2, f.a == 0 ? peak : white);
+
+	const float w = (float)display::width(), h = (float)display::height();
+	draw()->AddRectFilled(ImVec2(0, 0), ImVec2(w, h), IM_COL32(0, 0, 0, 255));
+	const ImU32 bright = IM_COL32(235, 235, 235, 255), dim = IM_COL32(170, 170, 170, 255);
+	const float x = px(96), wrap = w - 2 * x;
+	text(ImVec2(x, px(64)), bright, peakStep ? "Adjust HDR: highlights (1 of 2)" : "Adjust HDR: white level (2 of 2)",
+			Title, 40);
+	textWrapped(ImVec2(x, px(128)), wrap, dim, peakStep
+			? "Press Left or Right until the X in the square can only just no longer be seen: that is your TV's peak, "
+			"and the game's brightest parts will go up to it."
+			: "Choose what looks bright but comfortable; 203 nits is HDR's reference. The grey steps should all look "
+			"different.", Body, 22);
+	const std::string shown = std::to_string(value) + " nits";
+	const ImVec2 size = measure(shown, Huge, 46);
+	text(ImVec2((w - size.x) * 0.5f, h * 0.72f + px(18)), bright, shown, Huge, 46);
+	hintBar({ { Left | Right, "Adjust" }, { confirmButton, peakStep ? "Next" : "Save" },
+		{ cancelButton, peakStep ? "Cancel" : "Back" }, { Triangle, "Default" } });
 }
 
 }

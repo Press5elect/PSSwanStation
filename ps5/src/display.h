@@ -32,6 +32,17 @@ float outputRefreshRate();
 float scale();
 std::string deviceName();
 
+// HDR output (Settings, Picture): whether the graphics driver offers it at
+// all (never on a PC), whether the picture goes out as HDR10 now, and why not
+// in a sentence (empty while it is on, or not asked for).
+bool hdrOffered();
+bool hdrOn();
+std::string hdrWhy();
+// Adjust HDR brightness's pattern, over the frame while HDR output is on:
+// 0 none, 1 the highlights' (an X at `nits` in a square at the brightest),
+// 2 the white level's (grey steps and white at `nits`).
+void hdrTest(int kind, int nits);
+
 // Starts a frame: waits for a swapchain image, begins ImGui's frame.
 bool beginFrame();
 // Ends it: ImGui's draw data into the swapchain image, submit, present.

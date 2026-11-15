@@ -276,7 +276,7 @@ The console keeps only the sign-in (in `data/cloud.cfg`, never given out by the 
 
 ## The picture
 
-At first a game looks and runs as on the PlayStation (the Original preset): drawn by the software renderer at the console's own resolution, with its colours, dithering and interlacing, its timing and speed (the CPU's instruction cache included), the edges a television hid cropped, and nothing added. Enhancements are yours to choose: a preset below, or each setting under Settings, Emulator (Enhancement) and Picture. "Differs from the original" (Picture, and "Look" in the menu over a game) lists every setting that is not as the console had it, to put back one by one or all at once. An install from before build 25 keeps the settings it had. "Show frame rate" (Picture) tells you whether a game holds its speed. Every Picture setting except Display output can be a game's own (its details, Options; or Game settings, Picture while it runs).
+At first a game looks and runs as on the PlayStation (the Original preset): drawn by the software renderer at the console's own resolution, with its colours, dithering and interlacing, its timing and speed (the CPU's instruction cache included), the edges a television hid cropped, and nothing added. Enhancements are yours to choose: a preset below, or each setting under Settings, Emulator (Enhancement) and Picture. "Differs from the original" (Picture, and "Look" in the menu over a game) lists every setting that is not as the console had it, to put back one by one or all at once. An install from before build 25 keeps the settings it had. "Show frame rate" (Picture) tells you whether a game holds its speed. Every Picture setting except Display output and HDR can be a game's own (its details, Options; or Game settings, Picture while it runs).
 
 | Setting (Settings, Picture) | Choices |
 | --- | --- |
@@ -292,6 +292,7 @@ At first a game looks and runs as on the PlayStation (the Original preset): draw
 | Frame pacing | By the display, the game's own speed, or the game's own speed by the clock (for variable refresh rate) |
 | Display output | 60 Hz, 120 Hz, or 120 Hz with variable refresh rate; from the next start |
 | Black frame insertion | At 120 Hz, a black refresh between a 60 fps game's frames |
+| HDR | Off (as it always was), or the picture sent to the TV as HDR10; from the next start. With it: HDR white level, HDR highlights and Adjust HDR brightness |
 | Frame generation | Pictures made between the game's, with a generation method, quality, mode and rate settings |
 | Generation method (under Frame generation) | The title's own (the default), AMD FSR3's optical flow, from AMD's FidelityFX SDK, or MihawkGen, Mihawk's small trained network |
 
@@ -302,6 +303,8 @@ At first a game looks and runs as on the PlayStation (the Original preset): draw
 **Shader presets from USB.** Settings, Picture, "Shader presets from USB" brings in a libretro slang preset (`.slangp`) from `PSSwanStation/shaders/` on a USB drive. It is compiled on the console and becomes one of the Picture tube's choices. Not every preset runs fast enough at 4K.
 
 **120 Hz.** Display output is read when PSSwanStation starts. If the screen stays dark after choosing 120 Hz, start PSSwanStation holding L1 and R1, wait ten seconds, close it and start it again.
+
+**HDR** (off at first, as OGBox has it) sends the picture to an HDR TV as HDR10 (BT.2020 colours, the PQ curve). It needs the console's own HDR on (Settings, Screen and Video, Video Output) and a TV that takes HDR; otherwise the picture stays SDR, and the setting says why. Turned on, it begins at the next start: the console asks the TV for HDR as a title starts, and the TV stays in HDR while PSSwanStation runs, even if HDR is turned off meanwhile. White is shown at the HDR white level (203 nits, HDR's reference, at first), the menus too; HDR highlights raises the game's brightest parts toward the TV's peak (1000 nits at first; Off keeps the picture as an SDR screen shows it). Adjust HDR brightness finds both with two test pictures: an X in a bright square that disappears where its level reaches the TV's peak, then grey steps and white at the white level. A start after one that did not finish turns HDR off again. Screenshots while HDR is on are of the game's picture alone.
 
 **Frame generation** (Off or On) makes pictures between the game's own: a 30 fps game moves at 60 on a 60 Hz screen, or up to 120 at 120 Hz. It never changes the game's speed or sound. Its settings:
 
@@ -390,7 +393,7 @@ Settings (first in the menu) has nine sections. L1 and R1 move between sections,
 | System | Console notices. Console tuning: sound and controls before the emulator (off; the sound and USB controllers' threads run first, downloads, covers and copies last), the graphics driver on its own thread (off), the GPU wait's checks and sleeps (the driver's 1500 and 1000 µs, or shorter or longer), and measuring the game in the boot log (a line every five seconds of play: speed, worst frame, each part of a frame, draws, passes and barriers per frame), all but the last from the next start. Logs: how they are kept, where, and what they keep. Recordings of what you press |
 | About | Build number and date, licences |
 
-Display output is the one Picture setting that cannot be a game's own: the console reads it when PSSwanStation starts.
+Display output and HDR are the Picture settings that cannot be a game's own: the console reads them when PSSwanStation starts.
 
 ## Troubleshooting
 

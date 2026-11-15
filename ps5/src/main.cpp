@@ -33,6 +33,7 @@ namespace fe
 
 std::string rootDir;
 std::string appDir;
+bool hdrDeclared;
 // Counts the builds handed over; the About page and the boot log show it.
 const int BuildNumber = 27;
 // The day the build was configured (ps5/CMakeLists.txt).

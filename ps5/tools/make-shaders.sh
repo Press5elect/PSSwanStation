@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PSSwanStation: compile the title's own shaders (ps5/shaders: FSR 1, frame
 # generation and the picture's look, with NVIDIA Image Scaling) into
-# ps5/src/fsr_spirv.inc, fg_spirv.inc and look_spirv.inc, which are kept in
+# ps5/src/fsr_spirv.inc, fg_spirv.inc, look_spirv.inc, present_spirv.inc and
+# hdr_spirv.inc (HDR output), which are kept in
 # the repository so that a build needs no shader compiler. Run it again after
 # changing a shader. Needs glslangValidator.
 #
@@ -44,3 +45,5 @@ write "$ps5/src/look_spirv.inc" "SPIR-V of the picture's look (with AMD's ffx_ca
     look_signal.frag look_scale.frag look_cas.frag look_nis.comp look_down.frag look_grain.frag look_mmpx.frag
 write "$ps5/src/present_spirv.inc" "SPIR-V of the passes of the game's picture under the interface, and of its 3D scenes." \
     present_vertex.vert present_picture.frag scene_vertex.vert scene_mesh.frag scene_resolve.frag
+write "$ps5/src/hdr_spirv.inc" "SPIR-V of HDR output's last pass (OGBox's hdr.frag, OGBox by Press5elect)." \
+    hdr.frag

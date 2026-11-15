@@ -448,6 +448,13 @@ void earlyInit()
 	const int declared = storage::displayModeIn(param);
 	if (storage::syncDisplayMode(param, options::frontend().displayMode))
 		diag::mark("display: mode %d was declared, %d is set", declared, options::frontend().displayMode);
+	// HDR output the same way (OGBox's param.json attribute): what this start
+	// declared is what the console takes, and the setting is kept there for
+	// the next one.
+	hdrDeclared = storage::hdrIn(param);
+	if (storage::syncHdr(param, options::frontend().hdr))
+		diag::mark("display: HDR output %s declared at this start; %s from the next", hdrDeclared ? "was" : "was not",
+				options::frontend().hdr ? "declared" : "not declared");
 	std::string driverParam = param;
 	if (safeStart)
 	{

@@ -31,6 +31,9 @@ extern std::string rootDir;
 // The title's own folder, with a trailing '/': the program, its assets,
 // sce_sys, frontend.cfg. The updater replaces files here and nowhere else.
 extern std::string appDir;
+// HDR output was declared in sce_sys/param.json when this run started, so the
+// console may take HDR10 framebuffers (storage::syncHdr); false on a PC.
+extern bool hdrDeclared;
 // The root as a person reaches it over FTP, and the title's folder.
 std::string shownRoot();
 std::string shownApp();
@@ -238,6 +241,11 @@ int migrate(const std::string& from, const std::string& to);
 // setting says, true when the file was changed (it counts from the next start).
 int displayModeIn(const std::string& paramJson);
 bool syncDisplayMode(const std::string& paramJson, int displayMode);
+// HDR output's attribute (0x20000000, without which VideoOut refuses HDR10
+// framebuffers) set or cleared in param.json's "attribute"; true when the file
+// was changed. hdrIn: whether a param.json declares it.
+bool hdrIn(const std::string& paramJson);
+bool syncHdr(const std::string& paramJson, bool hdr);
 // A start begins: true when the one before it never finished. And it has
 // finished: the library has been on the screen for a while, or the title closes.
 bool startBegan(const std::string& appDir);
@@ -387,6 +395,13 @@ struct Frontend
 	// What the console is asked for (sce_sys/param.json, from the next start):
 	// 0 59.94 Hz, 1 119.88 Hz, 2 119.88 Hz and a variable refresh rate.
 	int displayMode = 0;
+	// HDR output (as OGBox 0.0.9 has it): the picture sent as HDR10 (BT.2020,
+	// PQ) while the console sends HDR; declared in sce_sys/param.json, so the
+	// TV is asked for HDR from the next start (storage::syncHdr). The white
+	// level in nits (BT.2408's 203 by default), and the highlights' peak in
+	// nits (0: off, the SDR picture as it is).
+	bool hdr = false;
+	int hdrWhite = 203, hdrHighlights = 1000;
 	bool blackFrames = false;	// at 119.88 Hz: a black refresh after each of the game's frames
 	bool dynamicResolution = false;	// the resolution scale lowered while the game cannot keep its speed (host.cpp)
 	bool widescreenPatch = true;	// a wide picture asked for: the game's own widescreen patch, when it has one

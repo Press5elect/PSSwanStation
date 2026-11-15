@@ -57,7 +57,7 @@ def main():
              "xxHash, Xbyak, stb, libretro-common, OpenBIOS) and the PS5 frontend in ps5/ (with miniz, stb_vorbis, "
              "stb_truetype, pugixml and nanosvg (ES-DE themes), "
              "dr_mp3, AMD's FSR 1 and CAS headers, NVIDIA Image Scaling, AMD FidelityFX SDK's FSR3 optical flow through swordpdf's ps5-framegen "
-             "and Mihawk's MihawkGen frame generation with its network, and PS5SX2's USB pad decoder, an HTTPS client of its own on mbedTLS, Crux2's clock and pacing wait, the disc drive after DuckStation's (GPL) "
+             "and Mihawk's MihawkGen frame generation with its network, and PS5SX2's USB pad decoder, an HTTPS client of its own on mbedTLS, Crux2's clock and pacing wait, OGBox's HDR output (hdr.frag), the disc drive after DuckStation's (GPL) "
              "and 5S2CD's disc readers, "
              "Project Nayuki's QR Code generator, the sandbox elevation "
              "client and Font Awesome Free's icons)",

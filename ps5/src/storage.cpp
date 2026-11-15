@@ -120,11 +120,12 @@ std::string markerPath(const std::string& app)
 	return app + "data/.starting";
 }
 
-// Where the number after "attribute3" is in the file's text: its first
-// character and the one after its last. False when the key is not there.
-bool findAttribute(const std::string& text, size_t& first, size_t& end)
+// Where the number after `key` ("attribute3" unless named) is in the file's
+// text: its first character and the one after its last. False when the key is
+// not there.
+bool findAttribute(const std::string& text, size_t& first, size_t& end, const char *key = "\"attribute3\"")
 {
-	size_t at = text.find("\"attribute3\"");
+	size_t at = text.find(key);
 	if (at == std::string::npos)
 		return false;
 	at = text.find(':', at);
@@ -218,6 +219,49 @@ bool syncDisplayMode(const std::string& paramJson, int displayMode)
 	chmod(paramJson.c_str(), 0777);
 	diag::mark("storage: the display mode in %s is now %d (attribute3 %#lx), from the next start", paramJson.c_str(),
 			displayMode, attributes[displayMode]);
+	return true;
+}
+
+// HDR output's bit of param.json's "attribute" (as OGBox 0.0.9 declares it):
+// VideoOut takes HDR10 framebuffers only from a title that carries it
+// (0x80290003 without it), and the console then puts the TV into HDR while the
+// title runs, so it is declared only while HDR output is on.
+constexpr unsigned long HdrAttribute = 0x20000000;
+
+bool hdrIn(const std::string& paramJson)
+{
+	std::vector<uint8_t> bytes;
+	if (!readFile(paramJson, bytes))
+		return false;
+	const std::string text(bytes.begin(), bytes.end());
+	size_t first = 0, end = 0;
+	if (!findAttribute(text, first, end, "\"attribute\""))
+		return false;
+	return (strtoul(text.substr(first, end - first).c_str(), nullptr, 0) & HdrAttribute) != 0;
+}
+
+bool syncHdr(const std::string& paramJson, bool hdr)
+{
+	std::vector<uint8_t> bytes;
+	if (!readFile(paramJson, bytes))
+		return false;
+	std::string text(bytes.begin(), bytes.end());
+	size_t first = 0, end = 0;
+	if (!findAttribute(text, first, end, "\"attribute\""))
+		return false;
+	const unsigned long was = strtoul(text.substr(first, end - first).c_str(), nullptr, 0);
+	const unsigned long now = hdr ? (was | HdrAttribute) : (was & ~HdrAttribute);
+	if (now == was)
+		return false;
+	text.replace(first, end - first, std::to_string(now));
+	if (!writeFile(paramJson, text.data(), text.size()))
+	{
+		diag::mark("storage: %s could not be written", paramJson.c_str());
+		return false;
+	}
+	chmod(paramJson.c_str(), 0777);
+	diag::mark("storage: HDR output %s in %s (attribute %#lx), from the next start", hdr ? "declared" : "no longer declared",
+			paramJson.c_str(), now);
 	return true;
 }
 

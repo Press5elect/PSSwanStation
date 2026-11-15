@@ -75,6 +75,7 @@ enum class Page
 	WhatsNew,		// what changed: a: the build the console had before (0: every build)
 	DiscDrive,		// how to play the disc in a drive (the game in `chosen`); a: state slot
 	Shares,			// the network shares: network.cfg's folders, the account, servers found
+	HdrTest,		// Adjust HDR brightness: a: the step (0 the highlights, 1 the white level)
 	// ui_esde.cpp
 	Themes,			// the ES-DE theme: which, its variant, colours, sizes
 	ThemeDownload,	// ES-DE themes to fetch
@@ -276,6 +277,7 @@ void originalPage(Frame& f);
 size_t originalDifferences();
 void shadersPage(Frame& f);
 void sharesPage(Frame& f);
+void hdrTestPage(Frame& f);
 void whatsNewPage(Frame& f);
 void discDrivePage(Frame& f);
 
