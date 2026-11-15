@@ -20,7 +20,16 @@ a word listed in `.release-private`.
    problems, Source and licensing, Build versions). The README's notes list only what was added,
    changed and fixed; `ps5/CHANGELOG.txt` keeps every build's.
 4. Build from committed source: `RELEASE=1 bash ps5/tools/build.sh`, then
-   `python3 ps5/tools/release.py --notes ps5/releases/build<N>.md`.
+   ```bash
+   python3 ps5/tools/release.py --notes ps5/releases/build<N>.md --zip-only \
+       --source-at lapy=https://github.com/Press5elect/PSSwanStation/releases/download/build24/lapy-c3bdfe3a3993.tar.gz
+   ```
+   `--zip-only`: the page carries the ZIP and its `.sha256` alone (`build-ps5/release-build<N>/attach/`);
+   `--source-at`: Lapy's repository is gone, its source is build 24's archive. release.py refuses
+   a revision GitHub does not have, so push first or expect only `psswanstation` to be named as
+   not pushed yet. It also refuses a build machine's path in any file: a library whose `__FILE__`
+   gets in needs `-ffile-prefix-map` for every form of its directory (as given, without `..`,
+   with links resolved; mbedTLS in `ps5/CMakeLists.txt`).
 5. Push `ps5-port` (on the owner's word), then he tags the commit `build<N>` and publishes.
 6. **Attach the ZIP and its `.zip.sha256` only.** release.py also writes source archives; they
    are not attached: the sources are public at the revisions the notes name, and our commits on
