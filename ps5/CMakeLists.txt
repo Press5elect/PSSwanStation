@@ -123,10 +123,13 @@ add_library(mbedtls_fe STATIC ${MBEDTLS_SOURCES})
 target_include_directories(mbedtls_fe PUBLIC "${MBEDTLS_DIR}/include" PRIVATE "${MBEDTLS_DIR}/library")
 target_compile_definitions(mbedtls_fe PUBLIC
 	"MBEDTLS_USER_CONFIG_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/src/mbedtls_config_fe.h\"")
-# Its __FILE__ (in the TLS code's error paths) without this machine's paths.
+# Its __FILE__ (in the TLS code's error paths) without this machine's paths:
+# the directory as given, as CMake writes it (".." taken out, the form the
+# compiler is given), and with its links resolved.
 get_filename_component(MBEDTLS_REAL_DIR "${MBEDTLS_DIR}" REALPATH)
+get_filename_component(MBEDTLS_ABS_DIR "${MBEDTLS_DIR}" ABSOLUTE)
 target_compile_options(mbedtls_fe PRIVATE -w "-ffile-prefix-map=${MBEDTLS_REAL_DIR}/=mbedtls/"
-	"-ffile-prefix-map=${MBEDTLS_DIR}/=mbedtls/")
+	"-ffile-prefix-map=${MBEDTLS_ABS_DIR}/=mbedtls/" "-ffile-prefix-map=${MBEDTLS_DIR}/=mbedtls/")
 if(SWANSTATION_PS5)
 	target_compile_definitions(mbedtls_fe PRIVATE SWANSTATION_PS5=1)
 endif()
