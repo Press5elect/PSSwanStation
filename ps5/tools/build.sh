@@ -36,7 +36,7 @@
 #                     picture tube's shaders are made
 #   LIBRETRO_DATABASE_DIR  a checkout of github.com/libretro/libretro-database
 #                     (default: ../deps-src/libretro-database; only its
-#                     metadat/developer and metadat/redump PlayStation lists and
+#                     metadat (metadat/developer before 2026-11-07) and metadat/redump PlayStation lists and
 #                     its cht/Sony - PlayStation cheats are read), from which the
 #                     game database and the libretro cheats are made; without it
 #                     the title has no descriptions
@@ -163,7 +163,9 @@ else
 fi
 # The game database: descriptions and the serials of discs by their names.
 database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
-if [[ -f "$database/metadat/developer/Sony - PlayStation.dat" ]]; then
+# Its details list is in metadat/ since the database's reorganisation of
+# 2026-11-07, in metadat/developer/ before.
+if [[ -f "$database/metadat/Sony - PlayStation.dat" || -f "$database/metadat/developer/Sony - PlayStation.dat" ]]; then
     python3 "$ps5/tools/make-gamedb.py" "$database" "$app/assets/gamedb.zip"
     # The libretro database's cheats (CC BY-SA 4.0), for games chtdb has none for.
     if [[ -d "$database/cht/Sony - PlayStation" ]]; then

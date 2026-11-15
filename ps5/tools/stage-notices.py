@@ -128,7 +128,10 @@ def main():
                     dirty=False, built_with=built.group(1) if built else "unknown", elf_sha256=manifest.get("elf_sha256"))))
     if (app / "assets/gamedb.zip").exists():
         source = at(database)
-        source["paths"] = ["metadat/developer/Sony - PlayStation.dat", "metadat/redump/Sony - PlayStation.dat", "LICENSE"]
+        details = "metadat/Sony - PlayStation.dat"
+        if not (database / details).exists():
+            details = "metadat/developer/Sony - PlayStation.dat"   # before the database's 2026-11-07 reorganisation
+        source["paths"] = [details, "metadat/redump/Sony - PlayStation.dat", "LICENSE"]
         parts.append(dict(
             id="gamedb", name="the game database (assets/gamedb.zip): the libretro database's PlayStation lists, "
                               "rearranged by ps5/tools/make-gamedb.py",

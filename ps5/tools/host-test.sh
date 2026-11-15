@@ -40,7 +40,7 @@ for archive in cheats.zip patches.zip; do
     [[ -f $chtdb/$archive ]] && cp -- "$chtdb/$archive" "$root/assets/"
 done
 database=${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}
-[[ -f "$database/metadat/developer/Sony - PlayStation.dat" && ! -f $root/assets/gamedb.zip ]] \
+[[ ( -f "$database/metadat/Sony - PlayStation.dat" || -f "$database/metadat/developer/Sony - PlayStation.dat" ) && ! -f $root/assets/gamedb.zip ]] \
     && python3 "$ps5/tools/make-gamedb.py" "$database" "$root/assets/gamedb.zip"
 [[ -d "$database/cht/Sony - PlayStation" && ! -f $root/assets/libretro-cheats.zip ]] \
     && python3 "$ps5/tools/make-libretro-cheats.py" "$database" "$root/assets/libretro-cheats.zip"

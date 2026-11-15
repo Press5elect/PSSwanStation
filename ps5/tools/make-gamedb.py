@@ -6,7 +6,7 @@
 From a checkout of github.com/libretro/libretro-database (CC BY-SA 4.0), two
 of its PlayStation lists:
 
-  metadat/developer/Sony - PlayStation.dat   for each serial number: a
+  metadat/Sony - PlayStation.dat             for each serial number: a
         description, the developer and publisher, the release date, the
         genre and the number of players
   metadat/redump/Sony - PlayStation.dat      the Redump names of the discs
@@ -73,7 +73,11 @@ def main():
         print(__doc__, file=sys.stderr)
         return 2
     database, out = sys.argv[1], sys.argv[2]
-    details = os.path.join(database, "metadat", "developer", "Sony - PlayStation.dat")
+    # Where the details are: metadat/ since the database's reorganisation of
+    # 2026-11-07 (8a642ff), metadat/developer/ before it.
+    details = os.path.join(database, "metadat", "Sony - PlayStation.dat")
+    if not os.path.exists(details):
+        details = os.path.join(database, "metadat", "developer", "Sony - PlayStation.dat")
     redump = os.path.join(database, "metadat", "redump", "Sony - PlayStation.dat")
 
     rows = {}
