@@ -5333,6 +5333,14 @@ void frame()
 {
 	// Adjust HDR brightness's pattern is drawn only while its page is drawn.
 	display::hdrTest(0, 0);
+	// PC test: SWANSTATION_HDR_PAGE opens Adjust HDR brightness once the
+	// start-up animation is over (a PC has no HDR output to open it from).
+	static bool hdrPageOpened;
+	if (!hdrPageOpened && splash.state == Splash::Over && getenv("SWANSTATION_HDR_PAGE") != nullptr)
+	{
+		hdrPageOpened = true;
+		push(Page::HdrTest);
+	}
 	widgetsFrame();
 	imagesFrame();
 	video::frame();

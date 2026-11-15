@@ -4387,7 +4387,10 @@ void hdrTestPage(Frame& f)
 {
 	static int peak, white;
 	options::Frontend& o = options::frontend();
-	if (!display::hdrOn())
+	// A PC has no HDR output: SWANSTATION_HDR_PAGE opens the page there anyway,
+	// for its test (ps5/docs/dev/testing.md).
+	const bool pcTest = getenv("SWANSTATION_HDR_PAGE") != nullptr;
+	if (!display::hdrOn() && !pcTest)
 	{
 		pop();
 		return;
@@ -4397,6 +4400,10 @@ void hdrTestPage(Frame& f)
 		peak = o.hdrHighlights > 0 ? o.hdrHighlights : 1000;
 		white = o.hdrWhite;
 		diag::mark("hdr test: opened (highlights %d, white %d nits)", peak, white);
+		// Taken: the values are this page's from now on. (Only a list clears
+		// fresh by itself, and this page has none: left set, it read the
+		// settings again every frame and undid every step.)
+		f.fresh = false;
 	}
 	static const std::vector<int> peaks = { 400, 500, 600, 700, 800, 900, 1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000 };
 	static const std::vector<int> whites = [] {

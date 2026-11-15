@@ -55,6 +55,9 @@ Switches for a run by hand:
 
 - `SWANSTATION_SHARES_TEST=1`: the share form's file (`network.cfg`) written, read back and changed, and the servers on the network looked for; it prints `shares-test:` lines and exits.
 - `SWANSTATION_SIZE=3840x2160`, `SWANSTATION_GPU=<name>`, `SWANSTATION_REFRESH=<Hz>`.
+- `SWANSTATION_HDR_PAGE=1`: opens Adjust HDR brightness once the start-up animation is over (a PC
+  has no HDR output to open it from); script Left/Right/Cross presses and check `hdr test: saved:`
+  and `hdr_white`/`hdr_highlights` in `frontend.cfg`.
 - A test ROM as BIOS: build `tests/guest/pad_poll.c` (`crt0.S`, `rom.ld`) and make it a ROM with
   `tests/guest/mkrom.py` into `bios/`, so scripted games run without a console's BIOS.
 - `SWANSTATION_FAKE_DRIVE`, `SWANSTATION_FAKE_SANDBOX`: the disc drive's code without a drive.

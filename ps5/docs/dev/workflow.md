@@ -124,5 +124,8 @@ The container is reset between sessions; nothing unpushed survives unless it tra
   the text hunks, then check the series still gives the same revision.
 - `lapy.elf` speaks the sandbox elevator's wire protocol (version 1): a change to
   `ps5/elevator/protocol.hpp` must keep the version and the values Lapy sends.
+- A page that draws no list must clear `f.fresh` itself after taking its values: only `runList`
+  and the scrolling pages clear it, and a page that reads its values `if (f.fresh)` otherwise
+  reads them again every frame (build 27's Adjust HDR brightness undid every step).
 - The title's `param.json` is rewritten at start by the display mode (attribute3) and HDR
   (attribute): edit those through `storage::syncDisplayMode`/`syncHdr`, never by hand in a build.
