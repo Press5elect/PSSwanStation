@@ -191,8 +191,8 @@ gets. The `sinden:` lines are all that is needed (`grep sinden: psswanstation-bo
 
 - **The setting**: Settings, Controls, Players: "Sinden Lightgun" (Off, player 1's or player 2's
   GunCon; that player's controller must be the GunCon) and its "Border" (1-8% of the screen's
-  height, 3% at first). Marked as an experiment that does not work yet until the camera side is
-  in.
+  height, 3% at first). Marked as an experiment, not yet seen to work on a console (released so
+  in build 27).
 - **The border** (`ui.cpp`, `drawGame`): while it is on and that player has the GunCon, the game's
   picture is made smaller by the border on each side and a plain white frame is drawn just
   outside it: none of the picture is covered, and the frame's inner edge is the picture's edge,

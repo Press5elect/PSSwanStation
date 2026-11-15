@@ -2,7 +2,7 @@
 
 This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a native title (`PPSA99248`) for a jailbroken PS5, drawing with Vulkan through the RADV driver, with a library for the controller, every setting of the emulator, save states, cheats, RetroAchievements and more. The work is on the branch `ps5-port`.
 
-- **Latest release: [build 26](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console and its SHA-256; the release names the public revision of every part's source)
+- **Latest release: [build 27](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console and its SHA-256; the release names the public revision of every part's source)
 - The manual, every screen and setting: [`ps5/MANUAL.md`](ps5/MANUAL.md)
 - What it does and how to use it: [`ps5/README.txt`](ps5/README.txt)
 - What changed in each build: [`ps5/CHANGELOG.txt`](ps5/CHANGELOG.txt)
@@ -11,23 +11,34 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 - Licences of every part: [`ps5/licenses/README.txt`](ps5/licenses/README.txt)
 - Working on it (building, testing, releasing, open work): [`ps5/docs/README.md`](ps5/docs/README.md)
 
-### Build 26
+### Build 27
 
 #### Added
 
-- **The renderer changes while a game runs.** Software and Vulkan, both ways: the game goes on where it was, with no restart. The picture presets that change the renderer apply at once too.
-- **Multi-disc games as one** (Settings, Library, View; on): the discs of a game are one entry, sharing one memory card. Discs are now also found when each is in a folder of its own named after the disc (`Game (Disc 1)/...`), in folders named only `CD1`, `CD2` (`Game/CD1/...`), and by "CD2" or "Disc 2" at the end of a name. Off: each disc is an entry of its own.
-- **Variable refresh, really asked for**: "120 Hz, variable refresh rate" (Display output) now asks the output to leave its fixed rate, so on a TV with VRR each frame is shown as soon as it is ready, where the console's firmware offers it (the boot log says whether it does).
+- **HDR** (Settings, Picture; off): the picture goes to an HDR TV as HDR10, white at the HDR white level (203 nits at first) and the game's brightest parts raised toward the TV's peak (HDR highlights). **Adjust HDR brightness** finds both with two test pictures. It begins at the next start, and the TV is asked for HDR only while it is on. Needs the console's own HDR on and a TV that takes it.
+- **Network shares from the console** (Settings, Games and saving, Network shares): add, change and remove the folders with games, the account and the folder for your files, without editing `network.cfg` over FTP. The SMB servers on the network are found for you, and a change is used at once.
+- **A game on a share that does not answer yet waits for it** ("Waiting for the network share", Circle goes back) instead of failing, and the shares are woken as PSSwanStation starts, so a NAS's disks are turning by the time a game starts.
+- **Logs** (Settings, System): written as they come, only when something goes wrong, or off; in the title's folder or on a USB drive; the boot log alone, with the emulator's log, or everything. Kept in memory, they keep the session's start too, and a game that stands still for 15 s writes them by itself.
+- **Save states on a USB drive** (Settings, Games and saving).
+- **Vibration strength** (Settings, Controls).
+- **The Sinden Lightgun, an experiment** (Settings, Controls, Players): it aims a player's GunCon. PSSwanStation reads the gun's camera over USB and finds the white border it draws round the game's picture itself, without Sinden's software. **Not tested with a gun yet**: if you have one, please try it and open an issue with the boot log's `sinden:` lines.
 
 #### Changed
 
-- **The graphics driver is Mesa main of 31 October 2026** (27.0.0-devel, as Crux2 1.0.17 builds it): fixes to the shader compiler and to how graphics pipelines are found in the shader cache.
-- Newer parts: libsmb2 (c6e4997) and libnfs (affe4c8).
+- **Fewer writes to the console's storage**: settings written when PSSwanStation closes and when the console's menu opens, files written only when they changed, one shader cache, an update replacing only the files that changed, and the sleep-safe resume state saved only when the console's menu opens.
+- **Network games read faster**: large TCP buffers for every SMB, NFS and FTP connection.
+- **Closing while your files are being brought up to date** finishes the file it is copying, with a bar, and closes; the rest follows at the next start.
+- **The stick dead zone** is taken round the stick's middle: small diagonals stay diagonals.
+- **The graphics driver** is PS5_Mesa main of 10 November 2026 with Crux2's patches: a cached pipeline that lost a stage is compiled again instead of crashing at every start. Newer payload SDK (upstream's v0.45), libsmb2 and libnfs.
+- Every cover of the library is fetched in the background with "Download covers" on.
 
 #### Fixed
 
-- **120 Hz fell back to 60 Hz on TVs with VRR**: before the first frame such a TV refreshes at 48 Hz, which was taken for a TV still at 60 Hz.
-- **Cover downloads could stop for the rest of a run** when a cover downloaded but could not be saved (a full or read-only drive); the boot log now says why it was not saved (bobrass, pull request #5).
+- **The console could go down after PSSwanStation was closed a number of times with USB or disc drives on**: the sandbox elevator now keeps the console root's reference counts right (as Crux2 and OGBox do).
+- **Quick taps on the controller** that never reached the game.
+- The sound running away when the console's sound output refused a block.
+- The game database missing after the libretro database moved its lists.
+- Safe start's "Stay in the sandbox" now also switches USB controllers off.
 
 **Author and credit.** The PS5 title (everything in `ps5/` and the changes to SwanStation for it) is Copyright (C) 2026 [Press5elect](https://github.com/Press5elect), under the GNU General Public License, version 3 or later, with one additional term under its section 7(b): anyone who passes on this work or a work based on it, in source or binary form, must keep its author's attributions and credit "PSSwanStation by Press5elect" wherever the work shows its credits. That holds however a copy or an adaptation is made, AI tools included. The term is in [`ps5/licenses/ADDITIONAL-TERMS.txt`](ps5/licenses/ADDITIONAL-TERMS.txt). SwanStation and the libraries keep their own licences and authors.
 

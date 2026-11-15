@@ -3,7 +3,7 @@
 What is unfinished, untested on the console, or decided. Update it in the same commit as the
 change; when a test build confirms something, move it from the first list to the record below.
 
-## Untested on the console (as of build 27 test 2)
+## Untested on the console (as of build 27)
 
 From build 27 test 1:
 
@@ -36,20 +36,21 @@ From build 27 test 2:
   N KiB of …`). Checked on the PC over FTP only: SMB and NFS go through the same paths (`stat`,
   `probe`, `status`) but no server of either kind was there. A 5 s probe of a server that is off,
   not seen.
-- Closing while the files are being brought up to date (not in a test build yet): the bar, then
+- Closing while the files are being brought up to date (from test 3): the bar, then
   the boot log's `close: waiting for the files' sync first` … `files: Stopped as PSSwanStation
   closed: …` … `close: the files' sync stopped N s after the close was asked; closing`, and the
   next start's sync bringing the rest. Checked on the PC against an SMB share (impacket's server)
   only; not with NFS or a cloud storage.
 - Logs kept in memory keeping the session's first 512 KiB and its last 8 MiB, and the watchdog
-  writing them after 15 s without a frame in a game (not in a test build yet; boot log:
+  writing them after 15 s without a frame in a game (from test 3; boot log:
   `watchdog: no frame for 15 s while a game runs`, then `[log: the lines kept in memory,
   written: …]`). Not known yet: whether the console's menu over a game, or the title in the
   background, stops the title's frames (the watchdog does not count that time), and whether the
   clock runs on while the console suspends the title (a second of the watchdog's that took more
   than five starts its count again).
 
-From the `sinden-usb` branch (not in a test build yet):
+From build 27 test 3, released in build 27 as an experiment; the owner has not tried it with
+the gun, and waits for users' reports (an issue with the boot log's `sinden:` lines):
 
 - The Sinden Lightgun read by the console itself (its setting, or `data/sinden.txt`; the boot
   log's `sinden:` lines, [`sinden-lightgun.md`](sinden-lightgun.md), "The console side"): whether
