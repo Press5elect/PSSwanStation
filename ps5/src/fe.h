@@ -456,6 +456,7 @@ struct Frontend
 	int controller[4] = {1, 1, 1, 1};
 	float deadZone = 0.10f;
 	bool rumble = true;
+	int rumbleStrength = 100;	// the game's vibration scaled, in percent (as OGBox's rumble strength)
 	bool playerLights = true;	// each player's light bar in their colour
 	// The PlayStation's sixteen buttons (libretro's order: Cross, Square,
 	// Select, Start, Up, Down, Left, Right, Circle, Triangle, L1, R1, L2, R2,

@@ -319,14 +319,22 @@ void inputPoll()
 {
 }
 
-int16_t stick(float value)
+// A stick's two axes with the dead zone taken round its middle, not along each
+// axis (as OGBox does, after the Xbox's): the rest of its travel rescaled to
+// the full reach, so a small diagonal stays a diagonal instead of being pulled
+// onto the nearer axis, and the edge is still reached in every direction.
+void stick(float x, float y, int16_t& outX, int16_t& outY)
 {
 	const float dead = options::frontend().deadZone;
-	const float magnitude = std::fabs(value);
-	if (magnitude < dead)
-		return 0;
-	const float scaled = std::copysign((magnitude - dead) / (1.f - dead), value);
-	return (int16_t)std::lround(std::clamp(scaled, -1.f, 1.f) * 32767.f);
+	const float magnitude = std::sqrt(x * x + y * y);
+	if (magnitude <= dead || magnitude <= 0.f)
+	{
+		outX = outY = 0;
+		return;
+	}
+	const float gain = std::min(1.f, (magnitude - dead) / (1.f - dead)) / magnitude;
+	outX = (int16_t)std::lround(std::clamp(x * gain, -1.f, 1.f) * 32767.f);
+	outY = (int16_t)std::lround(std::clamp(y * gain, -1.f, 1.f) * 32767.f);
 }
 
 }
@@ -428,10 +436,8 @@ netplay::Input localInput(int port)
 	if (!pad.connected || inputBlocked)
 		return in;
 	in.buttons = gameButtons(pad);
-	in.lx = stick(pad.lx);
-	in.ly = stick(pad.ly);
-	in.rx = stick(pad.rx);
-	in.ry = stick(pad.ry);
+	stick(pad.lx, pad.ly, in.lx, in.ly);
+	stick(pad.rx, pad.ry, in.rx, in.ry);
 	if (port == 0)
 	{
 		// The lean adds to the stick, so either steers.
@@ -2159,8 +2165,12 @@ void runFrame()
 		updateDisplay();
 	}
 	if (options::frontend().rumble)
+	{
+		// Vibration strength (Settings, Controls): the game's, scaled.
+		const float strength = (float)std::clamp(options::frontend().rumbleStrength, 10, 100) / 100.f;
 		for (int i = 0; i < platform::MaxPads; i++)
-			platform::padRumble(i, rumble[i][0], rumble[i][1]);
+			platform::padRumble(i, rumble[i][0] * strength, rumble[i][1] * strength);
+	}
 }
 
 void setFastForward(bool on)

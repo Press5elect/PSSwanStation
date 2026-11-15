@@ -3805,9 +3805,15 @@ void moreSettings(int kind, std::vector<Item>& items)
 				[] { push(Page::Buttons); }));
 		items.push_back(choice("Stick dead zone", (int)std::lround(f.deadZone * 20.f),
 				{ "0%", "5%", "10%", "15%", "20%", "25%", "30%", "35%", "40%" },
-				"How far a stick must move before the game sees it.",
+				"How far a stick must move from its middle, in any direction, before the game sees it; the rest of "
+				"its travel is spread over the full reach.",
 				[](int i) { options::frontend().deadZone = (float)i * 0.05f; }));
 		items.push_back(toggle("Vibration", &f.rumble, "Passes the game's vibration to the DualSense."));
+		if (f.rumble)
+			items.push_back(choice("Vibration strength", std::clamp(f.rumbleStrength / 10 - 1, 0, 9),
+					{ "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
+					"How strongly the DualSense vibrates when the game asks: 100% is the game's own.",
+					[](int i) { options::frontend().rumbleStrength = (i + 1) * 10; }));
 		items.push_back(toggle("Player lights", &f.playerLights, "Each pad's light bar in its player's colour: blue, "
 				"red, green and pink for players 1 to 4."));
 		{
@@ -3946,7 +3952,8 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"takes with it.\n\nOn the console, outside it: " + storage::OutsideDir + ", which deleting or replacing "
 					"the title cannot touch.\n\nA USB drive: a folder " + storage::UsbFolder + " at the top of the first USB "
 					"drive that has one, else of the first that can be written to; the drive goes from console to "
-					"console with your saves on it.\n\nThe network share: network.cfg's \"files\" folder (" + shareName
+					"console with your saves on it, and the console never slows its writes (it slows a title's writes "
+					"to its own storage to about 2 MB a second after the first GB or so).\n\nThe network share: network.cfg's \"files\" folder (" + shareName
 					+ "), shared by every console at home. The console keeps a working copy, so that it starts and saves "
 					"when the share is off; the copy is brought up to date when PSSwanStation starts and sent to the share "
 					"when a game closes.\n\nFrom the next start. What was kept before is copied to the new place once "
@@ -4287,7 +4294,9 @@ void discDrivePage(Frame& f)
 		Item item = action(icon::Download, "Copy it, then play the copy",
 				format("Reads the whole disc (%u MB) and writes it as a .bin and .cue, with an .sbi for a LibCrypt-protected "
 				"disc, to the place you choose; the copy is then in the library and plays without the disc. Reading it "
-				"takes a few minutes, as fast as the drive goes.", mb), {});
+				"takes a few minutes, as fast as the drive goes. A USB drive is the better place for more than a disc "
+				"or two: the console slows a title's writes to its own storage to about 2 MB a second after the "
+				"first GB or so.", mb), {});
 		item.menu = true;
 		for (int d = 0; d < discdrive::DestinationCount; d++)
 		{

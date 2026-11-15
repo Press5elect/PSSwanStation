@@ -35,7 +35,16 @@ Build 27
     test pictures. It begins at the next start, when the console asks the
     TV for HDR; with it off, the TV is not asked. Needs the console's own
     HDR on and a TV that takes it.
+  - Vibration strength (Settings, Controls; 100% at first), as OGBox has
+    it: the game's vibration made gentler.
   Changed
+  - The stick dead zone is taken round the stick's middle, not along each
+    axis (as OGBox does): a small diagonal stays a diagonal instead of
+    being pulled onto the nearer direction, and the rest of the stick's
+    travel still reaches the edge in every direction.
+  - Where your files are kept and the disc copy say that a USB drive is
+    not slowed: the console slows a title's writes to its own storage to
+    about 2 MB a second after the first GB or so.
   - Fewer writes to the console's storage: settings are written when
     PSSwanStation closes and when the console's menu opens, not at every
     change; a file is not written again when nothing in it changed; the
