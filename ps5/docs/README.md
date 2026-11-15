@@ -23,6 +23,7 @@ everything about the title is under `ps5/`.
 | [`dev/testing.md`](dev/testing.md) | Checking a change on the PC: the host build, the screenshot run, `ps5/tests` |
 | [`dev/releasing.md`](dev/releasing.md) | Making a release |
 | [`dev/open-work.md`](dev/open-work.md) | What is untested on the console, ideas not taken up, decisions on record |
+| [`dev/sinden-lightgun.md`](dev/sinden-lightgun.md) | Supporting the Sinden Lightgun: how the gun works, what is closed, the three ways |
 
 ## Elsewhere in the tree
 
