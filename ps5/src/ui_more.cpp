@@ -25,6 +25,7 @@
 #include "speedrun.h"
 #include "web.h"
 #include "slangimport.h"
+#include "sinden.h"
 #include "qrcodegen.hpp"
 #include "cloud.h"
 #include "update.h"
@@ -1618,6 +1619,7 @@ void safeStartPage(Frame& f)
 				o.usb = false;
 				o.discDrive = false;
 				o.usbPads = 0;	// USB controllers too, as the text says: each one makes it leave
+				o.sinden = 0;	// and the Sinden Lightgun, read over USB the same way
 				o.filesAt = 0;
 				options::saveFrontend();
 				inform("Done", "From the next start PSSwanStation stays in its sandbox and uses the files in its own folder.");
@@ -3777,11 +3779,14 @@ void moreSettings(int kind, std::vector<Item>& items)
 		items.push_back(header("Sinden Lightgun"));
 		{
 			Item item = choice("Sinden Lightgun", std::clamp(f.sinden, 0, 2), { "Off", "Player 1's GunCon", "Player 2's GunCon" },
-					"An experiment, not yet working: the Sinden Lightgun aims a player's GunCon (set that player's "
-					"controller to the GunCon above). Its camera finds the white border drawn round the game's picture, "
-					"and the gun's position follows. PSSwanStation does the gun's tracking itself, without Sinden's "
-					"software; for now only the border and the aim's way into the game are there, and the gun's camera "
-					"over USB is being worked on.",
+					"An experiment: the Sinden Lightgun aims a player's GunCon (set that player's controller to the "
+					"GunCon above). Its camera finds the white border drawn round the game's picture, and the gun's "
+					"position follows; PSSwanStation does the gun's tracking itself, without Sinden's software. Not yet "
+					"seen to work on a console: the boot log's \"sinden:\" lines say what the console and the gun did. "
+					"Needs PSSwanStation to leave its sandbox (a resident Lapy service or the ELF loader on port 9021); "
+					"from the next start." + std::string(sinden::state() == sinden::State::Off ? "" :
+					"\n\nNow: " + std::string(sinden::stateName(sinden::state())) + (sinden::status().why.empty() ? "" :
+					" (" + sinden::status().why + ")")),
 					[](int i) { options::frontend().sinden = i; });
 			items.push_back(item);
 			Item band = choice("Border", std::clamp(f.sindenBorder, 1, 8) - 1, { "1%", "2%", "3%", "4%", "5%", "6%", "7%", "8%" },

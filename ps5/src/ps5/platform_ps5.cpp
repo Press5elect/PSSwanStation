@@ -286,8 +286,10 @@ void earlyInit()
 				"drives cannot be seen. Start PSSwanStation again.";
 	}
 	const int filesAt = options::frontend().filesAt;
+	// The Sinden Lightgun too: its camera, buttons and serial port are read
+	// over USB, as USB controllers are.
 	const bool wantOut = (options::frontend().usb || options::frontend().discDrive || options::frontend().usbPads != 0
-			|| filesAt == 1 || filesAt == 2
+			|| options::frontend().sinden != 0 || filesAt == 1 || filesAt == 2
 			|| filesAt == 3) && !safeStart;
 	if (wantOut)
 	{
@@ -496,9 +498,11 @@ void lateInit()
 {
 	diag::mark("hide splash screen: %d", sceSystemServiceHideSplashScreen());
 	padOpen();
-	// Before the USB controllers, so that they leave the gun alone. A test
-	// switch until the gun has its setting (sinden.h).
-	sinden::startIfAsked();
+	// Before the USB controllers, so that they leave the gun alone. Its
+	// setting (Settings, Controls, Players), or the test switch
+	// (data/sinden.txt: "find", "usbd" or "ugen"), which says how and wins.
+	if (!sinden::startIfAsked() && options::frontend().sinden != 0)
+		sinden::start();
 	usbPadStart(options::frontend().usbPads);
 }
 
