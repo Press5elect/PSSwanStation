@@ -317,7 +317,9 @@ void earlyInit()
 			else
 			{
 				const elevation::Status rooted = elevation::requestHelper(elevation::Capability::filesystem, helper);
-				if (rooted == elevation::Status::ok)
+				// The old way still gives the root; the boot log says it was taken.
+				const bool rootGiven = rooted == elevation::Status::ok || rooted == elevation::Status::ok_unbalanced;
+				if (rootGiven)
 				{
 					elevated = true;
 					drivesWhy.clear();
@@ -329,8 +331,11 @@ void earlyInit()
 							+ "), so the console's list of drives may be hidden. It needs the ELF loader listening on "
 							"port 9021; start that, then start PSSwanStation again.";
 				diag::mark("sandbox: the elevator %s (status %u); /dev %s a disc drive now",
-						rooted == elevation::Status::ok ? "gave the console's root" : "did not answer yes", (unsigned)rooted,
-						devHasDrives() ? "shows" : "still shows no");
+						rooted == elevation::Status::ok ? "gave the console's root, its references traded"
+						: rootGiven ? "gave the console's root the old way (its own root was not the console's: this "
+								"title's exit releases two references to the root it never took)"
+								: "did not answer yes",
+						(unsigned)rooted, devHasDrives() ? "shows" : "still shows no");
 			}
 		}
 	}

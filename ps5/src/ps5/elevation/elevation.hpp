@@ -28,6 +28,10 @@ enum class Status : std::uint32_t
     transport_error = 9,
     protocol_error = 10,
     timeout = 11,
+    // PSSwanStation build 27: the sandbox elevator gave the console's root the old way (its own
+    // root was not the console's): the title's exit releases two references to the root it never
+    // took (ps5/elevator/protocol.hpp). Only the sandbox elevator sends it.
+    ok_unbalanced = 12,
 };
 
 // Call once during single-threaded startup. A resident upstream Lapy service

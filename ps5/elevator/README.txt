@@ -10,5 +10,11 @@ the sandbox (a resident Lapy service, or lapy.elf) does not show the console's
 own /dev, where USB CD and DVD drives are: it sets the title's root and jail
 directories to the console's root, so /dev is the real one.
 
+Since build 27 it does so as Crux2 1.0.19 does (from OGBox 0.0.2): the helper
+and the title trade their root and jail pointers, so each one's exit releases
+references it holds, and the console root's count stays right. Only when the
+helper's own root is not the console's does it write the root as before, and
+it answers ok_unbalanced (12; 11 is the title's own timeout, never sent).
+
 SPDX-FileCopyrightText: 2026 Press5elect
 SPDX-License-Identifier: GPL-3.0-or-later

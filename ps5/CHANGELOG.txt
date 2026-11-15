@@ -44,6 +44,13 @@ Build 27
     (as OGBox's): a line no longer waits for the file system on the thread
     that wrote it. The log is put on the disk every 30 seconds that had
     lines, and a crash report still writes everything before itself.
+  Fixed
+  - With USB or disc drives on, each close of PSSwanStation took two
+    references to the console's root that it never had, which in time can
+    take the console down: the sandbox elevator gave the title the root
+    without counting it. It now trades its own counted references with the
+    title's, as Crux2 1.0.19 and OGBox 0.0.2 do; the boot log says which
+    way was taken.
 
 Build 26
   Added

@@ -43,7 +43,8 @@ constexpr Status validate(const Message &message) noexcept
     if (message.version != Message{}.version)
         return Status::unsupported_version;
     if (message.kind < Kind::request || message.kind > Kind::response || message.pid <= 1 ||
-        message.pid > INT32_MAX || message.status > Status::protocol_error)
+        message.pid > INT32_MAX ||
+        (message.status > Status::protocol_error && message.status != Status::ok_unbalanced))
         return Status::invalid_request;
     if (message.capability != Capability::filesystem)
         return Status::unsupported_capability;

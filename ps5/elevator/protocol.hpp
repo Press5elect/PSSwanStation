@@ -29,6 +29,11 @@ enum class Status : std::uint32_t
     rollback_failed = 8,
     transport_error = 9,
     protocol_error = 10,
+    // 11 is the title's own timeout (ps5/src/ps5/elevation/elevation.hpp), never sent.
+    // PSSwanStation build 27 (Crux2 v1.0.19's ok_unbalanced, from OGBox 0.0.2): the helper's own
+    // root was not the console's, so it wrote the root into the title's fd_rdir and fd_jdir as
+    // before: the title's exit releases two references to the root it never took
+    ok_unbalanced = 12,
 };
 
 namespace wire
@@ -65,7 +70,8 @@ constexpr Status validate(const Message &message) noexcept
     if (message.version != Message{}.version)
         return Status::unsupported_version;
     if (message.kind < Kind::request || message.kind > Kind::response || message.pid == 0 ||
-        message.pid > INT32_MAX || message.status > Status::protocol_error)
+        message.pid > INT32_MAX ||
+        (message.status > Status::protocol_error && message.status != Status::ok_unbalanced))
         return Status::invalid_request;
     if (message.capability != Capability::filesystem)
         return Status::unsupported_capability;

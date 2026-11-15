@@ -3,7 +3,10 @@
  * Copyright (C) 2026 BlackBearReloaded
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Changed for PSSwanStation (SPDX-FileCopyrightText: 2026 Press5elect): the title ID, PPSA99248.
+ * Changed for PSSwanStation (SPDX-FileCopyrightText: 2026 Press5elect): the title ID, PPSA99248;
+ * and the root's reference counts kept right, as Crux2 v1.0.19 has it from OGBox 0.0.2
+ * (Press5elect/Crux2 and Press5elect/OGBox, ps5/elevation/payload/main.cpp). Additional term
+ * (GPL-3.0 section 7(b)) of that change: keep the attribution "Crux2 by Press5elect".
  */
 #include "../protocol.hpp"
 
@@ -111,7 +114,16 @@ bool read_state(const Target &target, State &state) noexcept
                           sizeof(state.jail)) == 0;
 }
 
-bool write_state(const Target &target, const State &state) noexcept
+// One pointer of a filedesc, written as it is (no reference is taken or released).
+bool write_pointer(const Target &target, off_t offset, std::intptr_t value) noexcept
+{
+    std::intptr_t now = 0;
+    return kernel_copyin(&value, target.filedesc + offset, sizeof(value)) == 0 &&
+           kernel_copyout(target.filedesc + offset, &now, sizeof(now)) == 0 && now == value;
+}
+
+// The credentials (the cloned ucred is the process's own: no reference counts there).
+bool write_credentials(const Target &target, const State &state) noexcept
 {
     // Attempt every field, including during rollback after a partial write.
     int failures = 0;
@@ -123,31 +135,12 @@ bool write_state(const Target &target, const State &state) noexcept
                               state.caps.size()) != 0;
     failures += kernel_copyin(state.attrs.data(), target.ucred + KERNEL_OFFSET_UCRED_CR_SCEATTRS,
                               state.attrs.size()) != 0;
-    failures += kernel_copyin(&state.root, target.filedesc + KERNEL_OFFSET_FILEDESC_FD_RDIR,
-                              sizeof(state.root)) != 0;
-    failures += kernel_copyin(&state.jail, target.filedesc + KERNEL_OFFSET_FILEDESC_FD_JDIR,
-                              sizeof(state.jail)) != 0;
     return failures == 0;
 }
 
-Status grant_filesystem(const Target &target, const State &original) noexcept
+bool same_credentials(const State &a, const State &b) noexcept
 {
-    State desired = original;
-    desired.root = kernel_get_root_vnode();
-    if (!kernel_pointer(desired.root))
-        return Status::unavailable;
-    desired.jail = desired.root;
-    desired.identity.fill(0);
-    desired.authority = system_auth_id;
-    desired.caps.fill(0xff);
-    desired.attrs[3] |= 0x80;
-
-    State verified{};
-    if (write_state(target, desired) && read_state(target, verified) && verified == desired)
-        return Status::ok;
-    if (write_state(target, original) && read_state(target, verified) && verified == original)
-        return Status::apply_failed;
-    return Status::rollback_failed;
+    return a.identity == b.identity && a.authority == b.authority && a.caps == b.caps && a.attrs == b.attrs;
 }
 
 bool send_message(const Message &message) noexcept
@@ -162,6 +155,101 @@ bool receive_message(Message &message) noexcept
     return elevation::wire::transfer(reinterpret_cast<std::uint8_t *>(&message), sizeof(message),
                                      [](auto *bytes, std::size_t size)
                                      { return read(STDIN_FILENO, bytes, size); });
+}
+
+// Crux2 v1.0.19 (from OGBox 0.0.2; PSSwanStation from build 27): the console's root as the title's
+// root without unbalancing the vnodes' reference counts. Before, the root vnode was written into the
+// title's fd_rdir and fd_jdir as it is: the title's exit (fdescfree) then released two references on
+// the root that it never took, and the sandbox's two were never released. Each elevated run that
+// ended drained the root by two, and the console goes down once the root's count runs out (OGBox, which ends an
+// elevated process at every game start, met it within a session). chroot is not there on the PS5
+// (ENOSYS), so the kernel can't count them for us. This helper's own fd_rdir and fd_jdir hold
+// counted references on the console's root (the payload loader's fork gave them): the helper and
+// the title trade theirs. The title's slots then hold the helper's references on the root, the
+// helper's the title's on the sandbox, and each exit releases what its slots hold: every count
+// stays right whichever process ends first. Only when the helper's own root is not the console's
+// is the old way taken, and said (ok_unbalanced).
+bool find_process(pid_t pid, Target &target) noexcept
+{
+    std::intptr_t process = 0;
+    if (kernel_copyout(KERNEL_ADDRESS_ALLPROC, &process, sizeof(process)) != 0)
+        return false;
+    for (unsigned guard = 0; process != 0 && guard < 4096; ++guard)
+    {
+        std::uint32_t candidate = 0;
+        if (!kernel_pointer(process) ||
+            kernel_copyout(process + KERNEL_OFFSET_PROC_P_PID, &candidate, sizeof(candidate)) != 0)
+            return false;
+        if (candidate == static_cast<std::uint32_t>(pid))
+        {
+            target.process = process;
+            return kernel_copyout(process + KERNEL_OFFSET_PROC_P_FD, &target.filedesc,
+                                  sizeof(target.filedesc)) == 0 &&
+                   kernel_pointer(target.filedesc);
+        }
+        if (kernel_copyout(process, &process, sizeof(process)) != 0)
+            return false;
+    }
+    return false;
+}
+
+Status grant_filesystem(const Target &target, const State &original) noexcept
+{
+    const std::intptr_t root = kernel_get_root_vnode();
+    if (!kernel_pointer(root) || !kernel_pointer(original.root))
+        return Status::unavailable;
+    State desired = original;
+    desired.identity.fill(0);
+    desired.authority = system_auth_id;
+    desired.caps.fill(0xff);
+    desired.attrs[3] |= 0x80;
+
+    State verified{};
+    if (!write_credentials(target, desired) || !read_state(target, verified) ||
+        !same_credentials(verified, desired))
+    {
+        if (write_credentials(target, original) && read_state(target, verified) &&
+            same_credentials(verified, original))
+            return Status::apply_failed;
+        return Status::rollback_failed;
+    }
+
+    Target self{};
+    std::intptr_t own_root = 0, own_jail = 0;
+    const bool have_self =
+        find_process(getpid(), self) &&
+        kernel_copyout(self.filedesc + KERNEL_OFFSET_FILEDESC_FD_RDIR, &own_root, sizeof(own_root)) == 0 &&
+        kernel_copyout(self.filedesc + KERNEL_OFFSET_FILEDESC_FD_JDIR, &own_jail, sizeof(own_jail)) == 0;
+    if (have_self && own_root == root)
+    {
+        // the trade: the title's slots get the helper's counted root, the helper's the title's
+        // counted sandbox (fd_jdir alike: the helper's may be the root or empty)
+        const bool title_set = write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_RDIR, own_root) &&
+                               write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_JDIR, own_jail);
+        const bool self_set = title_set &&
+                              write_pointer(self, KERNEL_OFFSET_FILEDESC_FD_RDIR, original.root) &&
+                              write_pointer(self, KERNEL_OFFSET_FILEDESC_FD_JDIR, original.jail);
+        if (self_set)
+            return Status::ok;
+        // undo what was traded, as it was
+        write_pointer(self, KERNEL_OFFSET_FILEDESC_FD_RDIR, own_root);
+        write_pointer(self, KERNEL_OFFSET_FILEDESC_FD_JDIR, own_jail);
+        if (write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_RDIR, original.root) &&
+            write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_JDIR, original.jail) &&
+            write_credentials(target, original))
+            return Status::apply_failed;
+        return Status::rollback_failed;
+    }
+
+    // The helper's root is not the console's: the boilerplate's way (unbalanced, see above).
+    if (write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_RDIR, root) &&
+        write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_JDIR, root))
+        return Status::ok_unbalanced;
+    if (write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_RDIR, original.root) &&
+        write_pointer(target, KERNEL_OFFSET_FILEDESC_FD_JDIR, original.jail) &&
+        write_credentials(target, original))
+        return Status::apply_failed;
+    return Status::rollback_failed;
 }
 
 Status handle_request(const Message &request) noexcept
