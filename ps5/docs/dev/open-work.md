@@ -5,6 +5,11 @@ change; when a test build confirms something, move it from the first list to the
 
 ## Untested on the console (as of build 27)
 
+Build 28 test 3 was confirmed on the console by the owner on 2026-11-16 ("everything is working as it
+supposed to") and released as build 28: the settings board, GPU on a separate core, folders of your
+choice, the touch pad's halves, covers by serial, and the sandbox left with the title's own elevator
+only. The finer points listed below for them were not reported one by one.
+
 From build 27 test 1:
 
 - The boot log's `smb: the connection's TCP buffers: … KiB`, and the network load speed with the

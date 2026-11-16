@@ -2,7 +2,7 @@
 
 This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a native title (`PPSA99248`) for a jailbroken PS5, drawing with Vulkan through the RADV driver, with a library for the controller, every setting of the emulator, save states, cheats, RetroAchievements and more. The work is on the branch `ps5-port`.
 
-- **Latest release: [build 27](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console and its SHA-256; the release names the public revision of every part's source)
+- **Latest release: [build 28](https://github.com/Press5elect/PSSwanStation/releases/latest)** (the ZIP to copy to the console and its SHA-256; the release names the public revision of every part's source)
 - The manual, every screen and setting: [`ps5/MANUAL.md`](ps5/MANUAL.md)
 - What it does and how to use it: [`ps5/README.txt`](ps5/README.txt)
 - What changed in each build: [`ps5/CHANGELOG.txt`](ps5/CHANGELOG.txt)
@@ -11,34 +11,28 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 - Licences of every part: [`ps5/licenses/README.txt`](ps5/licenses/README.txt)
 - Working on it (building, testing, releasing, open work): [`ps5/docs/README.md`](ps5/docs/README.md)
 
-### Build 27
+### Build 28
 
 #### Added
 
-- **HDR** (Settings, Display; off): the picture goes to an HDR TV as HDR10, white at the HDR white level (203 nits at first) and the game's brightest parts raised toward the TV's peak (HDR highlights). **Adjust HDR brightness** finds both with two test pictures. It begins at the next start, and the TV is asked for HDR only while it is on. Needs the console's own HDR on and a TV that takes it.
-- **Network shares from the console** (Settings, Library, Network shares): add, change and remove the folders with games, the account and the folder for your files, without editing `network.cfg` over FTP. The SMB servers on the network are found for you, and a change is used at once.
-- **A game on a share that does not answer yet waits for it** ("Waiting for the network share", Circle goes back) instead of failing, and the shares are woken as PSSwanStation starts, so a NAS's disks are turning by the time a game starts.
-- **Logs** (Settings, System): written as they come, only when something goes wrong, or off; in the title's folder or on a USB drive; the boot log alone, with the emulator's log, or everything. Kept in memory, they keep the session's start too, and a game that stands still for 15 s writes them by itself.
-- **Save states on a USB drive** (Settings, Saving).
-- **Vibration strength** (Settings, Controllers).
-- **The Sinden Lightgun, an experiment** (Settings, Controllers, Ports): it aims a player's GunCon. PSSwanStation reads the gun's camera over USB and finds the white border it draws round the game's picture itself, without Sinden's software. **Not tested with a gun yet**: if you have one, please try it and open an issue with the boot log's `sinden:` lines.
+- **Settings redesigned as one board**: Console, Graphics, Display, Audio, Controllers, Library, Saving, Interface, Network and System, each a tile with a light for every setting, lit when it is not at its default. Nothing is hidden behind another page. Inside an area the sections follow the path of the picture, the sound or a press (L2/R2 between sections, L1/R1 between areas), and beside the list each setting shows what it does, its current and default value, whether it applies at once or after a restart, and whether it is SwanStation's or PSSwanStation's. Over a running game, Graphics and Display leave a window on the game that shows each change live.
+- **SwanStation's options in SwanStation's own words**, word for word; PSSwanStation's own settings named and described the same way.
+- **Search** (Triangle in Settings), **Undo** (L3) and **Quick Settings**: R3 pins a setting, and the menu over a game shows the pinned ones beside its actions (R1).
+- **Folders of your choice** (Settings, Library, Folders): game folders anywhere on the console's storage or a USB drive, and a folder of your own for the BIOS, memory cards, save states, cheats, covers and texture packs, picked with a folder browser.
+- **Covers by serial**: a game the libretro thumbnails collection has no box art for is looked up in xlenore's psx-covers collection by its disc's serial.
 
 #### Changed
 
-- **Fewer writes to the console's storage**: settings written when PSSwanStation closes and when the console's menu opens, files written only when they changed, one shader cache, an update replacing only the files that changed, and the sleep-safe resume state saved only when the console's menu opens.
-- **Network games read faster**: large TCP buffers for every SMB, NFS and FTP connection.
-- **Closing while your files are being brought up to date** finishes the file it is copying, with a bar, and closes; the rest follows at the next start.
-- **The stick dead zone** is taken round the stick's middle: small diagonals stay diagonals.
-- **The graphics driver** is PS5_Mesa main of 10 November 2026 with Crux2's patches: a cached pipeline that lost a stage is compiled again instead of crashing at every start. Newer payload SDK (upstream's v0.45), libsmb2 and libnfs.
-- Every cover of the library is fetched in the background with "Download Covers" on.
+- **The menu over a game** keeps the game in view, with its newest save states' pictures and the quick settings.
+- **A game's details** show its save states and how many settings are its own; its Game Settings follow the board.
+- **GPU On Separate Core** (Settings, Graphics, Renderer; on): the graphics driver's thread and the software renderer's each run on a processor core of their own.
+- **The touch pad**: Select or Start is the half of the finger that touched last, so a thumb resting on the other half no longer decides it.
+- Newer libsmb2 and libnfs.
 
 #### Fixed
 
-- **The console could go down after PSSwanStation was closed a number of times with USB or disc drives on**: the sandbox elevator now keeps the console root's reference counts right (as Crux2 and OGBox do).
-- **Quick taps on the controller** that never reached the game.
-- The sound running away when the console's sound output refused a block.
-- The game database missing after the libretro database moved its lists.
-- Safe start's "Stay in the sandbox" now also switches USB controllers off.
+- **The console could still go down after PSSwanStation was closed a number of times**: a Lapy service already running on the console was asked first, and an older one leaves the sandbox without counting the console root's references. PSSwanStation now leaves its sandbox only with its own helper, as Crux2 and OGBox do.
+- **An update made from inside PSSwanStation did not replace its sandbox helper**, so build 27's fix only reached consoles where the folder was copied over by hand. The updater now replaces it.
 
 **Author and credit.** The PS5 title (everything in `ps5/` and the changes to SwanStation for it) is Copyright (C) 2026 [Press5elect](https://github.com/Press5elect), under the GNU General Public License, version 3 or later, with one additional term under its section 7(b): anyone who passes on this work or a work based on it, in source or binary form, must keep its author's attributions and credit "PSSwanStation by Press5elect" wherever the work shows its credits. That holds however a copy or an adaptation is made, AI tools included. The term is in [`ps5/licenses/ADDITIONAL-TERMS.txt`](ps5/licenses/ADDITIONAL-TERMS.txt). SwanStation and the libraries keep their own licences and authors.
 

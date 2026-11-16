@@ -52,7 +52,7 @@ Build 28
     folders freed when a connection closes, malformed directory entries
     refused, a share shutting down reported as an I/O error) and libnfs
     (e5a697b: UDP addresses passed at their own length, a monotonic clock).
-  - GPU on a separate core (Settings, System, Console tuning; on): the
+  - GPU On Separate Core (Settings, Graphics, Renderer; on): the
     graphics driver records its work on a thread of its own, and that
     thread and the software renderer's each run on a processor core of
     their own (processors 2-3 and 4-5), with the rest of PSSwanStation
