@@ -76,6 +76,7 @@ enum class Page
 	DiscDrive,		// how to play the disc in a drive (the game in `chosen`); a: state slot
 	Shares,			// the network shares: network.cfg's folders, the account, servers found
 	HdrTest,		// Adjust HDR brightness: a: the step (0 the highlights, 1 the white level)
+	SettingsSearch,	// settings found by a word (ui_board.cpp): s: the words, b: 1 for the game's own values
 	// ui_esde.cpp
 	Themes,			// the ES-DE theme: which, its variant, colours, sizes
 	ThemeDownload,	// ES-DE themes to fetch
@@ -149,6 +150,14 @@ struct Item
 	// The choices are things to do with the row, not values of it: confirm
 	// opens them as a list, and Left and Right leave them alone.
 	bool menu = false;
+	// What the settings board knows of the row (ui_board.cpp): the emulator's
+	// option key ("swanstation_...") or a picture setting ("picture:scaling");
+	// for an emulator option its default's choice and a note of this title's.
+	std::string key;
+	int defaultChoice = -1;
+	std::string note;
+	// Not at its default: a light beside it.
+	bool lit = false;
 };
 
 Item header(const std::string& label);

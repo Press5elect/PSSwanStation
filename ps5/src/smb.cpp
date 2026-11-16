@@ -390,7 +390,7 @@ struct Share
 			return false;
 		if (answer == Probe::Closed)
 		{
-			fail(server + " does not answer: is it switched on, and is its address right (Settings, Games and saving, Network shares)?");
+			fail(server + " does not answer: is it switched on, and is its address right (Settings, Library, Network Shares)?");
 			failedAt = nowMs();
 			return false;
 		}

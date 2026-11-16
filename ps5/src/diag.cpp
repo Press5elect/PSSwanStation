@@ -15,7 +15,7 @@
 	  system, on whatever thread wrote it, and the frame thread writes some.
 	  The writer puts the file on the disk every 30 seconds that had lines;
 	  a crash report writes what memory still holds, then itself, straight.
-	  Settings, System, Logs can keep the lines in memory instead (the
+	  Settings, System, Logging can keep the lines in memory instead (the
 	  session's first 512 KiB and its last 8 MiB, as OGBox does), written
 	  only when something goes wrong (a crash, a notice of a problem, 15 s
 	  without a frame while a game runs, or "Save the log now"), or write
@@ -95,7 +95,7 @@ pthread_cond_t ringFilled = PTHREAD_COND_INITIALIZER;
 pthread_cond_t ringEmptied = PTHREAD_COND_INITIALIZER;
 std::atomic<bool> writerUp{ false };
 
-// Settings, System, Logs: 0 written as they come, 1 kept in memory and
+// Settings, System, Logging: 0 written as they come, 1 kept in memory and
 // written when something goes wrong, 2 none written. Memory becomes Live
 // when the watchdog writes the log (writeFromNow), under ringLock.
 enum Mode { Live, Memory, Off };

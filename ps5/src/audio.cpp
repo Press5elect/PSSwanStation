@@ -35,7 +35,7 @@ namespace
 {
 constexpr double InRate = 44100.0, OutRate = 48000.0;
 constexpr size_t Capacity = 9600;		// frames: 200 ms
-// How much is kept ahead of the output (Settings, Sound, "Sound delay"):
+// How much is kept ahead of the output (Settings, Audio, "Audio Latency"):
 // 60, 32 or 16 ms. Less is heard sooner, and runs dry sooner when a frame of
 // the game comes late.
 const size_t Targets[3] = { 2880, 1536, 768 };

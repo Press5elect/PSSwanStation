@@ -232,6 +232,7 @@ set(frontend_sources
 	src/achievements.cpp
 	src/update.cpp
 	src/ui_more.cpp
+	src/ui_board.cpp
 	src/ui_flow.cpp
 	src/ui_esde.cpp
 	src/video.cpp

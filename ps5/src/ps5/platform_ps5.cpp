@@ -414,7 +414,7 @@ void earlyInit()
 	}
 	// The boot log is in the title's folder, wherever the files are kept:
 	// where the manual says it is, the same place in every set-up. Or on a
-	// USB drive (Settings, System, Logs), off the console's storage.
+	// USB drive (Settings, System, Logging), off the console's storage.
 	const options::Frontend& settings = options::frontend();
 	diag::configure(settings.logMode);
 	logDir = appDir;
@@ -490,7 +490,7 @@ void earlyInit()
 	{
 		freopen("/dev/null", "a", stdout);
 		freopen("/dev/null", "a", stderr);
-		diag::mark("the emulator's log: not written (Settings, System, Logs)");
+		diag::mark("the emulator's log: not written (Settings, System, Logging)");
 	}
 }
 
@@ -499,7 +499,7 @@ void lateInit()
 	diag::mark("hide splash screen: %d", sceSystemServiceHideSplashScreen());
 	padOpen();
 	// Before the USB controllers, so that they leave the gun alone. Its
-	// setting (Settings, Controls, Players), or the test switch
+	// setting (Settings, Controllers, Lightgun), or the test switch
 	// (data/sinden.txt: "find", "usbd" or "ugen"), which says how and wins.
 	if (!sinden::startIfAsked() && options::frontend().sinden != 0)
 		sinden::start();

@@ -25,7 +25,7 @@
 	the turning rates, in radians a second, at 0x28), as libScePad has had them
 	since the PlayStation 4; scePadSetMotionSensorState switches the sensor on.
 	That the readings arrive as described is not established on a console yet:
-	tilt control is offered as an experiment (Settings, Controllers).
+	tilt control is offered as an experiment (Settings, Controllers, Pad).
 
 	Each frame takes every sample the console kept since the last one
 	(scePadRead, as OGBox reads the pad), not only the newest: the newest is

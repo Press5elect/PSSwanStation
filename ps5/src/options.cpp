@@ -198,7 +198,7 @@ void adapt(Option& option)
 		drop(option, "true");
 		drop(option, "false");
 		option.defaultValue = "Disabled";
-		option.info += " On the console this is experimental: leave it off unless a game needs the speed.";
+		option.note = "On the PS5 this is experimental: leave it disabled unless a game needs the speed.";
 	}
 	else if (key == "swanstation_CPU_ExecutionMode")
 	{
@@ -207,40 +207,21 @@ void adapt(Option& option)
 		{
 			drop(option, "Recompiler");
 			option.defaultValue = "CachedInterpreter";
-			option.info += " The recompiler is not offered: this console refused executable memory.";
+			option.note = "The recompiler is not offered: this console refused executable memory.";
 		}
 	}
 	else if (key == "swanstation_Logging_LogLevel")
 	{
-		// "What the logs keep" (Settings, System, Logs) sets it: "Everything" is what "Verbose logging" was.
+		// "Log Level" (Settings, System, Logging) sets it: "Everything" is what "Verbose logging" was.
 		option.hidden = true;
 	}
 	else if (key == "swanstation_Display_AspectRatio")
-	{
-		// Its text speaks of RetroArch's video settings; here the shape goes
-		// into the title's own picture scaling.
-		option.name = "Picture shape";
-		option.info = "The shape the picture is given when Picture size (Picture) fits it to the screen or enlarges it "
-				"by whole multiples: 4:3 as a television of the time, Auto by the game's own resolution, or wider for "
-				"the widescreen hack. Forced to Corrected (NTSC) with a GunCon.";
-	}
+		option.note = "On the PS5 the shape is applied by Display Scaling (Display, Scaling). Forced to Corrected "
+				"(NTSC) with a GunCon.";
 	else if (key == "swanstation_CDROM_LoadImageToRAM")
-	{
-		option.info = "Loads the disc image into memory before the game starts, so the game never waits for the "
-				"storage while it runs, at the cost of a longer start. Games on the network share are loaded into memory "
-				"by the title itself (Settings, Games and saving).";
-	}
-	else if (key == "swanstation_Display_ShowOSDMessages")
-	{
-		option.name = "Emulator messages";
-		option.info = "Shows the emulator's own messages (a state saved, a disc changed, a problem) as notices over the game.";
-	}
+		option.note = "Games on a network share are preloaded by Preload Network Images To RAM (Console, Disc).";
 	else if (key == "swanstation_MemoryCards_UsePlaylistTitle")
-	{
-		option.name = "One card for all of a game's discs";
-		option.info = "A game with several discs shares one memory card between them, with cards per game title. Off: a "
-				"separate card for each disc.";
-	}
+		option.note = "Applies to multi-disc games grouped by Group Multi-Disc Games (Library, View).";
 	if (std::none_of(option.values.begin(), option.values.end(),
 			[&](const Value& value) { return value.value == option.defaultValue; }) && !option.values.empty())
 		option.defaultValue = option.values.front().value;

@@ -14,7 +14,7 @@
 	computer straight into the library, without FTP).
 
 	Everything but the page asks for the key, which the address in the QR code
-	carries (Settings, Games and saving): another device on the network, or a
+	carries (Settings, Network, Remote Control): another device on the network, or a
 	page in someone's browser, cannot use the panel without it. The key is
 	kept in data/web.cfg and a new one can be made. network.cfg (the share's
 	password) and RetroAchievements' key are never served.
@@ -286,30 +286,30 @@ struct Setting
 const std::vector<Setting>& settingsList()
 {
 	static const std::vector<Setting> list = {
-		{ "volume", "Volume", {}, 0, 100, 5 },
-		{ "scaler", "Scaling filter", { "Smooth", "Square pixels", "Sharp bilinear", "FSR 1", "NIS", "CAS" }, 0, 5, 1 },
-		{ "crt", "Picture tube", { "Off", "Soft scanlines", "Scanlines", "Scanlines and mask", "Home television",
+		{ "volume", "Game Volume", {}, 0, 100, 5 },
+		{ "scaler", "Scaling Filter", { "Smooth", "Square pixels", "Sharp bilinear", "FSR 1", "NIS", "CAS" }, 0, 5, 1 },
+		{ "crt", "CRT Shader", { "Off", "Soft scanlines", "Scanlines", "Scanlines and mask", "Home television",
 			"Studio monitor", "Arcade monitor", "Soft", "The author's own" }, 0, 8, 1 },
-		{ "signal", "Video signal", { "As it is", "Dither smoothed", "S-Video", "Composite" }, 0, 3, 1 },
-		{ "frame_generation", "Frame generation", { "Off", "On" }, 0, 1, 1 },
-		{ "fg_quality", "Frame generation quality", { "Performance", "Balanced", "Quality" }, 0, 2, 1 },
-		{ "fg_method", "Frame generation method", { "PSSwanStation's own", "AMD FSR3 optical flow", "MihawkGen" }, 0, 2, 1 },
-		{ "disc_speed", "USB disc drive speed", { "Quiet", "Normal", "Max" }, 0, 2, 1 },
-		{ "pacing", "Frame pacing", { "By the display", "The game's speed", "By the clock" }, 0, 2, 1 },
-		{ "show_fps", "Frame counter", { "Off", "On" }, 0, 1, 1 },
-		{ "rewind", "Rewind", { "Off", "On" }, 0, 1, 1 },
-		{ "fast_forward", "Fast forward speed", { "2x", "3x", "4x", "8x", "As fast as it goes" }, 0, 4, 1 },
-		{ "hotkeys", "Shortcuts", { "Off", "On" }, 0, 1, 1 },
-		{ "auto_save", "Save when a game is closed", { "Off", "On" }, 0, 1, 1 },
-		{ "auto_load", "Continue where I left off", { "Off", "On" }, 0, 1, 1 },
-		{ "sleep_safe", "Sleep-safe saving", { "Off", "On" }, 0, 1, 1 },
-		{ "speedrun", "Speedrun timer", { "Off", "On" }, 0, 1, 1 },
-		{ "watch_overlay", "Watched values over the game", { "Off", "On" }, 0, 1, 1 },
-		{ "rumble", "Vibration", { "Off", "On" }, 0, 1, 1 },
-		{ "music", "Menu music", { "None", "The title's own", "My file" }, 0, 2, 1 },
+		{ "signal", "Video Signal Simulation", { "As it is", "Dither smoothed", "S-Video", "Composite" }, 0, 3, 1 },
+		{ "frame_generation", "Frame Generation", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "fg_quality", "Frame Generation Quality", { "Performance", "Balanced", "Quality" }, 0, 2, 1 },
+		{ "fg_method", "Frame Generation Method", { "PSSwanStation's own", "AMD FSR3 optical flow", "MihawkGen" }, 0, 2, 1 },
+		{ "disc_speed", "USB Disc Drive Speed", { "Quiet", "Normal", "Max" }, 0, 2, 1 },
+		{ "pacing", "Frame Pacing", { "By the display", "The game's speed", "By the clock" }, 0, 2, 1 },
+		{ "show_fps", "Show Frame Rate", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "rewind", "Rewind", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "fast_forward", "Fast Forward Speed", { "2x", "3x", "4x", "8x", "As fast as it goes" }, 0, 4, 1 },
+		{ "hotkeys", "Hotkeys", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "auto_save", "Save State On Exit", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "auto_load", "Load Resume State On Start", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "sleep_safe", "Save State On Console Menu", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "speedrun", "Speedrun Timer", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "watch_overlay", "Show Watched Values", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "rumble", "Controller Vibration", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "music", "Menu Music", { "None", "The title's own", "My file" }, 0, 2, 1 },
 		{ "animations", "Animations", { "Full", "Reduced", "Off" }, 0, 2, 1 },
-		{ "high_contrast", "High contrast", { "Off", "On" }, 0, 1, 1 },
-		{ "colour_blind", "Colour-blind safe colours", { "Off", "On" }, 0, 1, 1 },
+		{ "high_contrast", "High Contrast", { "Disabled", "Enabled" }, 0, 1, 1 },
+		{ "colour_blind", "Colour-Blind Safe Colours", { "Disabled", "Enabled" }, 0, 1, 1 },
 	};
 	return list;
 }
@@ -554,7 +554,7 @@ void handle(int fd)
 			answer(fd, 403, "text/html; charset=utf-8", "<!doctype html><meta charset=utf-8><meta name=viewport "
 					"content='width=device-width'><title>PSSwanStation</title><body style='font-family:sans-serif;"
 					"background:#0e121e;color:#eef2fa;padding:24px'><h2>PSSwanStation</h2><p>Open this page from the QR "
-					"code PSSwanStation shows (Settings, Games and saving, Phone and web control): its address "
+					"code PSSwanStation shows (Settings, Network, Remote Control): its address "
 					"carries the key.</p>");
 		else
 			answer(fd, 200, "text/html; charset=utf-8", PageHtml);
@@ -972,7 +972,7 @@ function loadSettings(){api('/api/settings').then(list=>{document.getElementById
 let c;if(s.values.length){c=`<select data-k="${s.key}">`+s.values.map((v,i)=>`<option value="${s.low+i}"${s.low+i===s.value?' selected':''}>${esc(v)}</option>`).join('')+'</select>';}
 else c=`<input type="range" data-k="${s.key}" min="${s.low}" max="${s.high}" step="${s.step}" value="${s.value}">`;
 return `<div class="row"><span class="grow">${esc(s.label)}</span>${c}</div>`;}).join('')+'</div>'
-+'<div class="card"><b>Dropbox code</b><div class="dim">Signing in to Dropbox for cloud saves (Settings, Games and saving, Cloud saves on the console): paste the code Dropbox showed.</div><div class="tools" style="margin-top:8px"><input id="dbcode" class="grow" placeholder="The code from Dropbox"><button id="dbsend">Send</button></div></div>';
++'<div class="card"><b>Dropbox code</b><div class="dim">Signing in to Dropbox for cloud saves (Settings, Saving, Cloud Saves on the console): paste the code Dropbox showed.</div><div class="tools" style="margin-top:8px"><input id="dbcode" class="grow" placeholder="The code from Dropbox"><button id="dbsend">Send</button></div></div>';
 document.querySelectorAll('#settings [data-k]').forEach(i=>i.onchange=()=>post('/api/settings?key='+i.dataset.k+'&value='+i.value));
 document.getElementById('dbsend').onclick=()=>{const c=document.getElementById('dbcode').value.trim();if(c)post('/api/cloudcode',c).then(()=>{document.getElementById('dbcode').value='';alert('Sent: the console signs in.');}).catch(x=>alert(x.message));};}).catch(e=>alert(e.message));}
 poll();setInterval(poll,1500);

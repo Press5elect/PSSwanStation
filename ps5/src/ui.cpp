@@ -17,6 +17,7 @@
 	the menu.
 */
 #include "ui_internal.h"
+#include "ui_board.h"
 #include "netplay.h"
 #include "display.h"
 #include "update.h"
@@ -602,6 +603,11 @@ const Item *runList(Frame& f, std::vector<Item>& items, float x0, float y0, floa
 		}
 		const ImU32 colour = !item.enabled ? t.faint : focused ? t.text : theme().text;
 		float x = x0 + 30;
+		if (item.lit)
+		{
+			glowAt(at(x0 + 20, y + h * 0.5f), px(10), withAlpha(t.accent, 0.35f));
+			draw()->AddCircleFilled(at(x0 + 20, y + h * 0.5f), px(4.5f), t.accent);
+		}
 		if (item.picture.id != nullptr)
 		{
 			imageFit(item.picture, at(x - 6, y + 7), at(x + 40, y + h - 7), 6,
@@ -1153,7 +1159,7 @@ std::string factsLine(const gamedb::Info& info, bool makers)
 std::string usbHint()
 {
 	if (!options::frontend().usb)
-		return "USB drives are off. Turn them on in Settings, Games and saving, then restart PSSwanStation.";
+		return "Scan USB Drives is disabled. Enable it in Settings, Library, then restart PSSwanStation.";
 	return library::sourceHint(library::Usb);
 }
 
@@ -1300,7 +1306,7 @@ void emptyLibrary(const std::string& hint, bool busy)
 // ------------------------------------------------------------ video previews
 
 // The library's own views play the game under the cursor's video once the
-// cursor has stayed on it a moment (Settings, Library): Shelves and List in
+// cursor has stayed on it a moment (Settings, Library, Media): Shelves and List in
 // the cover's place, Covers and the views in space behind everything, as the
 // page's backdrop. The game is the one the last frame had under the cursor;
 // a frame late is not seen.
@@ -2408,49 +2414,12 @@ void libraryPage(bool active)
 
 // ---------------------------------------------------------------- settings
 
-struct SettingsCategory
-{
-	std::string name, key;
-	const char *icon;
-	// 0 library, 1 picture, 2 sound, 3 controls, 4 games and saving, 7 system,
-	// 8 look (frontendItems; ui_more.cpp's moreSettings for the rest), 12 the
-	// emulator (every category of the core's options), 20 about
-	int kind;
-	std::string info;
-};
-
-// Nine sections: what is set most often first, the emulator's own options
-// together in one, About last.
-std::vector<SettingsCategory> settingsCategories(bool forGame)
-{
-	std::vector<SettingsCategory> list;
-	if (!forGame)
-	{
-		list.push_back({ "Library", "", icon::Grid, 0, "" });
-		list.push_back({ "Look", "", icon::Paint, 8, "" });
-		list.push_back({ "Sound", "", icon::Volume, 2, "" });
-		list.push_back({ "Picture", "", icon::Screen, 1, "" });
-		list.push_back({ "Controls", "", icon::Gamepad, 3, "" });
-		list.push_back({ "Games and saving", "", icon::Server, 4, "" });
-	}
-	else
-		list.push_back({ "Picture", "", icon::Screen, 1, "How this game is put on the screen: scaling, the picture "
-				"tube, what is beside the picture, pacing and frame generation, for this game alone." });
-	list.push_back({ "Emulator", "", icon::Chip, 12, forGame ? "The emulator's options for this game alone." : "" });
-	if (!forGame)
-	{
-		list.push_back({ "System", "", icon::Wrench, 7, "" });
-		list.push_back({ "About", "", icon::Info, 20, "" });
-	}
-	return list;
-}
-
 Item toggle(const std::string& label, bool *value, const std::string& info, std::function<void()> changed)
 {
 	Item item;
 	item.label = label;
 	item.info = info;
-	item.choices = { "Off", "On" };
+	item.choices = { "Disabled", "Enabled" };
 	item.current = *value ? 1 : 0;
 	item.value = item.choices[item.current];
 	item.choose = [value, changed](int index) {
@@ -2603,7 +2572,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 			if (f.animations == 2)
 			{
 				item.enabled = false;
-				item.value = "Off";
+				item.value = "Disabled";
 			}
 			items.push_back(std::move(item));
 		}
@@ -2668,7 +2637,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 			if (f.animations == 2 || !f.splash)
 			{
 				item.enabled = false;
-				item.value = "Off";
+				item.value = "Disabled";
 			}
 			items.push_back(std::move(item));
 		}
@@ -2739,6 +2708,7 @@ void optionItems(const std::string& category, bool uncategorised, bool forGame, 
 			continue;
 		Item item;
 		item.label = option.name;
+		item.key = option.key;
 		const char *set = options::get(option.key);
 		const std::string value = set != nullptr ? set : option.defaultValue;
 		for (size_t i = 0; i < option.values.size(); i++)
@@ -2748,24 +2718,29 @@ void optionItems(const std::string& category, bool uncategorised, bool forGame, 
 				item.current = (int)i;
 		}
 		item.value = options::label(option, value);
+		// SwanStation's own description, word for word; what this title adds
+		// is a note beside it.
 		item.info = option.info;
-		if (!item.info.empty())
-			item.info += "\n\n";
-		item.info += "Default: " + options::label(option, option.defaultValue);
+		for (size_t i = 0; i < option.values.size(); i++)
+			if (option.values[i].value == option.defaultValue)
+				item.defaultChoice = (int)i;
+		item.note = option.note;
+		const auto addNote = [&item](const std::string& text) {
+			item.note += (item.note.empty() ? "" : " ") + text;
+		};
 		if (option.key == "swanstation_GPU_Renderer" && host::running())
-			item.info += "\n\nChanged while a game runs, the game goes on with the other renderer at once, where it was.";
+			addNote("Changed while a game runs, the game continues with the other renderer at once.");
 		const std::string key = option.key;
 		const bool own = options::hasGameValue(key);
 		if (options::hasOverride(key))
 		{
 			item.mark = 2;
-			item.info += "\n\nSet by a patch that is on for this game; the value chosen here returns when the patch "
-					"is switched off.";
+			addNote("Set by a patch enabled for this game; the value chosen here returns when the patch is disabled.");
 		}
 		else if (forGame && own)
 			item.mark = 1;
 		else if (!forGame && own)
-			item.info += "\n\nThe running game has a value of its own for this (Game settings).";
+			addNote("The running game has its own value for this (Game Settings).");
 		std::vector<std::string> values;
 		for (const options::Value& v : option.values)
 			values.push_back(v.value);
@@ -2860,127 +2835,6 @@ void aboutItems(std::vector<Item>& items)
 			"of parts and licences is in the title folder's licenses folder."));
 }
 
-// Every category of the core's options in one list, each under its name.
-void emulatorItems(bool forGame, std::vector<Item>& items)
-{
-	bool uncategorised = false;
-	for (const options::Option& option : options::all())
-		if (option.category.empty())
-			uncategorised = true;
-	if (uncategorised)
-	{
-		items.push_back(header("General"));
-		optionItems("", true, forGame, items);
-	}
-	for (const options::Category& category : options::categories())
-	{
-		std::string name = category.name;
-		const size_t tail = name.rfind(" Settings");
-		if (tail != std::string::npos && tail + 9 == name.size())
-			name.erase(tail);
-		items.push_back(header(name));
-		optionItems(category.key, false, forGame, items);
-	}
-}
-
-void settingsPage(Frame& f)
-{
-	const Theme& t = theme();
-	const float W = unitsWide(), H = unitsHigh();
-	const bool forGame = f.b != 0;
-	const std::vector<SettingsCategory> categories = settingsCategories(forGame);
-	const int count = (int)categories.size();
-	if (f.picker < 0)
-	{
-		const int before = f.a;
-		if (hit(R1))
-			f.a = (f.a + 1) % count;
-		if (hit(L1))
-			f.a = (f.a + count - 1) % count;
-		if (f.a != before)
-		{
-			f.cursor = 0;
-			f.scroll = f.scrollTarget = 0;
-			f.fresh = true;
-		}
-	}
-	f.a = std::clamp(f.a, 0, count - 1);
-	const SettingsCategory& category = categories[f.a];
-
-	text(at(64, 40), t.text, forGame ? "Game settings" : "Settings", Title, 44);
-	if (forGame)
-		textFit(at(64 + toUnits(measure("Game settings", Title, 44).x) + 28, 58), px(W - 700), t.dim,
-				host::game().title + (host::game().serial.empty() ? "" : "  \xc2\xb7  " + host::game().serial), Body, 26);
-
-	// The categories.
-	const float top = 128, bottom = H - 88;
-	const float cx0 = 64, cx1 = 404;
-	panel(at(cx0, top), at(cx1, bottom), t.panel, 16);
-	// As many as fit; when they do not (a large interface size), the list
-	// scrolls with the chosen one.
-	const int fit = std::max(1, (int)((bottom - top - 28) / 58));
-	const int firstShown = count <= fit ? 0 : std::clamp(f.a - fit / 2, 0, count - fit);
-	for (int i = firstShown; i < count && i < firstShown + fit; i++)
-	{
-		const float y = top + 14 + (i - firstShown) * 58;
-		const bool selected = i == f.a;
-		if (selected)
-			panel(at(cx0 + 10, y), at(cx1 - 10, y + 54), t.accentSoft, 12);
-		text(at(cx0 + 30, y + 15), selected ? t.accent : t.faint, categories[i].icon, Body, 24);
-		textFit(at(cx0 + 80, y + 13), px(cx1 - cx0 - 100), selected ? t.text : t.dim, categories[i].name,
-				selected ? Bold : Body, 26);
-	}
-
-	std::vector<Item> items;
-	if (category.kind == 1)
-	{
-		pictureItems(forGame, items);
-		if (!forGame)
-		{
-			items.push_back(header("On the screen"));
-			items.push_back(toggle("Show frame rate", &options::frontend().showFps,
-					"Frames a second in a corner of the game, and how that compares with the game's own speed."));
-		}
-	}
-	else if (category.kind < 10)
-		frontendItems(category.kind, items);
-	else if (category.kind == 20)
-		aboutItems(items);
-	else
-		emulatorItems(forGame, items);
-
-	const float lx0 = 428, lx1 = W - 560;
-	panel(at(lx0, top), at(lx1, bottom), t.panel, 16);
-	const Item *focused = runList(f, items, lx0 + 8, top + 10, lx1 - 16, bottom - 10);
-
-	// What the option under the cursor does.
-	const float ix0 = lx1 + 24, ix1 = W - 64;
-	panel(at(ix0, top), at(ix1, bottom), withAlpha(t.panel, 0.7f), 16);
-	if (focused != nullptr)
-	{
-		float y = top + 28;
-		y += toUnits(textWrapped(at(ix0 + 28, y), px(ix1 - ix0 - 56), t.text, focused->label, Bold, 28)) + 16;
-		if (focused->mark == 1)
-		{
-			text(at(ix0 + 28, y), t.accent, "This game's own value", Bold, 20);
-			y += 36;
-		}
-		textWrapped(at(ix0 + 28, y), px(ix1 - ix0 - 56), t.dim, focused->info, Body, 23, px(bottom - y - 24));
-	}
-	else if (forGame)
-		textWrapped(at(ix0 + 28, top + 28), px(ix1 - ix0 - 56), t.dim, category.info, Body, 23);
-
-	std::vector<Hint> hints;
-	hints.push_back({ L1 | R1, "Section" });
-	if (std::count_if(items.begin(), items.end(), [](const Item& i) { return i.header; }) > 1)
-		hints.push_back({ L2 | R2, "Part" });
-	if (focused != nullptr && !focused->choices.empty())
-		hints.push_back({ Left | Right, "Change" });
-	if (focused != nullptr && focused->alt)
-		hints.push_back({ Square, focused->altHint });
-	hints.push_back({ cancelButton, "Back" });
-	hintBar(hints, forGame ? "What is set here is used for this game only and kept with it." : "");
-}
 
 // ------------------------------------------------------------- menu pages
 
@@ -3032,8 +2886,8 @@ void mainMenuPage(Frame& f)
 {
 	std::vector<Item> items;
 	// Settings first: what this menu is opened for most.
-	items.push_back(action(icon::Gear, "Settings", "The library and its look, sound, picture, controls, games and "
-			"saving, and the emulator's own options.", [] { push(Page::Settings); }));
+	items.push_back(action(icon::Gear, "Settings", "The settings board: Console, Graphics, Display, Audio, "
+			"Controllers, Library, Saving, Interface, Network and System, every setting in one place.", [] { push(Page::Settings); }));
 	items.push_back(header("Games"));
 	items.push_back(action(icon::Search, "Search", "Finds a game by a part of its name, everywhere at once. In the "
 			"library: the touch pad.", [] {
@@ -3059,27 +2913,156 @@ void mainMenuPage(Frame& f)
 		items.push_back(item);
 	}
 	items.push_back(action(icon::Info, "About", "Versions, what's new, and licences.", [] {
-		const int about = (int)settingsCategories(false).size() - 1;
-		push(Page::Settings, about);
+		push(Page::Settings, board::SystemArea, 0, "area", "About");
 	}));
 	items.push_back(action(icon::Power, "Close PSSwanStation", "Back to the console's home screen.", [] { quit = true; }));
 	standardHints(menuPage(f, "Menu", "", items, 620));
+}
+
+// The menu over a game: what can be done at the left; the game stays in view
+// in the middle, over the save states' pictures; the quick settings (pinned
+// on the settings board) and what is running at the right. R1 and L1 move
+// between the actions and the quick settings.
+void pauseLayout(Frame& f, const std::string& title, const std::string& subtitle, std::vector<Item>& items)
+{
+	const Theme& t = theme();
+	const float W = unitsWide(), H = unitsHigh();
+	static Frame quick{ Page::Pause };
+	if (f.fresh)
+	{
+		quick.cursor = 0;
+		quick.fresh = true;
+		quick.picker = -1;
+		f.a = 0;
+	}
+	std::vector<Item> quickList = board::quickItems();
+	if (f.picker < 0 && quick.picker < 0)
+	{
+		if (hit(R1) && !quickList.empty())
+			f.a = 1;
+		if (hit(L1))
+			f.a = 0;
+	}
+	if (quickList.empty())
+		f.a = 0;
+
+	text(at(64, 40), t.pageText, title, Title, 44);
+	if (!subtitle.empty())
+		textFit(at(64 + toUnits(measure(title, Title, 44).x) + 28, 58), px(W - 900), t.pageDim, subtitle, Body, 26);
+	{
+		const std::string renderer = options::get("swanstation_GPU_Renderer") != nullptr
+				? options::get("swanstation_GPU_Renderer") : "Software";
+		const char *scale = options::get("swanstation_GPU_ResolutionScale");
+		std::string line = renderer + (renderer == "Vulkan" && scale != nullptr ? std::string("  \xc2\xb7  ") + scale + "x" : "");
+		if (host::discCount() > 1)
+			line += format("  \xc2\xb7  Disc %d of %d", host::discIndex() + 1, host::discCount());
+		textRight(at(W - 64, 56), t.pageDim, line, Body, 22);
+	}
+
+	const float top = 128, bottom = H - 88;
+	// What can be done, at the left.
+	const float ax0 = 64, ax1 = 64 + 600;
+	panel(at(ax0, top), at(ax1, bottom), withAlpha(t.panel, 0.97f), 16);
+	const Item *focused = nullptr;
+	{
+		const Input keep = in;
+		if (f.a != 0)
+			in = Input();
+		focused = runList(f, items, ax0 + 8, top + 10, ax1 - 16, bottom - 10);
+		in = keep;
+		if (f.a != 0)
+			panel(at(ax0, top), at(ax1, bottom), withAlpha(t.panel, 0.55f), 16);
+	}
+
+	// The save states, newest first, under the game.
+	{
+		struct Kept
+		{
+			int slot;
+			std::string when;
+		};
+		std::vector<Kept> kept;
+		std::string when;
+		if (host::stateExists(host::ResumeSlot, &when))
+			kept.push_back({ host::ResumeSlot, when });
+		for (int slot = 0; slot < host::StateSlots && kept.size() < 5; slot++)
+			if (host::stateExists(slot, &when))
+				kept.push_back({ slot, when });
+		const float sx0 = ax1 + 24, sx1 = W - 64 - 560 - 24;
+		const float tw = (sx1 - sx0 - 28 - 4 * 12) / 5, th = tw * 0.75f;
+		const float sy1 = bottom, sy0 = sy1 - th - 92;
+		panel(at(sx0, sy0), at(sx1, sy1), withAlpha(t.panel, 0.95f), 16);
+		text(at(sx0 + 18, sy0 + 16), t.dim, "SAVE STATES", Bold, 18);
+		for (int i = 0; i < 5; i++)
+		{
+			const float x = sx0 + 14 + i * (tw + 12), y = sy0 + 46;
+			panel(at(x, y), at(x + tw, y + th), withAlpha(t.panelHigh, 0.8f), 8);
+			if (i < (int)kept.size())
+			{
+				const Image picture = image(host::stateThumbPath(kept[(size_t)i].slot));
+				if (picture.id != nullptr)
+					imageFit(picture, at(x, y), at(x + tw, y + th), 8);
+				textFit(at(x + 2, y + th + 8), px(tw - 4), t.dim, (kept[(size_t)i].slot == host::ResumeSlot ? std::string("Resume")
+						: format("Slot %d", kept[(size_t)i].slot + 1)) + "  \xc2\xb7  " + kept[(size_t)i].when, Body, 17);
+			}
+			else
+				textCentred(at(x + tw * 0.5f, y + th * 0.5f - 12), t.faint, "Empty", Body, 18);
+		}
+	}
+
+	// The quick settings, at the right.
+	const float qx0 = W - 64 - 560, qx1 = W - 64;
+	panel(at(qx0, top), at(qx1, bottom), withAlpha(t.panel, 0.97f), 16);
+	text(at(qx0 + 24, top + 20), f.a == 1 ? t.accent : t.dim, "QUICK SETTINGS", Bold, 18);
+	const Item *quickFocused = nullptr;
+	if (quickList.empty())
+		textWrapped(at(qx0 + 24, top + 60), px(560 - 48), t.dim,
+				"Settings pinned on the settings board (R3) are listed here, to change without leaving the game.", Body, 22);
+	else
+	{
+		const Input keep = in;
+		if (f.a != 1)
+			in = Input();
+		quickFocused = runList(quick, quickList, qx0 + 8, top + 52, qx1 - 16, bottom - 10);
+		in = keep;
+		if (f.a != 1)
+			panel(at(qx0, top + 44), at(qx1, bottom), withAlpha(t.panel, 0.55f), 16);
+	}
+
+	std::vector<Hint> hints;
+	if (f.a == 1 && quickFocused != nullptr)
+	{
+		if (quickFocused->enabled && quickFocused->choices.size() > 1)
+			hints.push_back({ Left | Right, "Change" });
+		if (quickFocused->alt)
+			hints.push_back({ Square, quickFocused->altHint });
+		hints.push_back({ L1, "Actions" });
+	}
+	else
+	{
+		if (focused != nullptr && focused->enabled && (focused->activate || !focused->choices.empty()))
+			hints.push_back({ confirmButton, "Select" });
+		if (!quickList.empty())
+			hints.push_back({ R1, "Quick Settings" });
+	}
+	hints.push_back({ cancelButton, "Back" });
+	hintBar(hints, focused != nullptr && f.a == 0 ? focused->info : "");
 }
 
 void pausePage(Frame& f)
 {
 	const host::GameInfo& game = host::game();
 	std::vector<Item> items;
-	items.push_back(action(icon::Play, "Resume", "", [] { resume(); }));
+	items.push_back(action(icon::Play, "Resume Game", "Returns to the game.", [] { resume(); }));
 
-	items.push_back(header("The game"));
-	items.push_back(action(icon::Save, "Save state", "Keeps the game exactly as it is now in one of ten slots.",
+	items.push_back(header("Game"));
+	items.push_back(action(icon::Save, "Save State", "Keeps the game exactly as it is now in one of ten slots.",
 			[] { push(Page::States, 0); }, !game.path.empty()));
-	items.push_back(action(icon::Upload, "Load state", "Returns the game to a state saved before.",
+	items.push_back(action(icon::Upload, "Load State", "Returns the game to a state saved before.",
 			[] { push(Page::States, 1); }, !game.path.empty()));
 	if (host::discCount() > 1)
 	{
-		Item item = action(icon::Disc, "Change disc", "Takes the disc out and puts another of this game in.",
+		Item item = action(icon::Disc, "Change Disc", "Takes the disc out and puts another of this game in.",
 				[] { push(Page::Discs); });
 		item.value = format("%d of %d", host::discIndex() + 1, host::discCount());
 		items.push_back(item);
@@ -3088,7 +3071,7 @@ void pausePage(Frame& f)
 		int on = 0;
 		for (const cheats::Cheat& cheat : cheats::list())
 			on += cheat.enabled;
-		Item item = action(icon::Magic, "Cheats and patches",
+		Item item = action(icon::Magic, "Cheats and Patches",
 				"Cheat codes and patches (widescreen, 60 frames a second and others) for this game from the "
 				"chtdb database, and your own from the cheats folder.",
 				[] { push(Page::Cheats); });
@@ -3096,12 +3079,12 @@ void pausePage(Frame& f)
 				: format("%d", (int)cheats::list().size());
 		items.push_back(item);
 	}
-	items.push_back(action(icon::Sliders, "Game settings", "The picture's and the emulator's settings for this game "
+	items.push_back(action(icon::Sliders, "Game Settings", "The picture's and the emulator's settings for this game "
 			"alone: what is set there is kept with the game and used whenever it runs.",
 			[] { push(Page::Settings, 0, 1); }, !game.serial.empty()));
 	{
 		const size_t changes = originalDifferences();
-		Item item = action(icon::Picture, "Look", "Whether the game looks and runs as on the PlayStation, or with "
+		Item item = action(icon::Picture, "Original Look", "Whether the game looks and runs as on the PlayStation, or with "
 				"enhancements: this lists them, to put back one by one or all at once.", [] { push(Page::Original); });
 		item.value = changes == 0 ? std::string("Original") : format("Enhanced  (%zu change%s)", changes, changes == 1 ? "" : "s");
 		items.push_back(item);
@@ -3111,14 +3094,14 @@ void pausePage(Frame& f)
 	pauseMoreItems(items);
 
 	items.push_back(header("PSSwanStation"));
-	items.push_back(action(icon::Gear, "Settings", "The settings for every game.", [] { push(Page::Settings); }));
-	items.push_back(action(icon::Undo, "Reset the game", "Restarts the game, as the console's reset button does.", [] {
+	items.push_back(action(icon::Gear, "Settings", "The settings board: every setting, for every game.", [] { push(Page::Settings); }));
+	items.push_back(action(icon::Undo, "Reset Game", "Restarts the game, as the console's reset button does.", [] {
 		push(Page::Confirm, 0, 0, "Reset the game?", "What was not saved to a memory card or a state is lost.", [] {
 			host::reset();
 			resume();
 		});
 	}));
-	items.push_back(action(icon::Power, "Close the game", "Back to the library.", [] {
+	items.push_back(action(icon::Power, "Close Game", "Back to the library.", [] {
 		if (options::frontend().autoSaveOnExit)
 		{
 			closeGame = true;
@@ -3128,7 +3111,7 @@ void pausePage(Frame& f)
 				[] { closeGame = true; });
 	}));
 	const std::string subtitle = game.serial.empty() ? "" : game.serial;
-	standardHints(menuPage(f, game.title, subtitle, items, 700));
+	pauseLayout(f, game.title, subtitle, items);
 }
 
 void statesPage(Frame& f)
@@ -3175,7 +3158,7 @@ void statesPage(Frame& f)
 	}
 	if (f.fresh && !load)
 		f.cursor = host::quickSlot();
-	const Item *focused = menuPage(f, load ? "Load state" : "Save state", host::game().title, items, 700);
+	const Item *focused = menuPage(f, load ? "Load State" : "Save State", host::game().title, items, 700);
 	// What the game showed when the state under the cursor was saved.
 	const float px0 = 64 + 700 + 24, pw = std::min(unitsWide() - 64 - px0, 720.f), ph = pw * 0.75f;
 	const int slot = f.cursor >= 0 && f.cursor < (int)slots.size() ? slots[(size_t)f.cursor] : -1;
@@ -3263,7 +3246,7 @@ void cheatItems(std::vector<Item>& items, bool running)
 				item.value = "On, by itself";
 				item.ticked = true;
 				item.info += (cheat.description.empty() ? "" : "\n\n") + std::string("On by itself because the picture is "
-						"set wide (Settings, Picture: \"Use the game's own widescreen\"). Switching it on here keeps it on "
+						"set wide (Settings, Graphics: \"Use Widescreen Patches\"). Switching it on here keeps it on "
 						"whatever the picture is.");
 			}
 			item.info = cheat.description;
@@ -3730,14 +3713,42 @@ void detailsPage(Frame& f)
 		if (description.empty())
 			description = det.serial.empty() && !det.serialRead
 					? "The game's description is found by its serial number, which is read from the disc when "
-					"Options or Cheats is opened, and when the game starts."
+					"Game Settings or Cheats is opened, and when the game starts."
 					: det.serial.empty() ? "This disc has no serial number, so nothing is known about it."
 					: "No description of " + det.serial + " in the database.";
 		const float pillsY = bottom - 64;
 		const float discsY = pillsY - 66;
-		const float textBottom = (discs > 1 ? discsY : pillsY) - 28;
+		// The save states' pictures and how many settings are this game's own,
+		// between the description and the buttons.
+		const float stripTh = 108, stripTw = stripTh * 4.f / 3.f;
+		const float stripY = (discs > 1 ? discsY : pillsY) - 28 - stripTh - 40;
+		int own = 0;
+		if (!det.serial.empty())
+			for (const board::Row& row : board::rows(true))
+				own += row.item.mark == 1;
+		const bool strip = !states.empty() || own > 0;
+		const float textBottom = strip ? stripY - 18 : (discs > 1 ? discsY : pillsY) - 28;
 		textWrapped(at(tx, top), px(tw), det.known ? theme().text : t.faint, description, Body, 24,
 				px(textBottom - top));
+		if (strip)
+		{
+			text(at(tx, stripY), t.faint, states.empty() ? "GAME SETTINGS" : "SAVE STATES", Bold, 18);
+			if (own > 0)
+				textRight(at(tx + tw, stripY), t.accent, format("%d setting%s for this game alone", own,
+						own == 1 ? "" : "s"), Body, 20);
+			for (size_t i = 0; i < states.size() && i < 6; i++)
+			{
+				const float x = tx + (float)i * (stripTw + 14), y = stripY + 30;
+				if (x + stripTw > tx + tw)
+					break;
+				panel(at(x, y), at(x + stripTw, y + stripTh), t.panelHigh, 8);
+				const Image picture = image(host::stateThumbPathFor(game.path, states[i].first));
+				if (picture.id != nullptr)
+					imageFit(picture, at(x, y), at(x + stripTw, y + stripTh), 8);
+				textFit(at(x + 2, y + stripTh + 6), px(stripTw - 4), t.dim, (states[i].first == host::ResumeSlot
+						? std::string("Resume") : format("Slot %d", states[i].first + 1)), Body, 17);
+			}
+		}
 		if (discs > 1)
 		{
 			float dx = tx;
@@ -3760,8 +3771,8 @@ void detailsPage(Frame& f)
 			on += cheat.enabled;
 		const std::string labels[5] = {
 			std::string(icon::Play) + "   Play",
-			std::string(icon::Upload) + "   Load state",
-			std::string(icon::Sliders) + "   Options",
+			std::string(icon::Upload) + "   Load State",
+			std::string(icon::Sliders) + "   Game Settings",
 			std::string(icon::Bolt) + (on > 0 ? format("   Cheats   %d on", on) : std::string("   Cheats")),
 			std::string(library::favourite(game.path) ? icon::Heart : icon::Star) + "   More",
 		};
@@ -3829,7 +3840,7 @@ void detailsPage(Frame& f)
 	}
 
 	// A tab: its name, then its rows.
-	static const char *names[] = { "", "Start from a saved state", "Options for this game", "Cheats and patches",
+	static const char *names[] = { "", "Load State", "Game Settings", "Cheats and Patches",
 			"More about this game" };
 	static const char *symbols[] = { "", icon::Upload, icon::Sliders, icon::Bolt, icon::Star };
 	text(at(tx, top + 2), t.accent, symbols[f.a], Body, 26);
@@ -3875,20 +3886,23 @@ void detailsPage(Frame& f)
 				"not open). A game's own settings and its cheats are kept by that number.";
 	else if (f.a == TabOptions)
 	{
-		// How the game is put on the screen first, then the emulator's.
-		items.push_back(header("PICTURE"));
-		pictureItems(true, items);
-		for (const options::Category& category : options::categories())
+		// The game's own settings as the settings board places and names them:
+		// under each area and section.
+		int area = -1, section = -1;
+		for (board::Row& row : board::rows(true))
 		{
-			std::string name = category.name;
-			const size_t tail = name.rfind(" Settings");
-			if (tail != std::string::npos && tail + 9 == name.size())
-				name.erase(tail);
-			for (char& c : name)
-				if (c >= 'a' && c <= 'z')
-					c = (char)(c - 'a' + 'A');
-			items.push_back(header(name));
-			optionItems(category.key, false, true, items);
+			if (row.area != area || row.section != section)
+			{
+				area = row.area;
+				section = row.section;
+				std::string name = std::string(board::areas()[(size_t)area].name) + "  \xc2\xb7  "
+						+ board::areas()[(size_t)area].sections[(size_t)section];
+				for (char& c : name)
+					if (c >= 'a' && c <= 'z')
+						c = (char)(c - 'a' + 'A');
+				items.push_back(header(name));
+			}
+			items.push_back(std::move(row.item));
 		}
 	}
 	else
@@ -5337,6 +5351,23 @@ void frame()
 {
 	// Adjust HDR brightness's pattern is drawn only while its page is drawn.
 	display::hdrTest(0, 0);
+	// PC test: SWANSTATION_SETTINGS_DUMP writes every settings row to a file once
+	// the start-up animation is over.
+	static bool dumped;
+	if (!dumped && splash.state == Splash::Over && getenv("SWANSTATION_SETTINGS_DUMP") != nullptr)
+	{
+		dumped = true;
+		board::dump(getenv("SWANSTATION_SETTINGS_DUMP"));
+	}
+	// PC test: SWANSTATION_SETTINGS_SEARCH=<words> opens the settings board's
+	// search with those words once the start-up animation is over.
+	static bool searchOpened;
+	if (!searchOpened && splash.state == Splash::Over && getenv("SWANSTATION_SETTINGS_SEARCH") != nullptr)
+	{
+		searchOpened = true;
+		push(Page::Settings);
+		push(Page::SettingsSearch, 0, 0, getenv("SWANSTATION_SETTINGS_SEARCH"));
+	}
 	// PC test: SWANSTATION_HDR_PAGE opens Adjust HDR brightness once the
 	// start-up animation is over (a PC has no HDR output to open it from).
 	static bool hdrPageOpened;
@@ -5443,7 +5474,7 @@ void frame()
 		Frame& f = stack.back();
 		const Page page = f.page;
 		if (game)
-			drawGame(0.72f);
+			drawGame(page == Page::Settings ? board::gameDim(f) : page == Page::Pause ? 0.55f : 0.72f);
 		else if (page == Page::Details || page == Page::Launch || page == Page::Loading || page == Page::LibraryOptions
 				|| page == Page::Cover || page == Page::DiscDrive || page == Page::Themes)
 		{
@@ -5456,7 +5487,8 @@ void frame()
 		switch (page)
 		{
 		case Page::MainMenu: mainMenuPage(f); break;
-		case Page::Settings: settingsPage(f); break;
+		case Page::Settings: board::page(f); break;
+		case Page::SettingsSearch: board::searchPage(f); break;
 		case Page::Pause: pausePage(f); break;
 		case Page::States: statesPage(f); break;
 		case Page::Discs: discsPage(f); break;

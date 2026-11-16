@@ -16,6 +16,7 @@
 	picture that does not.
 */
 #include "ui_internal.h"
+#include "ui_board.h"
 #include "achievements.h"
 #include "display.h"
 #include "memcard.h"
@@ -479,7 +480,7 @@ void libraryOptionsPage(Frame& f)
 {
 	options::Frontend& o = options::frontend();
 	std::vector<Item> items;
-	items.push_back(choice("Sort by", o.sort, { "Name", "Last played", "Most played", "Year", "Size" },
+	items.push_back(choice("Sort By", o.sort, { "Name", "Last played", "Most played", "Year", "Size" },
 			"", [](int i) {
 				options::frontend().sort = i;
 				libraryChanged();
@@ -502,21 +503,21 @@ void libraryOptionsPage(Frame& f)
 		if (f.fresh)
 			esdeRescan();
 		const std::vector<std::string> names = libraryViewNames();
-		Item item = choice("View", libraryViewChoice(), names, "", [](int i) { chooseLibraryView(i); });
+		Item item = choice("Library View", libraryViewChoice(), names, "", [](int i) { chooseLibraryView(i); });
 		items.push_back(item);
 	}
 	if (o.view == EsdeView)
-		items.push_back(action(icon::Paint, "Theme options", "", [] { push(Page::Themes); }));
-	items.push_back(toggle("Game videos", &o.videos, "", [] {
+		items.push_back(action(icon::Paint, "ES-DE Theme Options", "", [] { push(Page::Themes); }));
+	items.push_back(toggle("Video Previews", &o.videos, "", [] {
 		if (!options::frontend().videos)
 			video::stop();
 	}));
-	items.push_back(action(icon::Sync, "Scan for games", "", [] {
+	items.push_back(action(icon::Sync, "Scan For Games", "", [] {
 		scanEverything();
 		pop();
 	}));
-	items.push_back(action(icon::Gear, "More library settings", "", [] { push(Page::Settings, 0); }));
-	const Item *focused = panelList(f, "Sort and filter", items, 760, (float)std::min((int)items.size(), 8) * 60 + 10,
+	items.push_back(action(icon::Gear, "Library Settings", "", [] { push(Page::Settings, board::LibraryArea, 0, "area"); }));
+	const Item *focused = panelList(f, "Sort and Filter", items, 760, (float)std::min((int)items.size(), 8) * 60 + 10,
 			"Favourite or hide a game in its details (Triangle, More); hidden games come back with Show, Hidden "
 			"games. Aurora layouts (.cfljson) go in the layouts folder, ES-DE themes in the themes folder.");
 	standardHints(focused);
@@ -800,7 +801,7 @@ void cardPage(Frame& f)
 			}
 			else
 				push(Page::Confirm, 0, 0, "Delete this save?", title + " is removed from the card. A copy of the card as it "
-						"is now is kept first (Settings, Games and saving, Card backups).", [path, block] {
+						"is now is kept first (Settings, Console, Memory Card Backups).", [path, block] {
 					OpenCard& card = openCard(path);
 					if (!card.ok)
 						return;
@@ -1601,7 +1602,7 @@ void safeStartPage(Frame& f)
 {
 	std::vector<Item> items;
 	items.push_back(action(icon::Play, "Go on as usual", "Nothing is changed.", [] { pop(); }));
-	items.push_back(action(icon::Screen, "Display output back to 60 Hz", "Should the screen have stayed dark, or flickered, "
+	items.push_back(action(icon::Screen, "Display Mode Back To 60 Hz", "Should the screen have stayed dark, or flickered, "
 			"after another output was chosen: the console is asked for 59.94 Hz again from the next start, and black "
 			"frame insertion is switched off.", [] {
 				options::Frontend& o = options::frontend();
@@ -1730,7 +1731,7 @@ void memoryPage(Frame& f)
 	{
 		items.push_back(fact("Not now", "", host::restricted() ? "RetroAchievements' hardcore mode allows no changes to the "
 				"game's memory." : "Netplay keeps both consoles' memory the same, so nothing is changed in it meanwhile."));
-		standardHints(menuPage(f, "Find in memory", host::game().title, items, 900));
+		standardHints(menuPage(f, "Memory Search", host::game().title, items, 900));
 		return;
 	}
 	const int bytes = memsearch::size();
@@ -1837,7 +1838,7 @@ void memoryPage(Frame& f)
 	}
 	items.push_back(toggle("Show them over the game", &options::frontend().watchOverlay,
 			"The watched values, in a corner over the running game."));
-	standardHints(menuPage(f, "Find in memory", host::game().title, items, 900));
+	standardHints(menuPage(f, "Memory Search", host::game().title, items, 900));
 }
 
 // ---------------------------------------------------------- the speedrun timer
@@ -1962,7 +1963,7 @@ void speedrunPage(Frame& f)
 			? shownRoot() + file.substr(rootDir.size()) : file,
 			"The splits are kept here, and can be written by hand: \"split NAME\", \"split NAME | when 0x8007A3B4 u8 == 3\", "
 			"\"start when ...\". The values come from Find in memory."));
-	standardHints(menuPage(f, "Speedrun timer", host::game().title, items, 900));
+	standardHints(menuPage(f, "Speedrun Timer", host::game().title, items, 900));
 }
 
 // ------------------------------------------------------------- the web panel
@@ -2170,7 +2171,7 @@ void shadersPage(Frame& f)
 	for (const slangimport::Found& preset : found)
 	{
 		Item item = action(icon::Download, preset.name, "Compiles this preset on the console and adds it to the picture "
-				"tube's list (Picture, Picture tube). From " + preset.path + ".", [preset] { slangimport::start(preset); },
+				"tube's list (Settings, Display, CRT Shader). From " + preset.path + ".", [preset] { slangimport::start(preset); },
 				!working);
 		item.value = preset.imported ? "Brought in" : "";
 		items.push_back(item);
@@ -2411,9 +2412,9 @@ void shortcutsPage(Frame& f)
 		items.push_back(item);
 	};
 	row(icon::Forward, "R2", "Fast forward", "While both are held the game runs faster, without sound. How fast is set "
-			"under Settings, Controls.");
+			"under Settings, Saving, Rewind.");
 	row(icon::Backward, "L2", "Rewind", "While both are held the game goes backwards through the last while of play. It "
-			"must be switched on first (Settings, Controls): the states it steps through are kept in "
+			"must be enabled first (Settings, Saving, Rewind): the states it steps through are kept in "
 			"memory only while it is on.");
 	row(icon::Save, "R1", "Save a state", "To the slot the shortcuts use: the one saved to last, or chosen with OPTIONS and "
 			"Left or Right.");
@@ -2421,10 +2422,10 @@ void shortcutsPage(Frame& f)
 	row(icon::List, "Left, Right", "Another slot", "Which of the ten slots the two shortcuts above use.");
 	items.push_back(header("AND BY ITSELF"));
 	if (menuKey == 3)
-		row(icon::Gear, "OPTIONS, held for a second", "The menu", "Settings, Controls, Buttons: \"The menu opens with\".");
+		row(icon::Gear, "OPTIONS, held for a second", "The menu", "Settings, Controllers, Button Mapping: \"The menu opens with\".");
 	else
 		row(icon::Gear, key + ", tapped", "The menu", "With the shortcuts on, the menu opens when it is let go, since "
-				"holding it is the shortcuts' key. Settings, Controls, Buttons: \"The menu opens with\".");
+				"holding it is the shortcuts' key. Settings, Controllers, Button Mapping: \"The menu opens with\".");
 	row(icon::Gamepad, "Touch pad, left and right", "Select and Start", "Press the pad down on that side (unless a half "
 			"opens the menu, or Buttons gives them other buttons).");
 	standardHints(menuPage(f, "Shortcuts", "", items, 900));
@@ -2437,7 +2438,7 @@ bool gameShortcuts()
 	static bool optionsDown, usedAsKey;
 	static double heldSince = -1;
 	const options::Frontend& settings = options::frontend();
-	// The menu's button (Settings, Controls, "The menu opens with").
+	// The menu's button (Settings, Controllers, Button Mapping).
 	const uint32_t key = host::menuButton();
 	if (optionsSpent)
 	{
@@ -2492,7 +2493,7 @@ bool gameShortcuts()
 	if (forward || back)
 		usedAsKey = true;
 	if (back && !host::rewinding() && !settings.rewind && hit(L2))
-		host::addMessage("Rewind is off: it is switched on under Settings, Controls.", 4.0);
+		host::addMessage("Rewind is disabled: enable it in Settings, Saving, Rewind.", 4.0);
 	host::setRewinding(back);
 	host::setFastForward(forward && !back);
 	if (hit(R1))
@@ -3091,23 +3092,23 @@ const Preset presetOptions[] = {
 struct PresetLook
 {
 	const char *name;
-	const char *label;		// for "Differs from the original"
+	const char *label;		// for "Differences From Original"
 	int values[PresetCount];
 };
 const PresetLook presetLook[] = {
-	{ "crt", "Picture tube", { 0, 5, 0, 0, 0, 0, 0 } },
-	{ "signal", "Signal", { 0, 3, 0, 0, 0, 0, 0 } },
-	{ "scaler", "Scaling filter", { 2, 0, 2, 2, 2, 5, 1 } },
-	{ "frame_generation", "Frame generation", { 0, 0, -1, -1, -1, -1, 0 } },
-	{ "fg_runahead", "Frame generation's run-ahead", { 0, 0, -1, -1, -1, -1, 0 } },
-	{ "dynamic_resolution", "Adaptive resolution", { 0, 0, -1, -1, -1, -1, 0 } },
-	{ "widescreen_patch", "The game's own widescreen", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "crt", "CRT Shader", { 0, 5, 0, 0, 0, 0, 0 } },
+	{ "signal", "Video Signal Simulation", { 0, 3, 0, 0, 0, 0, 0 } },
+	{ "scaler", "Scaling Filter", { 2, 0, 2, 2, 2, 5, 1 } },
+	{ "frame_generation", "Frame Generation", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "fg_runahead", "Frame Generation Run-Ahead", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "dynamic_resolution", "Adaptive Resolution Scale", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "widescreen_patch", "Use Widescreen Patches", { 0, 0, -1, -1, -1, -1, 0 } },
 	{ "brightness", "Brightness", { 10, 10, -1, -1, -1, -1, 10 } },
 	{ "contrast", "Contrast", { 10, 10, -1, -1, -1, -1, 10 } },
 	{ "saturation", "Saturation", { 10, 10, -1, -1, -1, -1, 10 } },
 	{ "gamma", "Gamma", { 10, 10, -1, -1, -1, -1, 10 } },
-	{ "grain", "Film grain", { 0, 0, -1, -1, -1, -1, 0 } },
-	{ "black_frames", "Black frames", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "grain", "Film Grain", { 0, 0, -1, -1, -1, -1, 0 } },
+	{ "black_frames", "Black Frame Insertion", { 0, 0, -1, -1, -1, -1, 0 } },
 };
 
 // For every game, or for the loaded one alone.
@@ -3233,6 +3234,7 @@ Item pictureChoice(bool forGame, const char *name, const std::string& label, std
 	Item item;
 	item.label = label;
 	item.info = info;
+	item.key = std::string("picture:") + name;
 	item.choices = std::move(names);
 	item.current = std::clamp(options::picture(name, forGame), 0, (int)item.choices.size() - 1);
 	item.value = item.choices[item.current];
@@ -3257,7 +3259,7 @@ Item pictureChoice(bool forGame, const char *name, const std::string& label, std
 		}
 	}
 	else if (own)
-		item.info += "\n\nThe running game has a value of its own for this (Game settings).";
+		item.note = "The running game has its own value for this (Game Settings).";
 	return item;
 }
 
@@ -3311,7 +3313,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"textures, gaps closed. Enhanced: six times. Beautiful: eight times, smoothed textures (JINC2), sharpened "
 				"(CAS). Edges are smoothed by the resolution rather than MSAA, which would turn accurate blending off. "
 				"Speedrun: as the PlayStation drew it, square pixels, nothing that changes its timing. Each setting can "
-				"still be changed by itself; \"Differs from the original\" lists what is not as the console had it"
+				"still be changed by itself; \"Differences From Original\" lists what is not as the console had it"
 				+ (forGame ? "." : ", and a game's own settings stay above these."));
 		item.choose = [forGame](int i) { applyPreset(i, forGame); };
 		if (forGame && item.alt)
@@ -3380,14 +3382,14 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 			"frame. A picture file: " + shownRoot() + "borders/<serial>.png "
 			"for one game (SLUS-12345.png), or default.png for all; .jpg works too.",
 			[] { display::forgetAmbient(); }));
-	items.push_back(pictureChoice(forGame, "dynamic_resolution", "Adaptive resolution", { "Off", "On" },
+	items.push_back(pictureChoice(forGame, "dynamic_resolution", "Adaptive resolution", { "Disabled", "Enabled" },
 			"While a game cannot keep its own speed at the resolution chosen (Emulator, Internal Resolution Scale), the "
 			"resolution is lowered a step at a time until it can, and raised again, a step at a time, once it has kept "
 			"its speed for a while; never above the one chosen, nor below half of it. A step remakes the picture "
 			"memory: a moment's hitch. A step that did not hold is not tried again until the game is started anew. "
 			"Not while fast forwarding, rewinding or paused.",
 			[] { host::resetAdaptiveResolution(); }));
-	items.push_back(pictureChoice(forGame, "widescreen_patch", "Use the game's own widescreen", { "Off", "On" },
+	items.push_back(pictureChoice(forGame, "widescreen_patch", "Use the game's own widescreen", { "Disabled", "Enabled" },
 			"With the aspect ratio set wide (16:9 and wider, Emulator) or the widescreen hack on, a game that has a "
 			"widescreen patch in the patch database uses it by itself: the game's own camera and culling made wide, "
 			"rather than the emulator's general widescreen hack, which can leave things popping in at the edges. "
@@ -3441,7 +3443,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 			item.value = "Not offered";
 		}
 		else if (f.hdr && !display::hdrOn())
-			item.value = "On, not yet";
+			item.value = "Enabled (After Restart)";
 		items.push_back(item);
 		if (display::hdrOffered() && f.hdr)
 		{
@@ -3492,7 +3494,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 	}
 	const int generation = now_("frame_generation");
 	{
-		Item item = pictureChoice(forGame, "black_frames", "Black frame insertion", { "Off", "On" },
+		Item item = pictureChoice(forGame, "black_frames", "Black frame insertion", { "Disabled", "Enabled" },
 				"At 120 Hz, every second refresh shows black instead of the same frame again, as a picture tube "
 				"went dark between frames: movement is clearer, the picture darker, and some see it flicker. Only "
 				"for games at the display's half rate (60 fps games at 119.88 Hz) with pacing by the display.");
@@ -3517,7 +3519,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 			running = format("\n\nThis game is drawing about %.0f pictures a second now, and the screen shows %.0f.", pictures,
 					shows);
 		}
-		items.push_back(pictureChoice(forGame, "frame_generation", "Frame generation", { "Off", "On" },
+		items.push_back(pictureChoice(forGame, "frame_generation", "Frame generation", { "Disabled", "Enabled" },
 				"Draws pictures of its own between the game's, from how the picture moved, so that movement is "
 				"smoother than the game makes it. The title counts how many pictures a second the game really "
 				"draws (by where its picture starts, or by whether it drew anything): most PlayStation games draw "
@@ -3527,7 +3529,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"stutter in that place. Between the game's pictures, the game answers the pad a refresh or two "
 				"later; ahead of them, it does not. With frame pacing by the clock, the screen shows where the game "
 				"is at each of its refreshes, at any rate (best with a variable refresh rate). Not while fast "
-				"forwarding or rewinding. The frame rate counter (Settings, Picture) shows the game's pictures "
+				"forwarding or rewinding. The frame rate counter (Settings, Display, Show Frame Rate) shows the game's pictures "
 				"and the screen's side by side." + running,
 				[] { display::forgetGenerated(); }));
 	}
@@ -3595,7 +3597,7 @@ void pictureItems(bool forGame, std::vector<Item>& items)
 				"game answers the pad a frame sooner, which takes back the delay of pictures made between the "
 				"game's. It costs about twice the emulator's work. Not when run-ahead is set by itself (Emulator), "
 				"and not in netplay."));
-		items.push_back(pictureChoice(forGame, "fg_debug", "Show the movement", { "Off", "On" },
+		items.push_back(pictureChoice(forGame, "fg_debug", "Show the movement", { "Disabled", "Enabled" },
 				"A view for checking frame generation: over the made pictures, the movement found is shown as a "
 				"colour (its way) and a strength (its length), and grey where it is not believed. With the optical "
 				"flow: grey no movement, green a movement, red and blue an edge where the frame before's or this one's "
@@ -3800,7 +3802,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 
 		items.push_back(header("USB controllers"));
 		{
-			Item item = choice("USB controllers", f.usbPads, { "Off", "On", "On, and look harder" },
+			Item item = choice("USB controllers", f.usbPads, { "Disabled", "Enabled", "Enabled (Thorough Scan)" },
 					"An experiment: controllers the console does not take as its own, on a USB cable - a PS3 pad, a "
 					"DualShock 3, an Xbox 360 pad, other USB gamepads - read by PSSwanStation itself. It has not yet been seen to work on a console: the boot log's \"usbpad\" lines say what "
 					"the console offers and what the controller sends. On: through the kernel's own USB nodes, only a "
@@ -3842,7 +3844,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 		items.push_back(toggle("Player lights", &f.playerLights, "Each pad's light bar in its player's colour: blue, "
 				"red, green and pink for players 1 to 4."));
 		{
-			Item item = choice("Tilt steering", f.motion, { "Off", "On" },
+			Item item = choice("Tilt steering", f.motion, { "Disabled", "Enabled" },
 					"Player 1's pad, leant to the left or right like a steering wheel, moves the left stick that way: "
 					"with a DualShock, an analog joystick or a neGcon chosen above, that steers. An experiment: the "
 					"pad's motion sensor has not been read on a console by this title yet.",
@@ -3951,7 +3953,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 				"Saves the game's resume state whenever the console's own menu (the PS button) opens over it, quietly "
 				"and without a pause (not on a timer: that only wrote to the storage). When the console closes PSSwanStation (rest "
 				"mode, or closing it from the console's menu) the next start offers to continue from there. It uses "
-				"the same state as \"Save when a game is closed\". Not yet tried on a console: if PSSwanStation "
+				"the same state as \"Save State On Exit\". Not yet tried on a console: if PSSwanStation "
 				"stops when a game starts with this on, switch it off."));
 		{
 			static const int counts[4] = { 0, 5, 10, 20 };
@@ -4220,7 +4222,7 @@ void originalPage(Frame& f)
 		item.value = d.now;
 		items.push_back(item);
 	}
-	standardHints(menuPage(f, "Differs from the original", game ? host::game().title : std::string(), items, 1100));
+	standardHints(menuPage(f, "Differences From Original", game ? host::game().title : std::string(), items, 1100));
 }
 
 size_t originalDifferences()
@@ -4246,10 +4248,10 @@ void pauseMoreItems(std::vector<Item>& items)
 			item.value = netplay::state() == netplay::State::Playing ? "Playing" : "Starting";
 		items.push_back(item);
 	}
-	items.push_back(action(icon::Clock, "Speedrun timer", "A timer with splits over the game, started and split by hand "
+	items.push_back(action(icon::Clock, "Speedrun Timer", "A timer with splits over the game, started and split by hand "
 			"or by the game's memory, with your personal best.", [] { push(Page::Speedrun); }));
 	{
-		Item item = action(icon::Search, "Find in memory", "Looks for a number in the game's memory (the lives, the "
+		Item item = action(icon::Search, "Memory Search", "Looks for a number in the game's memory (the lives, the "
 				"money) step by step, as cheats are found; what is found can be watched over the game, held at a value, "
 				"or made a cheat.", [] { push(Page::Memory); }, !host::restricted());
 		if (!memsearch::watches().empty())
@@ -4257,7 +4259,7 @@ void pauseMoreItems(std::vector<Item>& items)
 		items.push_back(item);
 	}
 	if (options::frontend().hotkeys)
-		items.push_back(action(icon::Forward, "Shortcuts", "Fast forward, rewind and states without the "
+		items.push_back(action(icon::Forward, "Hotkey List", "Fast forward, rewind and states without the "
 				"menu: what to hold.", [] { push(Page::Shortcuts); }));
 }
 

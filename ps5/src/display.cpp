@@ -160,7 +160,7 @@ struct Target
 	bool drawn = false;
 };
 Target captureTarget, ambientTarget;
-// HDR output (Settings, Picture: HDR), as OGBox 0.0.9 has it. The graphics
+// HDR output (Settings, Display: HDR Output), as OGBox 0.0.9 has it. The graphics
 // driver retypes the framebuffers as HDR10 (ps5/patches/PS5_Mesa: BT.2020 and
 // the PQ curve, as VLC-PS5 does; param.json's attribute 0x20000000, which
 // storage::syncHdr keeps, lets VideoOut take them). The frame is drawn as for
@@ -3864,7 +3864,7 @@ void hdrPrepare()
 	hdr.offered = hdr.pipeline != VK_NULL_HANDLE;
 	if (!hdr.offered)
 		hdr.why = "The graphics driver refused HDR output's shader (the boot log says).";
-	diag::mark("display: HDR output %s", hdr.offered ? "offered (Settings, Picture)" : "not offered (hdr.frag's pipeline refused)");
+	diag::mark("display: HDR output %s", hdr.offered ? "offered (Settings, Display, HDR Output)" : "not offered (hdr.frag's pipeline refused)");
 }
 
 // The two layers and the 10-bit picture, the screen's size, and the set that

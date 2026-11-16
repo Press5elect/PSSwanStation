@@ -696,7 +696,7 @@ void logCallback(retro_log_level level, const char *format, ...)
 	if (length == 0 || text[length - 1] != '\n')
 		fputc('\n', stderr);
 	// The emulator's warnings and errors go to the boot log; with verbose
-	// logging (Settings, System), everything it says.
+	// logging (Settings, System, Logging), everything it says.
 	if (level >= RETRO_LOG_WARN || options::frontend().verboseLog)
 	{
 		while (length > 0 && (text[length - 1] == '\n' || text[length - 1] == '\r'))
@@ -2203,7 +2203,7 @@ void runFrame()
 	}
 	if (options::frontend().rumble)
 	{
-		// Vibration strength (Settings, Controls): the game's, scaled.
+		// Vibration Strength (Settings, Controllers): the game's, scaled.
 		const float strength = (float)std::clamp(options::frontend().rumbleStrength, 10, 100) / 100.f;
 		for (int i = 0; i < platform::MaxPads; i++)
 			platform::padRumble(i, rumble[i][0] * strength, rumble[i][1] * strength);
@@ -2904,7 +2904,7 @@ bool recordStart()
 	}
 	rewindOn = false;
 	diag::mark("recording: began %s", path.c_str());
-	addMessage("Recording what you press. Stop it in Settings, System.", 4.0);
+	addMessage("Recording input. Stop it in Settings, System, Input Recording.", 4.0);
 	return true;
 }
 

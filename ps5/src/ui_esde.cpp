@@ -25,7 +25,7 @@
 	A video element plays the game's video (media/videos/<file name>.mp4, as
 	ES-DE keeps them) after its delay (video.cpp, FFmpeg's decoders), its
 	picture until then; animations are not played. Whether videos play and
-	how loud is the library's setting (Settings, Library), for every view.
+	how loud is the library's setting (Settings, Library, Media), for every view.
 
 	Themes are not part of the title. Each is its author's, under its own
 	licence; they go in <root>themes (or PSSwanStation/themes on a USB drive),
@@ -137,7 +137,7 @@ void readSettings()
 
 void saveSettings()
 {
-	std::string text = "# PSSwanStation - the ES-DE theme the library is drawn in (Settings, Library).\n";
+	std::string text = "# PSSwanStation - the ES-DE theme the library is drawn in (Settings, Library, View).\n";
 	text += "theme = " + settings.theme + "\n";
 	for (const auto& [id, s] : settings.chosen)
 	{
@@ -2389,7 +2389,7 @@ void themesPage(Frame& f)
 		pick("Language", theme->languages, &esde::Selection::language, false);
 		(void)sel;
 	}
-	// The same switches as Settings, Library: they are for every view.
+	// The same switches as Settings, Library, Media: they are for every view.
 	videoSettingItems(items, false);
 	{
 		Item get = action(icon::Download, "Get themes", "", [] { push(Page::ThemeDownload); });

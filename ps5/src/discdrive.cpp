@@ -1700,7 +1700,7 @@ std::string destinationFolder(int destination, std::string *why)
 			if (!drives.empty())
 				folder = drives.front() + "/psx/";
 			else
-				reason = platform::usbAvailable() ? "No USB drive is plugged in." : "USB drives are not on (Settings, Games and saving).";
+				reason = platform::usbAvailable() ? "No USB drive is plugged in." : "Scan USB Drives is disabled (Settings, Library).";
 		}
 	}
 	else

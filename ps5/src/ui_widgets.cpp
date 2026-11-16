@@ -1262,6 +1262,7 @@ void buttonGlyph(ImVec2 centre, float size, uint32_t button)
 	// The others are a label on a key.
 	const char *label = button == L1 ? "L1" : button == R1 ? "R1" : button == L2 ? "L2" : button == R2 ? "R2"
 			: button == Options ? "OPTIONS" : button == (L1 | R1) ? "L1  R1" : button == (L2 | R2) ? "L2  R2"
+			: button == L3 ? "L3" : button == R3 ? "R3"
 			: button == (Left | Right) ? "" : button == TouchLeft ? "TOUCH L"
 			: button == TouchRight ? "TOUCH R" : button == (TouchLeft | TouchRight) ? "TOUCH PAD" : "?";
 	if (button == (Left | Right))

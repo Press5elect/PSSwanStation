@@ -574,6 +574,8 @@ struct Option
 	std::vector<Value> values;
 	std::string defaultValue;
 	bool visible = true;
+	// What this title adds to SwanStation's description (shown beside it).
+	std::string note;
 	// Not offered at all: the title drives it from a setting of its own, or
 	// it is a libretro frontend's business.
 	bool hidden = false;
