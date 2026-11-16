@@ -31,6 +31,7 @@
 	What the library shows meanwhile goes first. Not while a game runs.
 */
 #include "fe.h"
+#include "folders.h"
 #include "tuning.h"
 
 #include <atomic>
@@ -122,7 +123,7 @@ bool isImage(const std::vector<uint8_t>& data)
 
 std::string coversDir()
 {
-	return rootDir + "covers/";
+	return folders::folder(folders::Covers);
 }
 
 void loadNotFound()

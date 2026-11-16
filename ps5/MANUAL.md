@@ -41,6 +41,8 @@ Copy the `PPSA99248` folder to the console and let your homebrew loader register
 
 ## Your files
 
+**Folders of your choice** (Settings, Library, Folders; after Crux2's). *Game Folders* adds folders of games anywhere on the console's storage or a USB drive: each is searched with the folders inside it, and the games stay where they are (a folder on a USB drive shows under the USB tab, the others under Internal; Square takes one off the list). *BIOS*, *Memory Cards*, *Save States*, *Cheats*, *Covers* and *Texture Packs Folder* each take a folder of your own instead of the usual place below, picked with a folder browser (the title's folder, the folder for your files, `/data` and each USB drive); Square goes back to the usual place. A folder PSSwanStation writes to is tried for writing first. The BIOS, memory card and texture pack folders are used from the next start; the others at once. Files already there are not moved. The choices are kept in `folders.cfg` in the title folder.
+
 Everything lives in `/data/homebrew/PPSA99248/` unless you choose to keep your files elsewhere.
 
 | Folder or file | What goes there |
@@ -437,6 +439,7 @@ Every setting, by area and section:
 |  | Lightgun | Sinden Lightgun (Restart), Sinden Border Size |
 |  | USB | USB Controllers (Restart), USB Controller Assignment |
 | Library | Sources | Data Folders, Scan USB Drives (Restart), Network Shares, Wake-on-LAN, Mods |
+|  | Folders | Game Folders, BIOS Folder (Restart), Memory Cards Folder (Restart), Save States Folder, Cheats Folder, Covers Folder, Texture Packs Folder (Restart) |
 |  | View | Library View, ES-DE Themes, Group Multi-Disc Games |
 |  | Media | Download Covers, Video Previews, Video Preview Delay |
 | Saving | Save States | Save State On Exit, Load Resume State On Start, Save State On Console Menu, Save States On USB Drive |

@@ -77,6 +77,12 @@ After build 27 (not in a test build yet):
   live window over a running game in Graphics and Display, the quick settings changed from the menu
   over a game, and whether building every row each frame (about 250, as the old page built its 40)
   costs a frame anywhere (the boot log's slow-frame lines).
+- Folders of your choice (`folders.cpp`, `ui_folders.cpp`): on the PC a chosen save-state folder was
+  written to, the emulator was given the chosen card and BIOS folders (`folders: memory cards in
+  ...`), and an added game folder was scanned. On the console: the browser's `/data` and USB drives,
+  a game folder on a USB drive under the USB tab, and the BIOS read from a chosen folder.
+- The touch pad's halves by the finger that touched last (`touch_click.h`): the boot log's `pad: 1:
+  touch pad click N:` lines, with a thumb resting on one half and a click on the other.
 
 ## Known limits, by how the emulator is built
 

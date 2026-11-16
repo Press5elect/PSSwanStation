@@ -37,6 +37,7 @@
 	players' buttons come from netplay.cpp instead, the same on both consoles.
 */
 #include "fe.h"
+#include "folders.h"
 #include "sinden.h"
 #include "achievements.h"
 #include "display.h"
@@ -937,6 +938,15 @@ std::string stateName(const std::string& gamePath, int slot)
 std::string statePathFor(const std::string& gamePath, int slot, bool writing = false)
 {
 	const std::string name = stateName(gamePath, slot);
+	// A folder chosen for the save states (Settings, Library, Folders) is
+	// where they are, read and written.
+	const std::string own = folders::chosen(folders::SaveStates);
+	if (!own.empty())
+	{
+		if (writing)
+			makeDir(own);
+		return own + name;
+	}
 	const std::string usb = options::frontend().statesOnUsb ? platform::usbDataDir() : std::string();
 	const std::string console = rootDir + "data/states/";
 	const std::string preferred = (usb.empty() ? console : usb + "data/states/") + name;
@@ -1437,8 +1447,14 @@ void achievementsInit()
 
 bool init()
 {
-	saveDir = rootDir + "data/saves";
-	systemDir = rootDir + "bios";
+	// The memory cards' and the BIOS's folders: as chosen (Settings, Library,
+	// Folders), else their usual places; the emulator takes them at its start.
+	saveDir = folders::folder(folders::MemoryCards);
+	saveDir.pop_back();
+	systemDir = folders::folder(folders::Bios);
+	systemDir.pop_back();
+	makeDir(saveDir);
+	diag::mark("folders: memory cards in %s, the BIOS in %s", saveDir.c_str(), systemDir.c_str());
 	cacheDir = rootDir + "data/cache";
 	nameTextureFolders();
 	options::loadGlobal();
@@ -2536,6 +2552,9 @@ std::vector<std::string> textureFolders()
 		if (std::find(folders.begin(), folders.end(), folder) == folders.end())
 			folders.push_back(folder);
 	};
+	// A folder chosen for the texture packs first (Settings, Library, Folders).
+	if (!folders::chosen(folders::Textures).empty())
+		add(folders::chosen(folders::Textures));
 	add(rootDir + "textures");
 	// On a USB drive: the title's own folder there, PSSwanStation/textures
 	// (the same folder as above when the files are kept on the drive).
@@ -2823,8 +2842,16 @@ bool applyState(const std::vector<uint8_t>& packed)
 
 // ------------------------------------------------------------- recordings
 
+std::string cardsFolder()
+{
+	return saveDir + "/";
+}
+
 std::string statesFolder()
 {
+	const std::string own = folders::chosen(folders::SaveStates);
+	if (!own.empty())
+		return own;
 	const std::string usb = options::frontend().statesOnUsb ? platform::usbDataDir() : std::string();
 	return usb.empty() ? rootDir + "data/states/" : usb + "data/states/";
 }
@@ -3204,7 +3231,7 @@ std::string biosSummary()
 {
 	std::string found;
 	for (const char *name : { "scph5500.bin", "scph5501.bin", "scph5502.bin", "psxonpsp660.bin", "ps1_rom.bin" })
-		if (fileExists(rootDir + "bios/" + name))
+		if (fileExists(folders::folder(folders::Bios) + name))
 			found += (found.empty() ? "" : ", ") + std::string(name);
 	return found.empty() ? "none: the built-in OpenBIOS is used" : found;
 }

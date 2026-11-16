@@ -17,6 +17,7 @@
 */
 #include "ui_internal.h"
 #include "ui_board.h"
+#include "folders.h"
 #include "achievements.h"
 #include "display.h"
 #include "memcard.h"
@@ -592,7 +593,7 @@ OpenCard& openCard(const std::string& path)
 
 std::string savesDir()
 {
-	return rootDir + "data/saves/";
+	return host::cardsFolder();
 }
 
 std::string importDir()

@@ -57,6 +57,7 @@
 	sides.
 */
 #include "fe.h"
+#include "folders.h"
 #include "tuning.h"
 #include "syncstore.h"
 #include "cloud.h"
@@ -715,7 +716,7 @@ std::string runCloud()
 		return "";
 	Report report;
 	say("Memory cards, " + store->name());
-	syncPair(*store, "cloud-memory-cards", rootDir + "data/saves/", "memory cards", Way::Both, false, false, report);
+	syncPair(*store, "cloud-memory-cards", host::cardsFolder(), "memory cards", Way::Both, false, false, report);
 	if (options::frontend().cloudStates && !report.failed && !report.stopped)
 	{
 		say("Save states, " + store->name());
@@ -777,7 +778,7 @@ void runOnce(const char *why, bool quick)
 			syncPair(share, "all-data", rootDir + "data/", files + "/data", Way::Both, true, true, report,
 					{ "saves/", "states/" });
 		else if (f.cardsOnShare)
-			syncPair(share, "memory-cards", rootDir + "data/saves/", files + "/memory cards", Way::Both, false, false, report);
+			syncPair(share, "memory-cards", host::cardsFolder(), files + "/memory cards", Way::Both, false, false, report);
 	}
 	else if (f.filesAt == 3)
 		for (const char *folder : everyFolder)
@@ -793,19 +794,19 @@ void runOnce(const char *why, bool quick)
 		if (f.cardsOnShare)
 		{
 			say("Memory cards");
-			syncPair(share, "memory-cards", rootDir + "data/saves/", files + "/memory cards", Way::Both, false, false, report);
+			syncPair(share, "memory-cards", host::cardsFolder(), files + "/memory cards", Way::Both, false, false, report);
 		}
 		if (f.coversFromShare && !report.failed && !report.stopped)
 		{
 			say("Covers");
-			syncPair(share, "covers", rootDir + "covers/", files + "/covers", Way::Both, true, false, report);
+			syncPair(share, "covers", folders::folder(folders::Covers), files + "/covers", Way::Both, true, false, report);
 		}
 	}
 	// The cards' backups, from wherever the cards are kept on the share.
 	if (!quick && (f.filesAt == 3 || f.cardsOnShare) && !report.failed && !report.stopped)
 	{
 		say("Card backups");
-		syncPair(share, "card-backups", rootDir + "data/saves/backups/", files + "/card backups/" + consoleName(), Way::Send,
+		syncPair(share, "card-backups", host::cardsFolder() + "backups/", files + "/card backups/" + consoleName(), Way::Send,
 				true, false, report);
 	}
 	std::string summary;

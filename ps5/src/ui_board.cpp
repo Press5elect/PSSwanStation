@@ -70,7 +70,7 @@ const std::vector<AreaDef>& areaList()
 		{ "Audio", icon::Volume, { "Mix", "Output", "Interface Sounds" } },
 		{ "Controllers", icon::Gamepad, { "Ports", "Controller 1", "Controller 2", "Controller 3", "Controller 4",
 				"Controller 5", "Controller 6", "Controller 7", "Controller 8", "Pad", "Hotkeys", "Lightgun", "USB" } },
-		{ "Library", icon::Grid, { "Sources", "View", "Media" } },
+		{ "Library", icon::Grid, { "Sources", "Folders", "View", "Media" } },
 		{ "Saving", icon::Save, { "Save States", "Rewind", "Storage" } },
 		{ "Interface", icon::Sliders, { "Theme", "Accessibility", "Mascot", "Startup" } },
 		{ "Network", icon::Network, { "RetroAchievements", "Remote", "Updates" } },
@@ -707,6 +707,9 @@ std::vector<Row> rows(bool forGame)
 				row.area = place.area;
 				row.section = sectionIndex(place.area, place.section);
 				row.def = place.def == -1 ? p.item.defaultChoice : place.def;
+				// A folder: lit when one of your own is chosen.
+				if (place.def == -4)
+					row.changed = p.item.lit;
 				if (place.name != nullptr)
 					p.item.label = place.name;
 				if (place.desc != nullptr)
@@ -722,7 +725,8 @@ std::vector<Row> rows(bool forGame)
 		}
 		row.id = !p.item.key.empty() ? p.item.key : p.item.label;
 		row.restart = p.item.label.find("(Restart)") != std::string::npos;
-		row.changed = row.def >= 0 && p.item.current >= 0 && p.item.choices.size() > 1 && p.item.current != row.def;
+		if (row.def != -4)
+			row.changed = row.def >= 0 && p.item.current >= 0 && p.item.choices.size() > 1 && p.item.current != row.def;
 		p.item.lit = row.changed;
 		// The title's own settings go back to their default with Square, as the
 		// emulator's do.

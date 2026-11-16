@@ -18,6 +18,7 @@
 */
 #include "ui_internal.h"
 #include "ui_board.h"
+#include "folders.h"
 #include "netplay.h"
 #include "display.h"
 #include "update.h"
@@ -2652,6 +2653,7 @@ void frontendItems(int kind, std::vector<Item>& items)
 		break;
 	case 4:
 		moreSettings(4, items);
+		folderItems(items);
 		items.push_back(header("RetroAchievements"));
 		moreSettings(6, items);
 		break;
@@ -3541,8 +3543,8 @@ void openDetails(const library::Game& game)
 	det.played = history::get(game.path);
 	det.disc = game.discs.size() > 1 ? std::clamp(det.played.disc, 0, (int)game.discs.size() - 1) : 0;
 	for (const char *ext : { ".png", ".jpg", ".jpeg" })
-		if (det.cover.empty() && fileExists(rootDir + "covers/" + game.fileTitle + ext))
-			det.cover = rootDir + "covers/" + game.fileTitle + ext;
+		if (det.cover.empty() && fileExists(folders::folder(folders::Covers) + game.fileTitle + ext))
+			det.cover = folders::folder(folders::Covers) + game.fileTitle + ext;
 	// A game in the title's own folders is asked for its serial at once: a
 	// few sectors of a local file. A share is only asked when its settings
 	// or cheats are opened.
@@ -3611,8 +3613,8 @@ void detailsPage(Frame& f)
 		forgetImage(det.cover);
 		det.cover.clear();
 		for (const char *ext : { ".png", ".jpg", ".jpeg" })
-			if (det.cover.empty() && fileExists(rootDir + "covers/" + game.fileTitle + ext))
-				det.cover = rootDir + "covers/" + game.fileTitle + ext;
+			if (det.cover.empty() && fileExists(folders::folder(folders::Covers) + game.fileTitle + ext))
+				det.cover = folders::folder(folders::Covers) + game.fileTitle + ext;
 	}
 	if (cover.id == nullptr)
 		cover = image(det.cover);
@@ -5489,6 +5491,8 @@ void frame()
 		case Page::MainMenu: mainMenuPage(f); break;
 		case Page::Settings: board::page(f); break;
 		case Page::SettingsSearch: board::searchPage(f); break;
+		case Page::GameFolders: gameFoldersPage(f); break;
+		case Page::FolderBrowse: folderBrowsePage(f); break;
 		case Page::Pause: pausePage(f); break;
 		case Page::States: statesPage(f); break;
 		case Page::Discs: discsPage(f); break;

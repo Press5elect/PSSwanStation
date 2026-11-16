@@ -25,7 +25,18 @@ Build 28
     ones beside its actions, to change without leaving the game (R1). At
     first: Picture Preset, Internal Resolution Scale, CRT Shader, Fast
     Forward Speed and Vibration Strength.
+  - Folders of your choice (Settings, Library, Folders), as Crux2 has
+    them: game folders anywhere on the console's storage or a USB drive,
+    searched with the folders inside them, and a folder of your own for the
+    BIOS, memory cards, save states, cheats, covers and texture packs,
+    picked with a folder browser. A folder written to is tried for writing
+    first. Kept in folders.cfg.
   Changed
+  - The touch pad's click is Select or Start by the finger that touched
+    last, as Crux2 fixed it: a thumb resting on one half no longer turns a
+    click on the other half into the resting thumb's button, and a click
+    whose reading has no finger yet takes the finger seen just before. The
+    boot log names the first twelve clicks' halves.
   - The menu over a game keeps the game in view, with the pictures of its
     newest save states under it and the quick settings beside it.
   - A game's details show its save states' pictures and how many settings

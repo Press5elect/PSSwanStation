@@ -27,6 +27,7 @@
 	discs are there themselves and are grouped the same way.
 */
 #include "fe.h"
+#include "folders.h"
 #include "library_names.h"
 #include "tuning.h"
 
@@ -365,11 +366,19 @@ void run(int source, bool force)
 		// With the user's files outside the title's folder, games may be in either.
 		if (appDir != rootDir)
 			walkLocal(appDir + "games", 0, found);
+		// The game folders added on the console (Settings, Library, Folders);
+		// those on a USB drive are the USB tab's.
+		for (const std::string& folder : folders::gameFolders())
+			if (folder.compare(0, 8, "/mnt/usb") != 0)
+				walkLocal(folder, 0, found);
 	}
 	else if (source == Usb)
 	{
 		for (const std::string& dir : platform::usbGameDirs())
 			walkLocal(dir, 0, found);
+		for (const std::string& folder : folders::gameFolders())
+			if (folder.compare(0, 8, "/mnt/usb") == 0 && platform::usbAvailable())
+				walkLocal(folder, 0, found);
 	}
 	else
 	{

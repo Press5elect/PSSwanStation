@@ -36,6 +36,7 @@
 	Which entries are on is kept per game in <root>data/cheats/<serial>.txt.
 */
 #include "fe.h"
+#include "folders.h"
 #include "tuning.h"
 #include "netplay.h"
 
@@ -870,7 +871,7 @@ void loadFor(const std::string& gameSerial, const std::string& firstDisc)
 	if (readFromArchive(cheatsArchive(), loadedSerial + ".cht", text))
 		parse(text, false, codes);
 	std::vector<uint8_t> own;
-	if (readFile(rootDir + "cheats/" + loadedSerial + ".cht", own))
+	if (readFile(folders::folder(folders::Cheats) + loadedSerial + ".cht", own))
 	{
 		std::vector<Cheat> mine;
 		parse(std::string(own.begin(), own.end()), false, mine);
@@ -1068,7 +1069,7 @@ namespace
 {
 std::string ownFile()
 {
-	return rootDir + "cheats/" + loadedSerial + ".cht";
+	return folders::folder(folders::Cheats) + loadedSerial + ".cht";
 }
 
 // A section's name as the format has it: no brackets, no backslash (that

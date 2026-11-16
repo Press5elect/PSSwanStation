@@ -16,8 +16,12 @@
 
 	The touch pad is two buttons here: a click with the finger on its left half
 	is the PlayStation's Select, on its right half Start. The state carries the
-	touch points (their count at 0x34, the first one's x at 0x3c, 0 to 1919
-	across the pad); a click with no finger reported takes the side touched last.
+	touch points (their count at 0x34, each one's x, 0 to 1919 across the pad,
+	and id from 0x3c). The finger that touched last decides the half, not the
+	first in the report, which may be a thumb resting on the other half; a
+	click whose reading carries no finger yet takes the finger seen within
+	200 ms (touch_click.h, after Crux2's fix). The first twelve clicks of a run
+	are in the boot log.
 
 	The light bar is set with scePadSetLightBar and a four-byte colour, as
 	PS5_VulkanTemplate's platform layer sets it on the console. The motion
@@ -35,6 +39,7 @@
 	scePadRead refuses, that frame's state is read as before (scePadReadState).
 */
 #include "fe.h"
+#include "touch_click.h"
 
 #include <algorithm>
 #include <array>
@@ -153,7 +158,9 @@ struct Device
 {
 	int32_t user = -1;
 	int32_t handle = -1;
-	bool touchRight = true;		// the half of the touch pad touched last
+	bool touchRight = true;		// the half of the touch pad the click is on
+	touch::Click touch;			// the fingers on it, by their ids
+	int clicksSaid = 0;
 	uint8_t sentLarge = 0, sentSmall = 0;
 	uint32_t sentLight = 0;		// 0x01RRGGBB once a colour was set
 	bool motionOn = false;
@@ -163,6 +170,21 @@ struct Device
 	TapLatch latch;
 };
 std::array<Device, MaxPads> devices;
+
+uint64_t nowUs()
+{
+	return (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// A reading's fingers, to tell which one touched last.
+void feedTouch(Device& device, const PadData& sample)
+{
+	const unsigned count = sample.touchCount <= 2 ? sample.touchCount : 0;
+	uint16_t x[2] = { sample.touch[0].x, sample.touch[1].x };
+	uint8_t id[2] = { sample.touch[0].id, sample.touch[1].id };
+	device.touch.touches(count, x, id, nowUs());
+}
 std::array<Pad, MaxPads> pads;
 bool opened;
 int32_t firstUser = -1;		// who started the title: player 1
@@ -340,6 +362,7 @@ void padPoll()
 				raw = sample;	// the newest, whatever it says (gone, or the system's menu)
 				if (sample.connected != 0 && (sample.buttons & RawIntercepted) == 0)
 				{
+					feedTouch(device, sample);
 					anyRaw |= sample.buttons;
 					device.last = sample;
 					found = true;
@@ -363,6 +386,8 @@ void padPoll()
 				diag::mark("pad: %d: scePadRead refused (%#x): the state is read as before", i + 1, (unsigned)count);
 			}
 			rc = scePadReadState(device.handle, &raw);
+			if (rc >= 0 && raw.connected != 0)
+				feedTouch(device, raw);
 		}
 		if (rc < 0 || raw.connected == 0 || (raw.buttons & RawIntercepted) != 0)
 		{
@@ -373,8 +398,19 @@ void padPoll()
 			pad.released = before;
 			continue;
 		}
-		if (raw.touchCount > 0 && raw.touchCount <= 2)
-			device.touchRight = raw.touch[0].x >= 960;
+		// A click that starts now: the half of the finger that touched last.
+		if ((before & (TouchLeft | TouchRight)) == 0 && ((raw.buttons | anyRaw) & RawTouchPad) != 0)
+		{
+			device.touchRight = !device.touch.leftHalf(nowUs());
+			if (device.clicksSaid < 12)
+			{
+				device.clicksSaid++;
+				diag::mark("pad: %d: touch pad click %d: %s (%u finger(s)%s)", i + 1, device.clicksSaid,
+						device.touchRight ? "right, Start" : "left, Select", (unsigned)raw.touchCount,
+						raw.touchCount >= 1 && raw.touchCount <= 2 ? format(", x %u%s", (unsigned)raw.touch[0].x,
+						raw.touchCount == 2 ? format(" and %u", (unsigned)raw.touch[1].x).c_str() : "").c_str() : "");
+			}
+		}
 		pad.connected = true;
 		// While the touch pad is held, the side it was pressed on stays.
 		if ((before & (TouchLeft | TouchRight)) != 0 && (raw.buttons & RawTouchPad) != 0)
@@ -415,8 +451,13 @@ void padPoll()
 		pad.touching = raw.touchCount > 0 && raw.touchCount <= 2;
 		if (pad.touching)
 		{
-			pad.touchX = std::clamp(raw.touch[0].x / 1919.f, 0.f, 1.f);
-			pad.touchY = std::clamp(raw.touch[0].y / 1079.f, 0.f, 1.f);
+			// The finger that touched last (the mouse, the light gun's aim).
+			uint16_t x = raw.touch[0].x;
+			int f = 0;
+			if (device.touch.newestX(x) && raw.touchCount == 2 && raw.touch[1].x == x)
+				f = 1;
+			pad.touchX = std::clamp(raw.touch[f].x / 1919.f, 0.f, 1.f);
+			pad.touchY = std::clamp(raw.touch[f].y / 1079.f, 0.f, 1.f);
 		}
 	}
 	// A USB controller the console does not take as its own (usbpad_ps5.cpp):

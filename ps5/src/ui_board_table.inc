@@ -264,6 +264,24 @@
 { "Mods", Library, "Sources", "Mods",
 	"Applies mods to games: patches, GameShark codes and options, without changing the disc image. Mods are read "
 	"from {root}mods.", -2 },
+{ "Game Folders", Library, "Folders", "Game Folders",
+	"Adds folders of games anywhere on the console's storage or a USB drive. Each folder is searched with the "
+	"folders inside it; the games stay where they are.", -4 },
+{ "folder:bios", Library, "Folders", "BIOS Folder (Restart)",
+	"Selects the folder the BIOS files are read from. Default: {root}bios.", -4 },
+{ "folder:memory_cards", Library, "Folders", "Memory Cards Folder (Restart)",
+	"Selects the folder memory cards and their backups are kept in. Default: {root}data/saves. Existing cards are "
+	"not moved.", -4 },
+{ "folder:save_states", Library, "Folders", "Save States Folder",
+	"Selects the folder save states are kept in. Overrides Save States On USB Drive. Default: {root}data/states. "
+	"Existing states are not moved.", -4 },
+{ "folder:cheats", Library, "Folders", "Cheats Folder",
+	"Selects the folder your own cheat files (<serial>.cht) are read from and written to. Default: {root}cheats.", -4 },
+{ "folder:covers", Library, "Folders", "Covers Folder",
+	"Selects the folder covers are read from and downloaded to. Default: {root}covers.", -4 },
+{ "folder:textures", Library, "Folders", "Texture Packs Folder (Restart)",
+	"Selects a folder searched first for texture packs (<serial>/). The usual places are still searched. Default: "
+	"{root}textures.", -4 },
 { "Library view", Library, "View", "Library View",
 	"Selects the layout of the library: Shelves, Covers, List, the 3D views, Aurora layouts from {root}layouts, "
 	"and ES-DE themes from {root}themes.", 0 },

@@ -77,6 +77,8 @@ enum class Page
 	Shares,			// the network shares: network.cfg's folders, the account, servers found
 	HdrTest,		// Adjust HDR brightness: a: the step (0 the highlights, 1 the white level)
 	SettingsSearch,	// settings found by a word (ui_board.cpp): s: the words, b: 1 for the game's own values
+	GameFolders,	// the game folders added (ui_folders.cpp)
+	FolderBrowse,	// a folder browser: s: its title, s2: the folder shown ("" the places)
 	// ui_esde.cpp
 	Themes,			// the ES-DE theme: which, its variant, colours, sizes
 	ThemeDownload,	// ES-DE themes to fetch
@@ -289,6 +291,11 @@ void sharesPage(Frame& f);
 void hdrTestPage(Frame& f);
 void whatsNewPage(Frame& f);
 void discDrivePage(Frame& f);
+// ui_folders.cpp: Settings, Library, Folders.
+void gameFoldersPage(Frame& f);
+void folderBrowsePage(Frame& f);
+void folderItems(std::vector<Item>& items);
+void browseFolder(const std::string& title, std::function<void(const std::string&)> done);
 
 // The keyboard: asks for a text and hands it to `done` when it is confirmed.
 void askText(const std::string& title, const std::string& initial, bool hidden, bool address,

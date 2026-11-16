@@ -840,6 +840,9 @@ std::string recordingsFolder();
 // "Save states on a USB drive" and a drive that can be written to, else
 // <files>/data/states/.
 std::string statesFolder();
+// The memory cards' folder the emulator was given at the start, with a
+// trailing '/' (a change in Settings, Library, Folders is used from the next start).
+std::string cardsFolder();
 }
 
 // ---------------------------------------------------------------- rewind.cpp
