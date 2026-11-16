@@ -192,9 +192,9 @@ the share answers (a NAS whose disks sleep takes a few seconds) and can be
 left with Circle meanwhile.
 
 USB: off until "Scan USB Drives" is switched on in Settings, Library; it
-takes effect at the next start and needs a resident Lapy service or the ELF
-loader listening on port 9021 (the title leaves its sandbox with the Lapy
-helper beside eboot.bin). Games are read from a folder named psx, ps1 or
+takes effect at the next start and needs the ELF loader listening on port
+9021 (the title leaves its sandbox with its own
+helper, sandbox-elevator.elf beside eboot.bin). Games are read from a folder named psx, ps1 or
 playstation at the top of the drive.
 
 Network: an SMB share (Windows sharing), an NFS export or an FTP server, or
@@ -825,8 +825,8 @@ media, network.cfg and settings live in
 From the next start, what the title's folder holds is copied over once (and
 left where it is). The
 console hides that folder from a title, so PSSwanStation has to leave its
-sandbox each time it starts: that needs a resident Lapy service or the ELF
-loader on port 9021, as USB drives do. Without either it says so and uses the
+sandbox each time it starts: that needs the ELF
+loader on port 9021, as USB drives do. Without it, it says so and uses the
 title's folder. Without the drive or the share, the title says so and uses
 the title's folder. Not yet run on a console; the USB drive and the share
 have run on a PC.

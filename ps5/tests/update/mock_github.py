@@ -82,8 +82,10 @@ def release_files(build, title_id=TITLE, small=False):
         "cheats/": None,
         "covers/": None,
         "games/": None,
-        # What the build before did not have: a file, and one in new folders.
-        "lapy.elf": b"\x7fELF" + noise(tag + "lapy", 30000),
+        # The title's own sandbox helper, which the install has an older one of
+        # (managed from build 28); and what the build before did not have, a
+        # file in new folders.
+        "sandbox-elevator.elf": b"\x7fELF" + noise(tag + "elevator", 30000),
         "assets/new/deep/file.bin": noise(tag + "deep", 2000),
     }
     if not small:
@@ -95,7 +97,6 @@ def release_files(build, title_id=TITLE, small=False):
             "sce_sys/pic1.dds": b"DDS " + bytes(200000),
             "licenses/README.txt": b"The licences of what this title is made of.\n",
             "licenses/MIT.txt": b"Permission is hereby granted...\n" * 30,
-            "lapy-manifest.json": b'{"payloads": []}\n',
         })
     return files
 

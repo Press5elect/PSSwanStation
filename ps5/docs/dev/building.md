@@ -29,7 +29,6 @@ deps-src/            the libraries below
 | FFmpeg | `n9.0.2`, folder `ffmpeg-n9.0.2` | github.com/FFmpeg/FFmpeg |
 | slang-shaders | master | libretro/slang-shaders (crt-guest-advanced) |
 | libretro-database | master, sparse: `metadat/developer metadat/redump "cht/Sony - PlayStation"` (cone mode keeps `metadat/`'s own files, where the PS1 details list is since 2026-11-07) | libretro/libretro-database |
-| Lapy | `lapy.elf`, `lapy-manifest.json` and `SOURCE.txt` in `deps-src/lapy` | `lapy.elf` and its manifest from the last release's ZIP; `SOURCE.txt` (`remote:`, `revision:`, `built with:` lines) from that ZIP's `licenses/components.json` entry `lapy`, for the notices. Lapy's repository is gone ([its archive](https://github.com/Press5elect/PSSwanStation/releases/download/build24/lapy-c3bdfe3a3993.tar.gz)) |
 
 When a pin moves, change this table, `ps5/patches/README.md` and the CHANGELOG in the same commit.
 

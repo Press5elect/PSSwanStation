@@ -104,7 +104,7 @@ void earlyInit()
 		const char *outside = getenv("SWANSTATION_OUTSIDE");
 		if (outside == nullptr || safeStart)
 			outsideWhy = safeStart ? "the last start did not finish, so this one stayed in the sandbox"
-					: "the sandbox could not be left (it needs a resident Lapy service, or the ELF loader on port 9021)";
+					: "the sandbox could not be left (it needs the ELF loader on port 9021)";
 		else
 		{
 			std::string folder = outside;

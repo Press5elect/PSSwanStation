@@ -446,8 +446,8 @@ std::map<std::string, Listed> manifestOf(const std::string& release)
 // what an update may touch.
 bool programFile(const std::string& path)
 {
-	for (const char *file : { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "LEGAL.txt", "lapy.elf",
-			"lapy-manifest.json" })
+	for (const char *file : { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "LEGAL.txt",
+			"sandbox-elevator.elf" })
 		if (path == file)
 			return true;
 	for (const char *folder : { "sce_sys/", "sce_module/", "assets/", "licenses/" })
@@ -692,9 +692,9 @@ void testDownloadAndInstall()
 	CHECK(modeOf(dir + "stage/sce_sys") == 0777);
 	CHECK(modeOf(dir + "stage/assets/new/deep") == 0777);
 	CHECK(exists(dir + "stage/assets/empty.dat"));
-	CHECK(exists(dir + "stage/lapy.elf"));
+	CHECK(modeOf(dir + "stage/sandbox-elevator.elf") == 0777);
 	CHECK(!exists(dir + "stage/network.cfg"));
-	CHECK(!exists(dir + "stage/sandbox-elevator.elf"));
+	CHECK(!exists(dir + "stage/lapy.elf"));
 	CHECK(!exists(dir + "stage/games"));
 	CHECK(!exists(dir + "stage/bios"));
 	CHECK(!exists(dir + "journal"));
@@ -724,7 +724,8 @@ void testDownloadAndInstall()
 	CHECK(contentOf(title + "assets/user-theme.png") == "the user's own picture, kept in assets");
 	CHECK(modeOf(title + "assets/user-theme.png") == 0600);
 	CHECK(exists(title + "assets/old-only.bin"));
-	CHECK(contentOf(title + "sandbox-elevator.elf") == "build 9: elevator");
+	// The sandbox helper is replaced (build 27's fix reaches an updated console).
+	CHECK(contentOf(title + "sandbox-elevator.elf").compare(0, 4, "\x7f" "ELF") == 0);
 	CHECK(markedWith("build 10 is installed"));
 
 	// Installed: the title closes; nothing more happens here.
@@ -1159,13 +1160,13 @@ void testRecover()
 	// lines that name what is not the program's, which must not be touched.
 	const std::string oldEboot = contentOf(title + "eboot.bin"), oldReadme = contentOf(title + "README.txt");
 	const std::string dir = title + ".update/";
-	put(dir + "journal", "README.txt\nlapy.elf\nassets/new/file.bin\nCHANGELOG.txt\ngames/x.bin\n../evil.txt\n"
+	put(dir + "journal", "README.txt\nLEGAL.txt\nassets/new/file.bin\nCHANGELOG.txt\ngames/x.bin\n../evil.txt\n"
 			"/etc/hostname\ndata/saves/card.mcd\n\neboot.bin\n");
-	put(dir + "new", "assets/new/\nlapy.elf\nassets/new/file.bin\ngames/\n../../\ndata/saves/\ngames/x.bin\n"
+	put(dir + "new", "assets/new/\nLEGAL.txt\nassets/new/file.bin\ngames/\n../../\ndata/saves/\ngames/x.bin\n"
 			"data/saves/card.mcd\n/etc/hostname\n");
 	put(dir + "backup/README.txt", oldReadme);
 	put(title + "README.txt", "the new readme, in place");
-	put(title + "lapy.elf", "a new file, in place", 0777);
+	put(title + "LEGAL.txt", "a new file, in place", 0777);
 	put(title + "assets/new/file.bin", "a new file in a new folder", 0777);
 	put(dir + "stage/CHANGELOG.txt", "not reached");
 	put(dir + "backup/eboot.bin", oldEboot, 0777);

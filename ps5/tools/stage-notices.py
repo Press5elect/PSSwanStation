@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PSSwanStation - licenses/components.json of a staged title folder.
 
-    stage-notices.py APP_DIR SRC VULKAN_DIR SDK_DIR HUI_DIR LIBSMB2_DIR RCHEEVOS_DIR LAPY_DIR DATABASE_DIR
+    stage-notices.py APP_DIR SRC VULKAN_DIR SDK_DIR HUI_DIR LIBSMB2_DIR RCHEEVOS_DIR - DATABASE_DIR
 
 Called by ps5/tools/build.sh. It writes every part of the title as data: what
 it is, its licence, which of the folder's files it is in, and the source it
@@ -117,16 +117,7 @@ def main():
     parts.append(dict(id="glslang", name="glslang (shader presets brought in from a USB drive are compiled with it)",
                       licence="BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache-2.0 and GPL-3.0-or-later with the "
                               "Bison exception (licenses/glslang-LICENSE.txt)", artifacts=["eboot.bin"], source=at(glslang)))
-    note = (lapy / "SOURCE.txt").read_text() if (lapy / "SOURCE.txt").exists() else ""
-    remote = re.search(r"^remote: (\S+)", note, re.M)
-    rev = re.search(r"^revision: ([0-9a-f]{40})", note, re.M)
-    built = re.search(r"^built with: (.+)", note, re.M)
-    manifest = json.loads((lapy / "lapy-manifest.json").read_text())
-    parts.append(dict(
-        id="lapy", name="the Lapy helper (lapy.elf): PS5-Lapy-JB-Daemon's one-shot helper for this title, built unchanged",
-        licence="MIT", artifacts=["lapy.elf", "lapy-manifest.json"],
-        source=dict(kind="git", remote=remote.group(1) if remote else "unknown", revision=rev.group(1) if rev else "unknown",
-                    dirty=False, built_with=built.group(1) if built else "unknown", elf_sha256=manifest.get("elf_sha256"))))
+    # Lapy's helper is not shipped from build 28: the title leaves its sandbox with its own elevator.
     if (app / "assets/gamedb.zip").exists():
         source = at(database)
         details = "metadat/Sony - PlayStation.dat"

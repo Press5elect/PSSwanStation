@@ -25,9 +25,6 @@ The PS5 frontend (ps5/)      GPL-3.0-or-later GPL-3.0.txt,             Copyright
   sandbox elevator           GPL-3.0-or-later GPL-3.0.txt              ps5-native-app-boilerplate's one-request
   (sandbox-elevator.elf)                                               helper (BlackBearReloaded), as Crux2 carries
                                                                        it, with this title's ID (ps5/elevator)
-Lapy helper (lapy.elf)       MIT              Lapy-MIT.txt             PS5-Lapy-JB-Daemon, the exact-title helper
-                                                                       built unchanged (lapy-manifest.json is
-                                                                       that build's record)
 Mesa RADV (Vulkan driver)    MIT and others   Mesa-license.rst         the PS5 Mesa port (Mesa 27.0-devel),
                                                                        with Crux2's patches (Crux2 by Press5elect);
                                                                        two from PS5CEMU-HAR, GPL-3.0 (GPL-3.0.txt)

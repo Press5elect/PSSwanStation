@@ -59,6 +59,17 @@ Build 28
     kept off those cores. As OGBox's "GPU on separate cores" and Crux2's
     driver core. From the next start; safe start (L1 and R1 held) turns it
     off. The boot log's "tuning:" lines say where each thread runs.
+  Fixed
+  - The console could still go down after PSSwanStation was closed a
+    number of times: a Lapy service already running on the console was
+    asked first, and an older one leaves the sandbox without counting the
+    console root's references. PSSwanStation now leaves its sandbox only
+    with its own helper, as Crux2 and OGBox do (it needs the ELF loader on
+    port 9021); Lapy's helper is no longer shipped.
+  - An update made from inside PSSwanStation did not replace its sandbox
+    helper (sandbox-elevator.elf), so build 27's fix to the root's
+    references only reached consoles where the folder was copied over by
+    hand. The updater now replaces it.
 
 Build 27
   Added

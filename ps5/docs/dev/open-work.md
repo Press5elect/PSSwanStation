@@ -18,8 +18,10 @@ From build 27 test 1:
 From build 27 test 2:
 
 - The sandbox elevator's traded root references (boot log: `sandbox: the elevator gave the
-  console's root, its references traded`); only runs with USB or disc drives on, when Lapy's way
-  shows no drive in `/dev`.
+  console's root, its references traded`); from build 28 the only way out of the sandbox (USB
+  drives, the disc drive, USB controllers, the Sinden, files outside the title folder), and the
+  updater replaces `sandbox-elevator.elf` (it did not before: an in-app update to build 27 kept the
+  old helper).
 - The payload SDK's v0.45 binaries (3345cde): the title starting at all is the first check.
 - PS5_Mesa main 0f86253 (the pipeline-cache fix) under the title.
 - HDR output: `display: HDR output on (0; ...)` or the reason it is not; the TV going into HDR
@@ -127,7 +129,11 @@ Offered to the owner and not asked for, or found in OGBox and not ported:
 - **HDR's param.json attribute (0x20000000) is declared only while HDR is on**, from the next
   start, so the TV is not put into HDR for anyone who leaves it off (OGBox declares it always).
   `attribute3` is the display mode's (0x80040 for 120 Hz), unrelated to HDR.
-- **The sandbox elevator's protocol stays version 1**: `lapy.elf` speaks it. Its "applied the old
+- **Only the title's own sandbox elevator leaves the sandbox** (build 28, on the owner's word, as
+  Crux2 and OGBox do): no resident Lapy service is asked and `lapy.elf` is not shipped. An older
+  resident Lapy (JB Daemon v1.2, libhijacker's `jailbreak()`) writes the root without counting it,
+  the crash build 27 fixed in the elevator, and the title could not tell which answered.
+- **The sandbox elevator's protocol stays version 1**: Lapy's helper spoke it. Its "applied the old
   way" status is 12, because the title's own timeout is 11 (never sent).
 - **The old "destroyed buffer waits" Mesa patch is not carried**: PS5_Mesa main's fix (f5610fe)
   covers it.

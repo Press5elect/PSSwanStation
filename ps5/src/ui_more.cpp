@@ -3786,7 +3786,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"GunCon above). Its camera finds the white border drawn round the game's picture, and the gun's "
 					"position follows; PSSwanStation does the gun's tracking itself, without Sinden's software. Not yet "
 					"seen to work on a console: the boot log's \"sinden:\" lines say what the console and the gun did. "
-					"Needs PSSwanStation to leave its sandbox (a resident Lapy service or the ELF loader on port 9021); "
+					"Needs PSSwanStation to leave its sandbox (the ELF loader on port 9021); "
 					"from the next start." + std::string(sinden::state() == sinden::State::Off ? "" :
 					"\n\nNow: " + std::string(sinden::stateName(sinden::state())) + (sinden::status().why.empty() ? "" :
 					" (" + sinden::status().why + ")")),
@@ -3809,8 +3809,8 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"the console offers and what the controller sends. On: through the kernel's own USB nodes, only a "
 					"device that says what it is. Look harder: also through the console's USB library, opening every "
 					"device that is not Sony's and not a drive or a hub to ask what it is. Sony's PS4 and PS5 "
-					"controllers are always left to the console. Needs PSSwanStation to leave its sandbox (a resident "
-					"Lapy service or the ELF loader on port 9021); from the next start.",
+					"controllers are always left to the console. Needs PSSwanStation to leave its sandbox (the "
+					"ELF loader on port 9021); from the next start.",
 					[](int i) { options::frontend().usbPads = i; });
 			std::string name;
 			Pad usb;
@@ -3876,8 +3876,8 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"and settings are kept in data."));
 			items.push_back(toggle("USB drives", &f.usb,
 					"Lets PSSwanStation read games from USB drives (a folder named psx, ps1 or playstation at the top "
-					"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs a resident "
-					"Lapy service or the ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
+					"of the drive). For that PSSwanStation has to leave its sandbox when it starts, which needs the "
+					"ELF loader listening on port 9021; it takes effect the next time PSSwanStation "
 					"starts.", [] { library::scan(library::Optical, true); }));
 			items.push_back(toggle("USB disc drive", &f.discDrive,
 					"Plays PlayStation discs from a USB CD or DVD drive plugged into the console (the console's "
@@ -3986,7 +3986,7 @@ void moreSettings(int kind, std::vector<Item>& items)
 					"when the share is off; the copy is brought up to date when PSSwanStation starts and sent to the share "
 					"when a game closes.\n\nFrom the next start. What was kept before is copied to the new place once "
 					"(and left where it was). All but the title's folder need PSSwanStation to leave its sandbox, which "
-					"needs a resident Lapy service or the ELF loader on port 9021.",
+					"needs the ELF loader on port 9021.",
 					[](int i) { options::frontend().filesAt = i; });
 			if (f.filesAt != 0)
 				item.info += outsideAvailable() ? "\n\nIn use now." : "\n\nSet, and not in use now: "

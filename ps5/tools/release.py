@@ -72,7 +72,6 @@ LOCAL = {
     "ps5-vkhomebrewui": ("HUI_DIR", SRC.parent / "PS5_VKHomebrewUI"),
     "libsmb2": ("LIBSMB2_DIR", SRC.parent / "deps-src/libsmb2"),
     "rcheevos": ("RCHEEVOS_DIR", SRC.parent / "deps-src/rcheevos"),
-    "lapy": ("LAPY_SOURCE_DIR", SRC.parent / "deps-src/lapy-source"),
     "gamedb": ("LIBRETRO_DATABASE_DIR", SRC.parent / "deps-src/libretro-database"),
     "libretro-cheats": ("LIBRETRO_DATABASE_DIR", SRC.parent / "deps-src/libretro-database"),
     "libnfs": ("LIBNFS_DIR", SRC.parent / "deps-src/libnfs"),
@@ -158,7 +157,7 @@ def check_folder(folder, parts):
         if name not in ("README.txt", "LEGAL.txt", "BUILD.txt") and not (folder / "licenses" / name).exists():
             problems.append("licenses/README.txt names %s, which is not in licenses/" % name)
     for name in ("LEGAL.txt", "README.txt", "CHANGELOG.txt", "PRIVACY.md", "BUILD.txt", "eboot.bin", "sce_sys/param.json",
-                 "sce_module/libc.prx", "lapy.elf", "lapy-manifest.json", "licenses/GPL-3.0.txt",
+                 "sce_module/libc.prx", "sandbox-elevator.elf", "licenses/GPL-3.0.txt",
                  "licenses/ADDITIONAL-TERMS.txt"):
         if not (folder / name).is_file():
             problems.append(name + " is missing")

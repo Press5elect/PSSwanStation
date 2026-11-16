@@ -85,8 +85,11 @@ constexpr unsigned AnswerSeconds = 20;
 // The program's files: these folders whole, and these files of the title's
 // folder itself. Nothing else is unpacked, replaced or put back.
 constexpr const char *ManagedFolders[] = { "sce_sys/", "sce_module/", "assets/", "licenses/" };
+// sandbox-elevator.elf is the title's own helper for leaving its sandbox:
+// before build 28 it was not here, so an update made from the title kept the
+// helper of the install (without build 27's fix to the root's references).
 constexpr const char *ManagedFiles[] = { "eboot.bin", "README.txt", "CHANGELOG.txt", "BUILD.txt", "LEGAL.txt",
-	"lapy.elf", "lapy-manifest.json" };
+	"sandbox-elevator.elf" };
 
 // What check() found on the releases page.
 struct Release

@@ -11,10 +11,14 @@
 	     that did not finish, this one is made as plainly as can be.
 	  3. With "USB drives" or "keep my files outside the title folder" on, the
 	     title asks to be let out of its sandbox, so that /mnt/usb0-7 and /data
-	     can be reached. The asking is ps5/elevation's (BlackBearReloaded's
-	     Lapy client, see its README.txt): a resident Lapy service first, else
-	     the packaged one-shot helper through the ELF loader on port 9021. It
-	     has to happen before any other thread exists.
+	     can be reached. The title's own helper does it (sandbox-elevator.elf,
+	     ps5/elevator, as Crux2 and OGBox have it), sent to the ELF loader on
+	     port 9021: the console's root, with its references traded so that
+	     the title's exit leaves the root's counts right. It has to happen
+	     before any other thread exists. (Before build 28 a resident Lapy
+	     service was asked first, then Lapy's one-shot helper; an older Lapy
+	     service leaves the sandbox without counting the root, which in time
+	     takes the console down, and the title cannot tell which answered.)
 	  4. The title's folder as this process now sees it, and the root folder
 	     the user's files are in: the title's folder, or /data/psswanstation.
 	  5. The boot log, the folders (0777, so the console's FTP server can reach
@@ -134,7 +138,7 @@ void repairModes(const std::string& dir, int depth)
 	for (const std::string& name : names)
 	{
 		if (depth == 0 && (name == "games" || name == "sce_sys" || name == "sce_module" || name == "eboot.bin"
-				|| name == "lapy.elf" || name == "lapy-manifest.json" || name == ".update" || name == "licenses"
+				|| name == "lapy.elf" || name == "lapy-manifest.json" || name == "sandbox-elevator.elf" || name == ".update" || name == "licenses"
 				|| name == "assets"))
 			continue;
 		const std::string path = dir + name;
@@ -293,53 +297,37 @@ void earlyInit()
 			|| filesAt == 3) && !safeStart;
 	if (wantOut)
 	{
-		// Before any other thread exists, as the helper's protocol asks.
-		const elevation::Status status = elevation::request(elevation::Capability::filesystem, "/app0/lapy.elf");
-		elevated = status == elevation::Status::ok;
-		diag::mark("sandbox: leaving it %s (status %u, by way of %s)", elevated ? "granted" : "not granted",
-				(unsigned)status, elevation::path());
-		if (!elevated)
-			drivesWhy = "PSSwanStation could not leave its sandbox (status " + std::to_string((unsigned)status)
-					+ "), which it needs to see USB drives. Run the ELF loader on port 9021, or a resident Lapy "
-					"service, then start PSSwanStation again.";
-		// Disc drives are in the console's own /dev, which that way of
-		// leaving the sandbox may not show (Lapy gives /data and the USB
-		// folders). The sandbox elevator, as Crux2 sends it, gives the title
-		// the console's root: then /dev is the real one.
-		const bool drivesWanted = options::frontend().discDrive || options::frontend().usb;
-		if (drivesWanted && !devHasDrives())
+		// Before any other thread exists, as the helper's protocol asks: the
+		// title's own helper, which gives the console's root (then /dev, /data
+		// and the USB drives are the real ones).
+		const char *helper = "/app0/sandbox-elevator.elf";
+		if (!hasFile(helper))
 		{
-			const char *helper = "/app0/sandbox-elevator.elf";
-			if (!hasFile(helper))
+			diag::mark("sandbox: %s is not there", helper);
+			drivesWhy = "The sandbox elevator (sandbox-elevator.elf) is missing from PSSwanStation's folder, so it cannot "
+					"leave its sandbox to see USB drives. Copy the whole release folder again.";
+		}
+		else
+		{
+			const elevation::Status rooted = elevation::requestHelper(elevation::Capability::filesystem, helper);
+			// The old way still gives the root; the boot log says it was taken.
+			const bool rootGiven = rooted == elevation::Status::ok || rooted == elevation::Status::ok_unbalanced;
+			if (rootGiven)
 			{
-				diag::mark("sandbox: /dev shows no disc drive, and %s is not there", helper);
-				if (elevated)
-					drivesWhy = "The sandbox elevator (sandbox-elevator.elf) is missing from PSSwanStation's folder, so "
-							"the console's list of drives may be hidden. Copy the whole release folder again.";
+				elevated = true;
+				// The console's HTTPS client refuses every public certificate from now on.
+				httpUseOwnTls("the sandbox elevator gave the console's root");
 			}
 			else
-			{
-				const elevation::Status rooted = elevation::requestHelper(elevation::Capability::filesystem, helper);
-				// The old way still gives the root; the boot log says it was taken.
-				const bool rootGiven = rooted == elevation::Status::ok || rooted == elevation::Status::ok_unbalanced;
-				if (rootGiven)
-				{
-					elevated = true;
-					drivesWhy.clear();
-					// The console's HTTPS client refuses every public certificate from now on.
-					httpUseOwnTls("the sandbox elevator gave the console's root");
-				}
-				else if (elevated)
-					drivesWhy = "The sandbox elevator did not answer yes (status " + std::to_string((unsigned)rooted)
-							+ "), so the console's list of drives may be hidden. It needs the ELF loader listening on "
-							"port 9021; start that, then start PSSwanStation again.";
-				diag::mark("sandbox: the elevator %s (status %u); /dev %s a disc drive now",
-						rooted == elevation::Status::ok ? "gave the console's root, its references traded"
-						: rootGiven ? "gave the console's root the old way (its own root was not the console's: this "
-								"title's exit releases two references to the root it never took)"
-								: "did not answer yes",
-						(unsigned)rooted, devHasDrives() ? "shows" : "still shows no");
-			}
+				drivesWhy = "PSSwanStation could not leave its sandbox (status " + std::to_string((unsigned)rooted)
+						+ "), which it needs to see USB drives. It needs the ELF loader listening on port 9021; start "
+						"that, then start PSSwanStation again.";
+			diag::mark("sandbox: the elevator %s (status %u); /dev %s a disc drive",
+					rooted == elevation::Status::ok ? "gave the console's root, its references traded"
+					: rootGiven ? "gave the console's root the old way (its own root was not the console's: this "
+							"title's exit releases two references to the root it never took)"
+							: "did not answer yes",
+					(unsigned)rooted, devHasDrives() ? "shows" : "shows no");
 		}
 	}
 	// The title's folder as this process sees it now. Outside the sandbox
@@ -374,7 +362,7 @@ void earlyInit()
 	const bool outsideUsable = elevated && writableDir(outside.substr(0, outside.size() - 1));
 	const std::string before = outsideUsable && hasFile(outside + ".migrated") ? outside : appDir;
 	const std::string sandboxWhy = safeStart ? "the last start did not finish, so this one stayed in the sandbox"
-			: "the sandbox could not be left (it needs a resident Lapy service, or the ELF loader on port 9021)";
+			: "the sandbox could not be left (it needs the ELF loader on port 9021)";
 	if (filesAt == 1)
 	{
 		if (!elevated)
@@ -473,7 +461,7 @@ void earlyInit()
 		if (elevated)
 			findUsbDirs();
 		else if (!safeStart)
-			diag::notify("%s: USB drives need a resident Lapy service or the ELF loader (port 9021). Continuing "
+			diag::notify("%s: USB drives need the ELF loader (port 9021). Continuing "
 					"without them.", AppName);
 	}
 	// Whether the console gives the title a folder of its own for downloads,

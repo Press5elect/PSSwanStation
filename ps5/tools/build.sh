@@ -22,11 +22,6 @@
 #                     TLS of the title's own HTTPS client
 #   FFMPEG_DIR        FFmpeg n9.0.2 (default: ../deps-src/ffmpeg-n9.0.2), whose
 #                     decoders play ES-DE themes' videos (tools/build-ffmpeg.sh)
-#   LAPY_HELPER_DIR   a folder holding lapy.elf and lapy-manifest.json: the
-#                     Lapy helper for this title, as ps5-native-app-boilerplate's
-#                     tools/build-lapy-helper.py PPSA99248 builds it (default:
-#                     ../deps-src/lapy). It is what lets the title leave its
-#                     sandbox (USB drives, files kept outside the title folder)
 # and, optionally:
 #   CHTDB_DIR         a folder holding cheats.zip and patches.zip from the
 #                     DuckStation chtdb release (default: ../deps-src); without
@@ -63,7 +58,6 @@ hui=${HUI_DIR:-$src/../PS5_VKHomebrewUI}
 hui_revision=b05fe83e74f40f852a0a6562c0a10b500e3d8442
 libsmb2=${LIBSMB2_DIR:-$src/../deps-src/libsmb2}
 rcheevos=${RCHEEVOS_DIR:-$src/../deps-src/rcheevos}
-lapy=${LAPY_HELPER_DIR:-$src/../deps-src/lapy}
 chtdb=${CHTDB_DIR:-$src/../deps-src}
 release=${RELEASE:-0}
 if [[ $release == 1 ]]; then
@@ -87,12 +81,12 @@ missing=0
 for file in "$PS5_PAYLOAD_SDK/bin/prospero-clang++" \
         "$vk/.deps/native/radv-release/lib/libvulkan_radeon.ps5.a" \
         "$vk/runtime/libc.prx" "$tool" "$hui/src/gfx/vk/vk_renderer.cpp" "$libsmb2/lib/libsmb2.c" \
-        "$rcheevos/src/rc_client.c" "$lapy/lapy.elf" "$lapy/lapy-manifest.json"; do
+        "$rcheevos/src/rc_client.c"; do
     [[ -e $file ]] || { echo "missing: $file" >&2; missing=1; }
 done
 if (( missing )); then
     echo "Prepare $vk first (tools/setup-native-dependencies.sh, tools/build-radv.sh release," >&2
-    echo "tools/rebuild-libc.sh), and check HUI_DIR, LIBSMB2_DIR, RCHEEVOS_DIR and LAPY_HELPER_DIR." >&2
+    echo "tools/rebuild-libc.sh), and check HUI_DIR, LIBSMB2_DIR, and RCHEEVOS_DIR." >&2
     exit 2
 fi
 (cd "$vk/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
@@ -126,22 +120,10 @@ cp -- "$vk/runtime/libc.prx" "$app/sce_module/libc.prx"
 for dir in games bios covers cheats textures music borders layouts memcards/import memcards/export; do
     mkdir -p "$app/$dir"
 done
-# The Lapy helper the ELF loader runs when the title has to leave its sandbox
-# and no resident Lapy service answers (ps5/src/ps5/elevation). It is built for
-# this title alone: its record must name it and the file it describes.
-python3 - "$lapy" "$title" <<'CHECK'
-import hashlib, json, sys
-folder, title = sys.argv[1], sys.argv[2]
-record = json.load(open(folder + "/lapy-manifest.json"))
-if record.get("target_title") != title:
-    sys.exit("build.sh: the Lapy helper in %s was built for %s, not %s" % (folder, record.get("target_title"), title))
-if hashlib.sha256(open(folder + "/lapy.elf", "rb").read()).hexdigest() != record.get("elf_sha256"):
-    sys.exit("build.sh: lapy.elf is not the file lapy-manifest.json describes")
-CHECK
-cp -- "$lapy/lapy.elf" "$lapy/lapy-manifest.json" "$app/"
 # The sandbox elevator (ps5/elevator, BlackBearReloaded's one-request helper as
-# Crux2 sends it, for PPSA99248): sent to the ELF loader when the way out of the
-# sandbox above does not show the console's /dev, where the disc drives are.
+# Crux2 sends it, for PPSA99248): the title's only way out of its sandbox, sent
+# to the ELF loader (USB drives, the disc drive, files kept outside the title
+# folder). Lapy is no longer used (build 28): see ps5/src/ps5/platform_ps5.cpp.
 # No debug information, and the build machine's paths mapped away: the ELF
 # is published (release.py refuses a path of the machine it was built on).
 "$PS5_PAYLOAD_SDK/bin/prospero-clang++" -std=c++20 -O2 -Wall -Wextra -Werror -Wl,--build-id=none \
@@ -227,11 +209,11 @@ cp -- "$ps5/licenses/"* "$app/licenses/"
     echo "rcheevos:    $(git -C "$rcheevos" describe --tags --always 2>/dev/null || echo unknown)"
     echo "glslang:     $(git -C "${GLSLANG_DIR:-$src/../deps-src/glslang}" describe --tags --always 2>/dev/null || echo unknown)"
     echo "mbedTLS:     $(git -C "${MBEDTLS_DIR:-$src/../deps-src/mbedtls-3.6.7}" describe --tags --always 2>/dev/null || echo unknown)"
-    echo "Lapy helper: $(sed -n 's/.*"elf_sha256": "\([0-9a-f]*\)".*/\1/p' "$lapy/lapy-manifest.json") (sha256)"
+    echo "sandbox-elevator.elf sha256: $(sha256sum "$app/sandbox-elevator.elf" | cut -d' ' -f1)"
     echo "eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)"
 } > "$app/BUILD.txt"
 # Every part as data, with the revision it was built from.
-python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$hui" "$libsmb2" "$rcheevos" "$lapy" \
+python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$hui" "$libsmb2" "$rcheevos" "-" \
     "${LIBRETRO_DATABASE_DIR:-$src/../deps-src/libretro-database}" "${LIBNFS_DIR:-$src/../deps-src/libnfs}" "$slang" \
     "${GLSLANG_DIR:-$src/../deps-src/glslang}" "${MBEDTLS_DIR:-$src/../deps-src/mbedtls-3.6.7}" \
     "${FFMPEG_DIR:-$src/../deps-src/ffmpeg-n9.0.2}"
@@ -239,5 +221,5 @@ python3 "$ps5/tools/stage-notices.py" "$app" "$src" "$vk" "$PS5_PAYLOAD_SDK" "$h
 # console wants a title's (and as the updater leaves them).
 find "$app" -type d -exec chmod 0777 {} +
 find "$app" -type f -exec chmod 0666 {} +
-chmod 0777 "$app/eboot.bin" "$app/lapy.elf" "$app/sce_module/libc.prx" "$app/sce_sys/param.json"
+chmod 0777 "$app/eboot.bin" "$app/sandbox-elevator.elf" "$app/sce_module/libc.prx" "$app/sce_sys/param.json"
 printf 'Built %s (eboot.bin %s bytes)\n' "$app" "$(stat -c %s "$app/eboot.bin")"

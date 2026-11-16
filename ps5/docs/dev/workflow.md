@@ -122,8 +122,8 @@ The container is reset between sessions; nothing unpushed survives unless it tra
 - Regenerating `ps5/patches/PS5_Mesa/0008` with another git rewrites its binary sections
   (~800,000 lines) though the blobs are the same: keep the old binary sections and change only
   the text hunks, then check the series still gives the same revision.
-- `lapy.elf` speaks the sandbox elevator's wire protocol (version 1): a change to
-  `ps5/elevator/protocol.hpp` must keep the version and the values Lapy sends.
+- The sandbox elevator's wire protocol stays version 1 (Lapy's, which builds before 28 shipped):
+  a change to `ps5/elevator/protocol.hpp` must keep the client (`src/ps5/elevation`) in step.
 - A page that draws no list must clear `f.fresh` itself after taking its values: only `runList`
   and the scrolling pages clear it, and a page that reads its values `if (f.fresh)` otherwise
   reads them again every frame (build 27's Adjust HDR brightness undid every step).

@@ -63,7 +63,7 @@ Everything lives in `/data/homebrew/PPSA99248/` unless you choose to keep your f
 
 **Game formats:** `.chd`, `.cue` with its `.bin` files, `.iso`, `.img`, `.pbp`, `.ecm`, `.mds`, and PlayStation programs (`.exe`, `.psexe`). A game on several discs shows once, and its discs share one memory card ("Group Multi-Disc Games", Settings, Library, View; on). Its discs are found by their names, "... (Disc 1)", "... [CD 2]", "... (Disc 2 of 3)", or "... CD2" or "... Disc 2" at the end, in one folder, each in a folder named after the disc, or in folders named only `CD1`, `CD2` inside the game's folder. Change disc in the menu over the game.
 
-**USB drives.** Switch on "Scan USB Drives" in Settings, Library; it takes effect at the next start. It needs a resident Lapy service, or the ELF loader listening on port 9021. Games are read from a folder named `psx`, `ps1` or `playstation` at the top of the drive.
+**USB drives.** Switch on "Scan USB Drives" in Settings, Library; it takes effect at the next start. It needs the ELF loader listening on port 9021. Games are read from a folder named `psx`, `ps1` or `playstation` at the top of the drive.
 
 ### Network shares: network.cfg
 
@@ -147,13 +147,13 @@ The NAS is brought up to date when PSSwanStation starts, when a game closes, and
 
 **Naming your consoles.** A console's name is made at its first sync, as `console-` and six letters, and kept in `data/console-name.txt`. Change it there (letters, digits, `-` and `_`), for example `living-room`, to tell the folders apart; it is never copied to the NAS or to other consoles.
 
-**Other places for your files.** "Data Location" can also choose `/data/psswanstation/` on the console, or `PSSwanStation/` on a USB drive, so that replacing or deleting the title's folder can't take your files along. Every place but the title's folder needs a resident Lapy service or the ELF loader on port 9021, as USB drives do.
+**Other places for your files.** "Data Location" can also choose `/data/psswanstation/` on the console, or `PSSwanStation/` on a USB drive, so that replacing or deleting the title's folder can't take your files along. Every place but the title's folder needs the ELF loader on port 9021, as USB drives do.
 
 ## Discs from a USB drive
 
 PSSwanStation plays your PlayStation discs from a USB CD or DVD drive plugged into the console. The console's own drive cannot read CDs, and every PlayStation disc is one.
 
-1. The drive is watched whenever PSSwanStation leaves its sandbox for USB: with "Scan USB Drives" (Settings, Library) or "USB Disc Drive" (Settings, Console) on (it takes effect at the next start). Leaving the sandbox needs a resident Lapy service or the ELF loader on port 9021.
+1. The drive is watched whenever PSSwanStation leaves its sandbox for USB: with "Scan USB Drives" (Settings, Library) or "USB Disc Drive" (Settings, Console) on (it takes effect at the next start). Leaving the sandbox needs the ELF loader on port 9021.
 2. Put the disc in the drive. A few seconds later it is under the library's **Disc Drive** tab, named from its serial (the game database's name when it knows the disc). A drive with no disc, or with one it cannot read, is listed too ("USB disc drive - no disc"); choosing it says why.
 3. Press Cross. PSSwanStation asks how to play it:
 
@@ -479,10 +479,10 @@ To send a log of a problem that did not crash with "Only when something goes wro
 | PSSwanStation stops when a game starts | Switch off sleep-safe saving; then try Safe start (hold L1 and R1) |
 | A game crashes at once | Try CPU Execution Mode "Cached Interpreter" (Settings, Console, CPU) and, if it is set to Vulkan, GPU Renderer "Software" (Graphics) |
 | A game is too slow | Lower the Internal Resolution Scale (Graphics); FSR 1 or NIS keeps it sharp |
-| No USB tab | Switch on "Scan USB Drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; a Lapy service or the ELF loader must be running |
+| No USB tab | Switch on "Scan USB Drives" and restart; games go in `psx`, `ps1` or `playstation` at the top of the drive; the ELF loader must be running (port 9021) |
 | No Network tab | Check the folders under Settings, Library, "Network Shares" (or the `path` lines in `network.cfg`, server by IP address); a server the page does not find may be asleep or have file sharing off |
 | The console will not turn off | It was started with a disc in a USB drive. Hold the power button to turn it off, and next time start the console with the drive empty and put the disc in afterwards |
-| No Disc Drive tab | Switch on "Scan USB Drives" or "USB Disc Drive" and restart; a Lapy service or the ELF loader must be running. The boot log's `disc drive:` lines say which drives `/dev` has, whether each opens, and why a disc was not read |
+| No Disc Drive tab | Switch on "Scan USB Drives" or "USB Disc Drive" and restart; the ELF loader must be running (port 9021). The boot log's `disc drive:` lines say which drives `/dev` has, whether each opens, and why a disc was not read |
 | A disc's videos or music are missing | The drive is read 2048 bytes a sector (the choice page says so): the console did not let the SCSI commands through |
 | Sparkles along polygon edges | Check "Close Gaps Between Polygons" is on (Graphics); it only works above 1x |
 | The picture stood still for a moment | The boot log has a line "the screen stood still for ..." after the lines saying what was being done |
