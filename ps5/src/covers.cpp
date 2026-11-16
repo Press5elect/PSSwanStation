@@ -16,6 +16,11 @@
 	Two sources hold the same pictures under the same names: the collection on
 	GitHub over HTTPS, and libretro's own server over plain HTTP
 	(thumbnails.libretro.com), which is tried when the first does not answer.
+	When neither has the game's box art, xlenore's psx-covers collection is
+	asked by the disc's serial (raw.githubusercontent.com/xlenore/psx-covers/
+	main/covers/default/<serial>.jpg), the serial the game ran under before or
+	the one the game database gives its file name; the picture is saved as
+	<file name>.jpg.
 	One worker thread, one request at a time, through the platform's HTTP
 	client (the console's libSceHttp2).
 
@@ -69,7 +74,22 @@ struct Job
 {
 	std::string base;
 	int kind = 0;
+	std::string serial;		// for the fallback by serial (box art only), or empty
 };
+
+// The fallback for box art: xlenore's psx-covers, by the disc's serial.
+constexpr const char *SerialCoverUrl = "https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/default/";
+
+// The serial a game's cover can be asked for by: the one it ran under before,
+// else the one the game database gives its file name (Redump's names). On the
+// main thread only (host::knownSerial is not locked).
+std::string serialFor(const std::string& path, const std::string& fileTitle)
+{
+	std::string serial = path.empty() ? std::string() : host::knownSerial(path);
+	if (serial.empty())
+		serial = gamedb::serialByName(fileTitle);
+	return serial;
+}
 
 std::mutex mutex;
 std::condition_variable wake;
@@ -270,6 +290,34 @@ FetchResult fetch(const Source& source, const std::string& base, int kind)
 	return FetchNotFound;
 }
 
+// The fallback: the box art by the serial, saved as <file name>.jpg.
+FetchResult fetchBySerial(const std::string& serial, const std::string& base)
+{
+	if (serial.empty())
+		return FetchNotFound;
+	std::vector<uint8_t> data;
+	const int status = platform::httpGet(SerialCoverUrl + serial + ".jpg", data, 20);
+	if (status == 200 && isImage(data))
+	{
+		const std::string file = coversDir() + base + ".jpg";
+		const std::string temporary = file + ".part";
+		if (!writeFile(temporary, data.data(), data.size()) || rename(temporary.c_str(), file.c_str()) != 0)
+		{
+			diag::mark("covers: could not write %s", file.c_str());
+			unlink(temporary.c_str());
+			return FetchSaveFailed;
+		}
+		static bool first = true;
+		if (first)
+		{
+			first = false;
+			diag::mark("covers: a cover by its serial from psx-covers (%s, %s)", base.c_str(), serial.c_str());
+		}
+		return FetchSaved;
+	}
+	return status == 404 || status == 200 ? FetchNotFound : FetchUnavailable;
+}
+
 bool haveCover(const library::Game& game)
 {
 	for (const char *ext : { ".png", ".jpg", ".jpeg" })
@@ -278,7 +326,7 @@ bool haveCover(const library::Game& game)
 	return !media::find(game, "covers").empty();
 }
 
-void request(const std::string& base, int kind);
+void request(const std::string& base, int kind, const std::string& serial = "");
 
 // Nothing is asked for: the library's next game without a cover is. The
 // list is made again when the library changes.
@@ -309,7 +357,9 @@ void walkOn()
 		if (haveCover(game))
 			continue;
 		const int before = pending.load();
-		request(game.fileTitle, BoxArt);
+		// On the worker's thread: the game database's serial alone (it is read-only
+		// after the start; the serials games ran under are the main thread's).
+		request(game.fileTitle, BoxArt, gamedb::serialByName(game.fileTitle));
 		if (pending.load() != before)
 			return;	// one at a time: what the library asks for meanwhile goes first
 	}
@@ -342,6 +392,14 @@ void worker()
 			source++;
 			result = fetch(Sources[source], job.base, job.kind);
 		}
+		// Neither libretro source has the box art: psx-covers, by the serial.
+		// Its not answering does not stop the downloads.
+		if (result == FetchNotFound && job.kind == BoxArt && !job.serial.empty())
+		{
+			const FetchResult bySerial = fetchBySerial(job.serial, job.base);
+			if (bySerial == FetchSaved || bySerial == FetchSaveFailed)
+				result = bySerial;
+		}
 		if (result == FetchSaved)
 		{
 			currentGeneration++;
@@ -364,7 +422,7 @@ void worker()
 	}
 }
 
-void request(const std::string& base, int kind)
+void request(const std::string& base, int kind, const std::string& serial)
 {
 	if (!options::frontend().covers || base.empty() || offline)
 		return;
@@ -375,9 +433,9 @@ void request(const std::string& base, int kind)
 		return;
 	// A cover before the pictures themes add: the library shows covers first.
 	if (kind == BoxArt)
-		queue.push_front({ base, kind });
+		queue.push_front({ base, kind, serial });
 	else
-		queue.push_back({ base, kind });
+		queue.push_back({ base, kind, std::string() });
 	pending++;
 	if (!started)
 	{
@@ -456,10 +514,30 @@ void choose(const library::Game& game, int kind)
 	if (kind < 0 || kind >= KindCount || chooseNow.exchange(ChooseWorking) == ChooseWorking)
 		return;
 	const std::string base = game.fileTitle;
-	std::thread([base, kind] {
+	const std::string serial = kind == BoxArt ? serialFor(game.path, game.fileTitle) : std::string();
+	std::thread([base, kind, serial] {
 		tuning::setThread(tuning::Role::Background);
 		std::vector<uint8_t> data;
-		const int result = fetchKind(base, kind, data);
+		int result = fetchKind(base, kind, data);
+		// Not in the libretro collection: psx-covers, by the serial (a JPEG).
+		if (result != 1 && !serial.empty())
+		{
+			std::vector<uint8_t> jpeg;
+			const int status = platform::httpGet(SerialCoverUrl + serial + ".jpg", jpeg, 20);
+			if (status == 200 && isImage(jpeg))
+			{
+				removeCoverFiles(base);
+				const bool saved = writeFile(coversDir() + base + ".jpg", jpeg.data(), jpeg.size());
+				if (saved)
+					currentGeneration++;
+				chooseNow = saved ? ChooseDone : ChooseFailed;
+				diag::mark("covers: a box art was asked for: %s (psx-covers, %s)", saved ? "saved" : "not saved",
+						serial.c_str());
+				return;
+			}
+			if (status == 404 && result == -1)
+				result = 0;
+		}
 		if (result == 1)
 		{
 			removeCoverFiles(base);
@@ -523,7 +601,7 @@ std::string find(const library::Game& game)
 	const std::string kept = media::find(game, "covers");
 	if (!kept.empty())
 		return kept;
-	request(game.fileTitle, BoxArt);
+	request(game.fileTitle, BoxArt, serialFor(game.path, game.fileTitle));
 	return "";
 }
 

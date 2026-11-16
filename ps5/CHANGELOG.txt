@@ -31,6 +31,10 @@ Build 28
     BIOS, memory cards, save states, cheats, covers and texture packs,
     picked with a folder browser. A folder written to is tried for writing
     first. Kept in folders.cfg.
+  - Covers by serial: a game the libretro thumbnails collection has no box
+    art for is looked up in xlenore's psx-covers collection by the disc's
+    serial (the one it ran under, or the one the game database gives its
+    file name), in the background downloads and when a cover is chosen.
   Changed
   - The touch pad's click is Select or Start by the finger that touched
     last, as Crux2 fixed it: a thumb resting on one half no longer turns a

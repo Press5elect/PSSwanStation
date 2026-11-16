@@ -202,7 +202,7 @@ The library shows your games from four places, each a tab once it has games: Int
 - **Cheats**, its cheats and patches;
 - **More**: favourite, hidden, another cover (box, title screen or a moment of the game) and its texture pack.
 
-Covers are looked for in `covers/` by the game's file name. With "Download Covers" on, missing ones are fetched from the libretro thumbnails collection: the games on screen first, then every other game of the library in its order, one after another in the background (not while a game runs), so that scrolling finds them there. The library's header counts them ("Downloading covers (game 12 of 340)").
+Covers are looked for in `covers/` by the game's file name. With "Download Covers" on, missing ones are fetched from the libretro thumbnails collection, and a game it does not have from xlenore's psx-covers collection by the disc's serial (the serial the game ran under, or the one the game database gives its file name; saved as `<file name>.jpg`): the games on screen first, then every other game of the library in its order, one after another in the background (not while a game runs), so that scrolling finds them there. The library's header counts them ("Downloading covers (game 12 of 340)").
 
 ### ES-DE themes
 

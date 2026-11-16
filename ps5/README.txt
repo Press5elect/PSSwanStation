@@ -269,7 +269,9 @@ digits, - and _) to tell your consoles apart.
 
 Covers: a cover is looked for in covers/ by the game's file name. With
 "Download Covers" on, missing ones are fetched from the libretro thumbnails
-collection, which names them as the No-Intro and Redump sets name games.
+collection, which names them as the No-Intro and Redump sets name games; a
+game it does not have is looked up in xlenore's psx-covers collection by the
+disc's serial.
 
 
 Settings
