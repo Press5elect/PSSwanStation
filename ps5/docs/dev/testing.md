@@ -45,6 +45,7 @@ Each folder has a `run.sh`; most build a small test program against the front en
 | `memcard` | Memory cards |
 | `netplay` | Sessions between two copies of a test program on 127.0.0.1, their outputs compared |
 | `pacing` | The pacing wait (`src/pacing_wait.h`) |
+| `settings-board` | The settings board (`src/ui_board.cpp`) on the host build: every row has a place in `ui_board_table.inc`, no row is lit on a fresh root (the defaults in the table are right), every SwanStation option is there by its own name, and with five settings switched on exactly those are lit |
 | `sinden` | The Sinden Lightgun tracker (`src/sinden_track.cpp`) against camera frames it draws with a known aim: the error, found rate, off-screen calls and time in each condition, the edge cases, the Tracker over sequences (`run.sh [quick|full|asan]`; both a quick run under the sanitizers and the full run by default, about two minutes; `SINDEN_OUT=<folder>` writes frames as PGM and PPM) |
 | `sinden-usb` | The Sinden Lightgun's USB: descriptors decoded (a composite UVC camera, CDC serial port and HID mouse written after the specifications), the camera's format and alternate setting chosen, UVC payloads put together into pictures, the serial frames, HID reports, libSceUsbd's transfer layout found in libusb's and FreeBSD's layouts, MJPEG decoded with the host build's FFmpeg (skipped without it); then `src/ps5/sinden_ps5.cpp` itself against a stand-in libSceUsbd with a simulated gun (the stages, pictures at 60 a second, a gun pulled out and back, `find`, a silent and a stalling camera), with ASan/UBSan and then ThreadSanitizer |
 | `tls` | The title's own HTTPS client (`src/tls_client.cpp`) |
@@ -55,6 +56,13 @@ Switches for a run by hand:
 
 - `SWANSTATION_SHARES_TEST=1`: the share form's file (`network.cfg`) written, read back and changed, and the servers on the network looked for; it prints `shares-test:` lines and exits.
 - `SWANSTATION_SIZE=3840x2160`, `SWANSTATION_GPU=<name>`, `SWANSTATION_REFRESH=<Hz>`.
+- `SWANSTATION_SETTINGS_DUMP=<file>`: every row of the settings board, a line each (area, section,
+  name, id, choice, default, lit, where it is built, description), written once the start-up animation
+  is over. `python3 ps5/tools/settings-reference.py <dumps>` makes the manual's "Settings reference"
+  table from one or more dumps (one on a fresh root, one with frame generation, Sinden, USB
+  controllers and tilt on and "GPU on a separate core" off, so their rows show); paste it into
+  `ps5/MANUAL.md` whenever the board's table changes.
+- `SWANSTATION_SETTINGS_SEARCH=<words>`: opens the settings board's search with those words.
 - `SWANSTATION_HDR_PAGE=1`: opens Adjust HDR brightness once the start-up animation is over (a PC
   has no HDR output to open it from); script Left/Right/Cross presses and check `hdr test: saved:`
   and `hdr_white`/`hdr_highlights` in `frontend.cfg`.

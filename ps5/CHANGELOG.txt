@@ -2,7 +2,37 @@ PSSwanStation - what changed
 ============================
 
 Build 28
+  Added
+  - Settings redesigned as one board: Console, Graphics, Display, Audio,
+    Controllers, Library, Saving, Interface, Network and System, each a
+    tile with a light for each of its settings, lit when the setting is not
+    at its default. Nothing is hidden behind another page. Inside an area
+    the sections follow the path of the picture, the sound or a press (L2
+    and R2 between them, L1 and R1 between areas), and beside the list each
+    setting says what it does, its current and default value, whether it
+    applies at once or after a restart, and whether it is SwanStation's or
+    PSSwanStation's. Over a running game, Graphics and Display leave a
+    window on the game, which shows each change as it is made.
+  - SwanStation's options under their own names and descriptions, word for
+    word; PSSwanStation's own settings named and described in the same
+    manner (Title Case, "(Restart)" for those used from the next start,
+    Enabled and Disabled).
+  - Search (Triangle in Settings): every setting by its name and
+    description; R1 shows one in its area.
+  - Undo (L3): the changes made in Settings are listed along the bottom,
+    and L3 takes the last back.
+  - Quick settings: R3 pins a setting; the menu over a game shows the pinned
+    ones beside its actions, to change without leaving the game (R1). At
+    first: Picture Preset, Internal Resolution Scale, CRT Shader, Fast
+    Forward Speed and Vibration Strength.
   Changed
+  - The menu over a game keeps the game in view, with the pictures of its
+    newest save states under it and the quick settings beside it.
+  - A game's details show its save states' pictures and how many settings
+    are its own; its Game Settings tab follows the board's areas and names.
+  - Every page, message and the phone and web control panel name settings
+    as the board does; the manual's settings reference is made from the
+    board itself.
   - GPU on a separate core (Settings, System, Console tuning; on): the
     graphics driver records its work on a thread of its own, and that
     thread and the software renderer's each run on a processor core of

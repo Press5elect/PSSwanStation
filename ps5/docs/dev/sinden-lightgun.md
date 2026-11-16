@@ -179,18 +179,18 @@ again as fast as it fails.
 
 ### The first test
 
-Settings, Controls, Players: player 1's controller the GunCon, "Sinden Lightgun" on player 1's
+Settings, Controllers: Ports, Controller 1 Type the GunCon; Lightgun, "Sinden Lightgun" on player 1's
 GunCon (or `data/sinden.txt` with `on`, which also works without the setting); restart; the gun
 plugged in before the title starts; 20 s in the library;
 then each of the gun's buttons pressed once, in a known order, a second apart, the gun pointed
-at the screen; then Settings, System, Logs, "Save the log now", and the boot log sent. If the
+at the screen; then Settings, System, Logging, "Write Log Now", and the boot log sent. If the
 title or the console stops answering, the next try with `find` says how far the first stage
 gets. The `sinden:` lines are all that is needed (`grep sinden: psswanstation-boot.log`).
 
 ## The title's side (build 27, after test 2)
 
-- **The setting**: Settings, Controls, Players: "Sinden Lightgun" (Off, player 1's or player 2's
-  GunCon; that player's controller must be the GunCon) and its "Border" (1-8% of the screen's
+- **The setting**: Settings, Controllers, Lightgun: "Sinden Lightgun" (Off, player 1's or player 2's
+  GunCon; that player's controller must be the GunCon) and its "Sinden Border Size" (1-8% of the screen's
   height, 3% at first). Marked as an experiment, not yet seen to work on a console (released so
   in build 27).
 - **The border** (`ui.cpp`, `drawGame`): while it is on and that player has the GunCon, the game's

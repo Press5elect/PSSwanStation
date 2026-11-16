@@ -40,7 +40,7 @@ Where things go (all inside /data/homebrew/PPSA99248/)
   borders/      pictures for the sides of a 4:3 picture: <serial>.png or
                 default.png
   music/        your own menu music: any .ogg, .mp3 or .wav files, played
-                shuffled with Menu music "My music folder" (Sound)
+                shuffled with Menu Music "My music folder" (Audio)
   mods/         mods for games, a folder each (see the manual)
   memcards/     import/ for cards and saves to bring in, export/ for saves
                 put out
@@ -94,7 +94,7 @@ In a game
   OPTIONS held, and      R2 fast forward        L2 rewind
                          R1 save a state        L1 load it
                          Left, Right another slot
-  ("Shortcuts", in Settings under Controls, switches these off;
+  ("Hotkeys", in Settings under Controls, switches these off;
   the menu then opens the moment OPTIONS is pressed.)
 
 
@@ -109,9 +109,9 @@ With no games anywhere the screen says where each place's games go.
 
 Square opens "Sort and filter": the order (by name, last played, most played,
 year, size), what is shown (everything, favourites, games not played yet,
-hidden games), one region alone, the view, and "Scan for games", which looks
+hidden games), one region alone, the view, and "Scan For Games", which looks
 through every place, so a drive plugged in or a share filled since gets
-its tab. The header shows the time (Settings, Library, "Clock").
+its tab. The header shows the time (Settings, Library, "Show Clock").
 
 The views: Shelves (the usual one, below), Covers (a grid, with what was
 played lately on a shelf above it), List (names, with the cover and the
@@ -129,13 +129,13 @@ the way Aurora, the Xbox 360's homebrew dashboard, shows games:
 
 Left and Right move through them (Up and Down too, in the Wall and the
 Wheel); L2, R2, the search and everything else work as in the grid. The view
-is also chosen in Settings, Library, "Library view".
+is also chosen in Settings, Library, "Library View".
 
 Game videos: when the cursor stays on a game for a moment (2 seconds at
 first), its video plays: in the cover's place in Shelves, List and the
 game's details, and behind the covers in Covers and the views in space. The
 menu music is lowered meanwhile. Settings, Library, Videos switches them,
-their sound and the wait (also Square, "Game videos"). A game's video is
+their sound and the wait (also Square, "Video Previews"). A game's video is
 videos/<file name>.mp4 in its games folder, media/videos, or ES-DE's
 downloaded_media/psx/videos, as below.
 
@@ -191,14 +191,14 @@ share the first time Options or Cheats is opened; the screen says so while
 the share answers (a NAS whose disks sleep takes a few seconds) and can be
 left with Circle meanwhile.
 
-USB: off until "USB drives" is switched on in Settings, Games and saving; it
+USB: off until "Scan USB Drives" is switched on in Settings, Library; it
 takes effect at the next start and needs a resident Lapy service or the ELF
 loader listening on port 9021 (the title leaves its sandbox with the Lapy
 helper beside eboot.bin). Games are read from a folder named psx, ps1 or
 playstation at the top of the drive.
 
 Network: an SMB share (Windows sharing), an NFS export or an FTP server, or
-several of them. Settings, Games and saving, "Network shares" adds, changes
+several of them. Settings, Library, "Network Shares" adds, changes
 and removes them from the console, finds the SMB servers on the network for
 you, and uses a change at once. By hand, name each folder in network.cfg
 with a "path" line, for example
@@ -236,21 +236,21 @@ memory"; switch it off to start at once and read while playing).
 A server that sleeps: add its network card's hardware address to network.cfg,
   wake = 00:11:32:AA:BB:CC
 and the wake-up packet (Wake-on-LAN) is sent when PSSwanStation starts,
-whenever the share is scanned, and from Settings, Games and saving, "Wake the
+whenever the share is scanned, and from Settings, Library, "Wake the
 server". The server has to have Wake-on-LAN switched on in its own settings.
 
 Your files on the share: a "files" line names a writable SMB or NFS folder
 for the title's own files (an FTP server is only read):
   files = 192.168.1.10/Games/PSSwanStation
   files = nfs://192.168.1.10/volume1/psswanstation
-Then, in Settings, Games and saving:
-  "Memory cards on the network share"  each game's card is kept in the
+Then, in Settings, Saving, Storage:
+  "Sync Memory Cards"  each game's card is kept in the
         share's "memory cards" folder as well, and brought up to date both
         ways: several consoles in one home play on the same cards.
-  "Covers on the network share"        the covers are kept in the share's
+  "Sync Covers"        the covers are kept in the share's
         "covers" folder too, both ways: a cover put there from a PC, or
         downloaded or chosen on any console, reaches every console.
-  "Bring my files up to date now"      does it at once.
+  "Sync Now"      does it at once.
 It happens when PSSwanStation starts, when a game closes, and when asked;
 games wait while it runs. A card changed on two consoles since they last met
 keeps the newer one, and the other is kept beside it as
@@ -258,7 +258,7 @@ keeps the newer one, and the other is kept beside it as
 console is removed on the others (the removed copy is kept in
 data/sync/removed/).
 
-The cards' backups (Card backups) are sent to the share as well, whenever the
+The cards' backups (Memory Card Backups) are sent to the share as well, whenever the
 cards are kept there: into "card backups/<this console's name>/", one folder
 for each console, so that consoles never write over each other's. The share
 follows the console (a backup it no longer keeps goes there too), and nothing
@@ -268,38 +268,43 @@ data/console-name.txt, made at the first sync; change it there (letters,
 digits, - and _) to tell your consoles apart.
 
 Covers: a cover is looked for in covers/ by the game's file name. With
-"Download covers" on, missing ones are fetched from the libretro thumbnails
+"Download Covers" on, missing ones are fetched from the libretro thumbnails
 collection, which names them as the No-Intro and Redump sets name games.
 
 
 Settings
 --------
 
-Settings (first in the menu) has nine sections: Library (the view, ES-DE
-themes, game videos, covers), Look (theme, size, animations, the swan), Sound,
-Picture, Controls (controllers, shortcuts, rewind), Games and saving (where
-games and files are, saving, RetroAchievements), Emulator (every setting of
-the emulator, in one list with a part for each of its sections), System
-(notices, console tuning, logs, recordings of what you press) and About. Every
-page and setting is in the manual (ps5/MANUAL.md at
-github.com/Press5elect/PSSwanStation, branch ps5-port). L1 and R1 change
-section, L2 and R2 jump between the parts of one.
+Settings (first in the menu) opens on a board of ten areas: Console (disc,
+BIOS, CPU, memory cards), Graphics (renderer, geometry, textures, colour),
+Display (preset, frame, scaling, filters, adjustments, frame generation,
+output), Audio, Controllers (ports, each controller, the pad, hotkeys, light
+gun, USB), Library (sources, view, media), Saving (save states, rewind,
+storage), Interface (theme, accessibility, the swan, startup), Network
+(RetroAchievements, remote control, updates) and System (logging,
+performance, input recording, about). Each tile has a light for each of its
+settings, lit when it is not at its default. In an area L2 and R2 move
+between its sections, L1 and R1 between areas; Square restores the default,
+R3 pins a setting to the quick settings of the menu over a game, L3 undoes
+the last change, Triangle searches every setting. SwanStation's options keep
+SwanStation's own names and descriptions. Every setting is in the manual
+(ps5/MANUAL.md at github.com/Press5elect/PSSwanStation, branch ps5-port).
 
-Look also has the interface's size (up to 140%), High contrast (white text
+Interface also has the interface's scale (up to 140%), High Contrast (white text
 on black, stronger outlines) and Colour-blind safe colours (blue for good
 and orange for bad in place of green and red).
 
 A game's own settings are in its details (Options) and, while it runs, in
-the menu: "Settings" changes them for every game, "Game settings" for this
+the menu: "Settings" changes them for every game, "Game Settings" for this
 game only. A dot marks a value that is the game's own; Square gives it back
 to the general value. A game can have its own of every setting of the
-emulator and of the Picture page but Display output and HDR: the scaling
+emulator and of the Display area but Display Mode and HDR Output: the scaling
 filter and its sharpening, the picture preset, the picture tube, the signal,
 the colours, film grain, what is beside the picture, frame pacing, black frame
 insertion, frame generation, adaptive resolution and the game's own
 widescreen. They are
 kept with the game (data/game-options/<serial>.cfg) and in force whenever it
-runs; other games keep the general ones. Display output and HDR are for every
+runs; other games keep the general ones. Display Mode and HDR are for every
 game: the console reads them when PSSwanStation starts, before any game is
 chosen.
 
@@ -309,13 +314,13 @@ OPTIONS, "Close PSSwanStation".
 More players: player 1 is whoever started PSSwanStation. A second person
 presses the PS button on their controller and chooses a user; they are player
 2, in port 2, within a couple of seconds, with no restart. For three or four,
-switch the Multitap on (Settings, Controls, Players): "In port 1" puts all
+switch the Multitap on (Settings, Controllers, Ports): "In port 1" puts all
 four on it, which is what most four-player games expect; "In port 2" leaves
 player 1 in port 1. Leave it off otherwise: some games for one or two do not
 see a controller behind a multitap. Each player's controller type is set on
 the same page, where the first line shows who is connected.
 
-The swan: with Animations (Look) on Full, PSSwanStation opens with its
+The swan: with Animations (Interface) on Full, PSSwanStation opens with its
 head coming up in the bottom right corner and paddling along the bottom of
 the screen to the middle, where it goes under and takes the lift: the box
 comes up between its rails to the middle of the screen, its bell rings, its
@@ -326,19 +331,19 @@ animation. Reduced keeps the swan still (the start-up screen is the finished
 picture, with the bell) and starts games at once; Off stops every movement
 of the interface and skips the start-up screen.
 
-"Menu sounds" (Sound) are the small sounds of the menus: the cursor
+"Menu Sound Volume" (Audio) are the small sounds of the menus: the cursor
 moving, a choice, a step back, a letter typed.
 
-"Start-up sound" (Sound) is what that animation sounds like - water, the
+"Startup Sound" (Audio) is what that animation sounds like - water, the
 lift, the bell, wings - at the Volume set under Sound. The sounds are made by
 the title when it starts; none is a recording.
 
 The picture: a new install draws as the PlayStation did (the Original preset:
 the Software renderer at the console's own resolution). Raise it with a preset
-(Picture) or under Emulator, Internal Resolution Scale; "Show frame rate"
-(Picture) tells whether a game holds its speed.
+(Display, Preset) or with Internal Resolution Scale (Graphics, Renderer);
+"Show Frame Rate" (Display, Output) tells whether a game holds its speed.
 
-Above 1x, "Close Gaps Between Polygons" (Emulator, Enhancement; off at first,
+Above 1x, "Close Gaps Between Polygons" (Graphics, Geometry; off at first,
 on in the Normal, Enhanced and Beautiful presets) covers the
 hairline gaps where a game's polygons meet unevenly: the sparkles along their
 edges that flicker as the camera moves. Each solid polygon is drawn a quarter
@@ -347,48 +352,48 @@ of a native pixel larger, so the outlines of 3D objects are that much fuller;
 preset switches it off.
 
 Picture (Settings):
-  Picture size       fit the screen, whole multiples, or stretch.
-  Scaling filter     smooth, square pixels, sharp bilinear, FSR 1, NIS, CAS
-                     or MMPX (below); "Sharpening" for FSR 1, NIS and CAS.
-  Picture preset     Original, Original on a TV (with a picture tube), Fast,
+  Display Scaling       fit the screen, whole multiples, or stretch.
+  Scaling Filter     smooth, square pixels, sharp bilinear, FSR 1, NIS, CAS
+                     or MMPX (below); "Sharpening Strength" for FSR 1, NIS and CAS.
+  Picture Preset     Original, Original on a TV (with a picture tube), Fast,
                      Normal, Enhanced, Beautiful or Speedrun, set for every
                      game at once; each setting can still be changed by
-                     itself ("Differs from the original" lists and puts back
+                     itself ("Differences From Original" lists and puts back
                      what is not as the PlayStation had it).
-  Picture tube       scanlines over the game's picture, soft or full, and the
+  CRT Shader       scanlines over the game's picture, soft or full, and the
                      tube's mask; or a whole tube, crt-guest-advanced, in five
                      kinds (below).
-  Video signal       as it is, dither smoothed, S-Video or composite (below).
+  Video Signal Simulation       as it is, dither smoothed, S-Video or composite (below).
   Brightness, Contrast, Colour, Gamma   from 50% to 150% (gamma 0.50 to
                      1.50).
   Film grain         off, light, medium or strong.
-  Beside the picture what fills the sides of a 4:3 picture: black, the
+  Border Fill what fills the sides of a 4:3 picture: black, the
                      picture's own light, a gradient, a picture file from
                      borders/, or the picture carried on past its edges.
-  Frame pacing       by the display (the usual), the game's own speed, or the
+  Frame Pacing       by the display (the usual), the game's own speed, or the
                      game's own speed by the clock (for a display with a
                      variable refresh rate).
-  Display output     60 Hz, 120 Hz, or 120 Hz with a variable refresh rate
+  Display Mode     60 Hz, 120 Hz, or 120 Hz with a variable refresh rate
                      left on; from the next start.
   HDR                off (as it always was), or the picture sent to an HDR
                      TV as HDR10, from the next start; needs the console's
-                     own HDR on. With it: HDR white level (80 to 400 nits,
-                     203 at first), HDR highlights (off, or 400 to 4000 nits,
-                     1000 at first) and Adjust HDR brightness (two test
+                     own HDR on. With it: HDR Paper White (80 to 400 nits,
+                     203 at first), HDR Peak Brightness (off, or 400 to 4000 nits,
+                     1000 at first) and Calibrate HDR (two test
                      pictures that find both).
-  Black frame insertion   at 120 Hz, a black refresh between a 60 fps game's
+  Black Frame Insertion   at 120 Hz, a black refresh between a 60 fps game's
                      frames: clearer movement, a darker picture.
-  Frame generation   pictures made between the game's (below): the title's
+  Frame Generation   pictures made between the game's (below): the title's
                      own way, AMD FSR3's optical flow or MihawkGen
                      (Generation method), with its quality, between or ahead
                      of the game's pictures, how many, videos, run-ahead,
                      and a view of the movement it found.
 
-Every one of these but Display output and HDR can be a game's own: set it in
-the game's details (Options) or, while it runs, under Game settings, Picture.
-Adaptive resolution and "Use the game's own widescreen" are on the same page.
+Every one of these but Display Mode and HDR can be a game's own: set it in
+the game's details (Game Settings) or, while it runs, under Game Settings, Display.
+Adaptive resolution and "Use Widescreen Patches" are on the same page.
 
-Display output is kept in the title's own sce_sys/param.json, which is where
+Display Mode is kept in the title's own sce_sys/param.json, which is where
 the console reads it when the title starts. If the screen stays dark after it
 was changed: start PSSwanStation holding L1 and R1, wait ten seconds, close it
 and start it again. Holding the two puts the output back to 60 Hz for the
@@ -409,7 +414,7 @@ size it sharpens the picture at its own size first, where the detail is).
 FSR and NIS are made to enlarge at most twice each way: further, FSR
 enlarges twice and the rest is smooth, and NIS starts from the picture made
 half the screen's size with sharp bilinear. FSR and NIS are worth most with
-a lower Internal Resolution Scale (Emulator): 3x or 4x with them looks
+a lower Internal Resolution Scale (Graphics): 3x or 4x with them looks
 close to a higher scale and leaves the console more time for everything
 else. MMPX is for pixel art at the PlayStation's own resolution: it doubles
 each pixel the way an artist draws pixel art larger, then grows it with sharp
@@ -432,7 +437,7 @@ scaling filter. The shaders are compiled when the title is built
 format in the title (src/chain.cpp). They ask more of the graphics processor
 than the rest; tested on a PC, not yet on a console.
 
-Video signal: what reached a television's input. Dither smoothed undoes the
+Video Signal Simulation: what reached a television's input. Dither smoothed undoes the
 fine checkered pattern the PlayStation mixes into its colours (it adds a 4 x
 4 pattern before dropping them to five bits): each pixel is averaged with
 those around it over the pattern's size, leaving out any too different, so
@@ -444,7 +449,7 @@ detail, and the dither blended into even colour, as the games' artists saw
 it on their televisions. These are my own shaders, run at the game's own
 size before the picture is enlarged; they work with every scaling filter
 and with the tube.
-Frame generation ("Off", "On") draws pictures of the title's
+Frame Generation ("Off", "On") draws pictures of the title's
 own between the game's, worked out from how the picture moved, so that
 movement is smoother than the game makes it. The title counts the pictures
 the game really draws, which is rarely as many as the PlayStation sends to
@@ -467,9 +472,9 @@ while it shows another and then swaps them, as nearly all 3D games do. One
 that draws straight into what is shown is counted by whether it drew anything
 in a frame: a frame it drew nothing in shows the picture before again. Where
 the pictures come unevenly (two refreshes, then three), the steps between
-them follow the average of the last four gaps. Settings, Picture, "Frame
+them follow the average of the last four gaps. Settings, Display, "Frame
 generation" says what the running game is counted at, and the frame counter
-(Picture, "Show frame rate") shows the game's pictures and the screen's
+(Display, "Show Frame Rate") shows the game's pictures and the screen's
 side by side, as "30 -> 60".
 
 How a picture is made: the two game pictures are compared at four sizes,
@@ -527,17 +532,17 @@ Its settings:
   Take back the delay  one frame of run-ahead while frame generation is on:
                        the game answers the pad a frame sooner. About twice
                        the emulator's work. Not when run-ahead is set by
-                       itself (Emulator), not in netplay.
+                       itself (Graphics), not in netplay.
   Show the movement    the movement found, as colours over the picture (its
                        way and length), grey where it is not believed.
 
-With Frame pacing "by the clock" the screen is not made to wait for the
+With Frame Pacing "by the clock" the screen is not made to wait for the
 game: every refresh shows where the game is at that moment, between its last
 two pictures (or past the latest), at whatever rate the two have. That is
 any-rate generation: best with a variable refresh rate.
 
 The game answers the pad a refresh of the screen later with one picture made
-between two, two refreshes later with two. Frame generation is off while fast
+between two, two refreshes later with two. Frame Generation is off while fast
 forwarding and rewinding, and black frame insertion is off while it is on. At
 a cut (the camera jumps, another scene) nothing is made between the two
 pictures, which would be the old scene smeared into the new: nine parts of the
@@ -554,19 +559,19 @@ game sends its polygons anew each frame with nothing that says which is which,
 so their movement would have to be guessed as well. An experiment: build 12's
 ran on a console and smeared; build 15's works on my console.
 
-Sound: "Menu music" plays in the library and the menus: none (at first), the
+Sound: "Menu Music" plays in the library and the menus: none (at first), the
 title's own quiet piece, your music folder (every .ogg, .mp3 or .wav in
 music/, shuffled), or the interface kit's songs.
 
-Controls: "Buttons" changes which button is which and makes buttons fire
+Controls: "Button Mapping" changes which button is which and makes buttons fire
 again and again while held (turbo). The controller types include the mouse,
 the neGcon (the triggers are its I and II) and the GunCon (aimed with the sticks,
 and by turning the pad; R2 or Cross shoots, L2 or Circle reloads). "Tilt
-steering" leans the first pad like a steering wheel. "Player lights" gives
+steering" leans the first pad like a steering wheel. "Player Indicators" gives
 each pad's light bar its player's colour. A pad's charge is not shown: I know
 of no call a title can make that gives it.
 
-Look, The swan: "Screen saver" (after 5 minutes at first) lets the swan take
+Interface, Mascot: "Screen Saver" (after 5 minutes at first) lets the swan take
 the screen when nothing was pressed for a while in the menus (never while a
 game is on the screen), to spare the display.
 
@@ -578,7 +583,7 @@ The cheats and patches are the DuckStation project's chtdb: cheat codes for
 about 4500 games and patches (widescreen, 60 frames a second and others) for
 about 140. A release of PSSwanStation does not carry the database, because
 its entries belong to their authors and the project gives no licence to pass
-them on: Settings, Games and saving, "Fetch the newest cheat database" gets
+them on: Settings, Network, "Update Cheat Database" gets
 it once from the project's own releases (and again whenever you ask, as it
 grows); it is kept in data/ and used from then on. A game's entries are in
 its details (Triangle in the library) and in its menu while it runs, under
@@ -607,22 +612,22 @@ Save states
 -----------
 
 Ten slots for each game (menu, Save state and Load state), each shown with
-the picture it was saved at, and, if "Save when a game is closed" is on, one
-more that is written when the game is closed; "Continue where I left off"
+the picture it was saved at, and, if "Save State On Exit" is on, one
+more that is written when the game is closed; "Load Resume State On Start"
 starts from it.
 
-Rewind (Settings, Controls; off at first): keeps the last while of
+Rewind (Settings, Controllers; off at first): keeps the last while of
 play so that OPTIONS and L2 go back through it. It is kept in memory only,
 128 MB to 1 GB of it, and never written to the console's storage; it is gone
 when the game closes. Fast forward (OPTIONS and R2) runs at 2x to 8x, or as
 fast as the console manages.
 
-Sleep-safe saving (Settings, Games and saving; off at first): while a game
+Save State On Console Menu (Settings, Saving; off at first): while a game
 runs, its resume state is saved whenever the console's own menu (the PS
 button) opens over it, on a thread of its own and
 without a pause. If the console then closes PSSwanStation (rest mode, or
 closing it from that menu), the next start asks whether to continue the game
-from there. It uses the same state as "Save when a game is closed".
+from there. It uses the same state as "Save State On Exit".
 
 Screenshots and video are the console's own (the Create button). The menu's
 screenshot while HDR is on is of the game's picture alone.
@@ -631,7 +636,7 @@ screenshot while HDR is on is of the game's picture alone.
 Speedrun timer
 --------------
 
-Menu, "Speedrun timer" while a game runs: a timer at the top right of the
+Menu, "Speedrun Timer" while a game runs: a timer at the top right of the
 game, in game time (the emulator's frames, so loading and pauses in the menu
 do not count) or real time. OPTIONS held with Cross splits (and starts), with
 Square takes the last split back, with Triangle passes a split by, with Circle
@@ -647,7 +652,7 @@ kept as a best.
 Find in memory
 --------------
 
-Menu, "Find in memory" while a game runs: the classic cheat search. Search
+Menu, "Memory Search" while a game runs: the classic cheat search. Search
 for a value (a byte, two or four), or for one that went up, down, changed or
 stayed the same since the last search, and narrow it down while you play.
 What is left can be watched (shown at the top left of the game while it
@@ -660,7 +665,7 @@ hardcore mode.
 Recordings and logs
 -------------------
 
-Settings, System. "Record what I press" (with a game running) takes a state of
+Settings, System. "Record Input" (with a game running) takes a state of
 the game and keeps every player's buttons, frame by frame, until you stop it,
 load a state, reset or close the game. "Play back a recording" starts the
 game from that state and gives it the recorded presses again, so it runs the
@@ -669,10 +674,10 @@ went wrong. Recordings are kept in data/recordings/<serial>/ (.psrec); they
 play the same only with the same settings, cheats and build. Rewind waits
 while one is made or played.
 
-Settings, System, Logs decides how the logs are kept, from the next start:
+Settings, System, Logging decides how the logs are kept, from the next start:
 written as they come (the usual), only when something goes wrong (kept in
 memory, the start-up and the last 8 MB, written on a crash, a notice of a
-problem, a game that stands still for 15 seconds or "Save the log now"), or
+problem, a game that stands still for 15 seconds or "Write Log Now"), or
 off; in the title's folder or on a USB drive; and what they keep: the boot
 log alone, the boot log and the emulator's log (the usual), or everything the
 emulator says with a line every ten seconds about a game's speed (what
@@ -691,7 +696,7 @@ and single saves (.mcs .psx .psv and others). I have tested the raw card and
 .mcs forms most; the rarer ones follow their descriptions.
 
 When a game closes and its card changed, a copy of the card is kept (the last
-ten of each; Settings, Games and saving, "Card backups"), and the manager can
+ten of each; Settings, Console, "Memory Card Backups"), and the manager can
 go back to one.
 
 
@@ -700,13 +705,13 @@ Texture packs
 
 Replacement pictures for a game's 2D art, in the usual vram-write format
 (files named vram-write-<number>.png), go in textures/<serial>/ and are used
-when "Enable VRAM Write Texture Replacement" is on (Emulator, Advanced). HD
+when "Enable VRAM Write Texture Replacement" is on (Graphics, Textures). HD
 texture packs of texture blocks, which replace a 3D game's textures, are used
-with "HD Texture Packs (Texture Blocks)" (Emulator, Advanced; off at first):
+with "HD Texture Packs (Texture Blocks)" (Graphics, Textures; off at first):
 see the manual.
 
 They can stay on a USB drive, in PSSwanStation/textures/<serial>/ at the top
-of the drive (with "USB drives" on). A game's pack in the title's own
+of the drive (with "Scan USB Drives" on). A game's pack in the title's own
 textures/ comes first, then the USB drives', then a folder named textures
 inside a drive's games folder (psx/textures/<serial>/, where build 15 and
 before looked). A game's details, under More, say where the one in use is.
@@ -715,12 +720,12 @@ before looked). A game's details, under More, say where the one in use is.
 Shader presets from USB
 -----------------------
 
-Settings, Picture, "Shader presets from USB" brings in a libretro slang preset
+Settings, Display, "Import Shader Presets" brings in a libretro slang preset
 (.slangp, as RetroArch uses) from PSSwanStation/shaders/ on a USB drive (or
 shaders/ in the title's folder, a few folders deep), with the shader files it
 names beside it as they come in the slang-shaders collection. It is compiled
 on the console with glslang into data/shaders/<name>/ and is then one of the
-Picture tube's choices ("Preset: <name>"), for every game or one. The page can
+CRT Shader's choices ("Preset: <name>"), for every game or one. The page can
 remove one again. Not every preset compiles or runs fast enough at 4K; one
 that does not says why.
 
@@ -728,7 +733,7 @@ that does not says why.
 RetroAchievements
 -----------------
 
-Settings, Games and saving, RetroAchievements: switch it on and sign in with
+Settings, Network, RetroAchievements: switch it on and sign in with
 your account from retroachievements.org (the password is typed once; only the
 token the server gives back is kept, in data/). A game's achievements are then
 in its menu, and earning one is shown as it happens. Hardcore mode earns more
@@ -750,10 +755,10 @@ This is an experiment. It held 3300 frames in step between two PCs here; it
 has not run between two consoles.
 
 
-Phone and web control
+Remote Control
 ---------------------
 
-Settings, Games and saving, "Phone and web control": switch it on and scan
+Settings, Network, "Remote Control": switch it on and scan
 the code on that page with a phone's camera, or type the address on a
 computer on the same network (port 3311). The page in the browser starts and
 closes games, resets, saves and loads states, runs the speedrun timer,
@@ -773,7 +778,7 @@ the program's files that changed (eboot.bin, sce_sys, sce_module, assets,
 licences, the texts).
 Your games, saves, states, covers and settings are not touched. PSSwanStation
 closes when it is done; start it again from the home screen. With "Check for
-updates" (Library) the library's header says when a build is out;
+updates" (Network) the library's header says when a build is out;
 nothing is fetched until you say so.
 
 The first start after an update, however it came (the updater, or a folder
@@ -802,7 +807,7 @@ files back.
 Keeping your files outside the title folder
 -------------------------------------------
 
-Settings, Games and saving, "Where my files are kept": BIOS files, covers,
+Settings, Saving, "Data Location": BIOS files, covers,
 cheats, memory cards, states, textures, music, borders, layouts, mods, themes,
 media, network.cfg and settings live in
 
@@ -843,9 +848,9 @@ When something goes wrong
 /data/homebrew/PPSA99248/psswanstation-boot.log is written from the first
 moment of every start (the two starts before it are kept as .1.log and
 .2.log); a crash writes its report there. logs/psswanstation.log is the
-emulator's own log. That is how Settings, System, Logs has them at first; with
+emulator's own log. That is how Settings, System, Logging has them at first; with
 "only when something goes wrong" they are written on a problem (a game that
-gives no new frame for 15 seconds is one) or with "Save the log now", and
+gives no new frame for 15 seconds is one) or with "Write Log Now", and
 they can be on a USB drive. Those two files say what happened. If the picture
 ever stands still, the first one has a line saying when and for how long
 ("the screen stood still for ..."), after the lines that say what was being
@@ -856,12 +861,12 @@ done.
   (kstuff, the folder's place and name).
 
   A game stops or crashes at once: try CPU Execution Mode "Cached Interpreter"
-  (Settings, Emulator, Console) and, if it is set to Vulkan, GPU Renderer
-  "Software" (Emulator). If one of the two helps, the log of the crash tells
+  (Settings, Console, CPU) and, if it is set to Vulkan, GPU Renderer
+  "Software" (Graphics). If one of the two helps, the log of the crash tells
   which part to fix.
 
   "CPU Recompiler Fast Memory Access" (Advanced) is off: its faster setting,
   LUT, is not proven on the console.
 
 This is a work in progress: the build's number and date are in the top right
-corner of the library and in Settings, About.
+corner of the library and in Settings, System, About.

@@ -15,13 +15,13 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 
 #### Added
 
-- **HDR** (Settings, Picture; off): the picture goes to an HDR TV as HDR10, white at the HDR white level (203 nits at first) and the game's brightest parts raised toward the TV's peak (HDR highlights). **Adjust HDR brightness** finds both with two test pictures. It begins at the next start, and the TV is asked for HDR only while it is on. Needs the console's own HDR on and a TV that takes it.
-- **Network shares from the console** (Settings, Games and saving, Network shares): add, change and remove the folders with games, the account and the folder for your files, without editing `network.cfg` over FTP. The SMB servers on the network are found for you, and a change is used at once.
+- **HDR** (Settings, Display; off): the picture goes to an HDR TV as HDR10, white at the HDR white level (203 nits at first) and the game's brightest parts raised toward the TV's peak (HDR highlights). **Adjust HDR brightness** finds both with two test pictures. It begins at the next start, and the TV is asked for HDR only while it is on. Needs the console's own HDR on and a TV that takes it.
+- **Network shares from the console** (Settings, Library, Network shares): add, change and remove the folders with games, the account and the folder for your files, without editing `network.cfg` over FTP. The SMB servers on the network are found for you, and a change is used at once.
 - **A game on a share that does not answer yet waits for it** ("Waiting for the network share", Circle goes back) instead of failing, and the shares are woken as PSSwanStation starts, so a NAS's disks are turning by the time a game starts.
 - **Logs** (Settings, System): written as they come, only when something goes wrong, or off; in the title's folder or on a USB drive; the boot log alone, with the emulator's log, or everything. Kept in memory, they keep the session's start too, and a game that stands still for 15 s writes them by itself.
-- **Save states on a USB drive** (Settings, Games and saving).
-- **Vibration strength** (Settings, Controls).
-- **The Sinden Lightgun, an experiment** (Settings, Controls, Players): it aims a player's GunCon. PSSwanStation reads the gun's camera over USB and finds the white border it draws round the game's picture itself, without Sinden's software. **Not tested with a gun yet**: if you have one, please try it and open an issue with the boot log's `sinden:` lines.
+- **Save states on a USB drive** (Settings, Saving).
+- **Vibration strength** (Settings, Controllers).
+- **The Sinden Lightgun, an experiment** (Settings, Controllers, Ports): it aims a player's GunCon. PSSwanStation reads the gun's camera over USB and finds the white border it draws round the game's picture itself, without Sinden's software. **Not tested with a gun yet**: if you have one, please try it and open an issue with the boot log's `sinden:` lines.
 
 #### Changed
 
@@ -30,7 +30,7 @@ This fork is SwanStation with a PS5 frontend of its own in [`ps5/`](ps5/): a nat
 - **Closing while your files are being brought up to date** finishes the file it is copying, with a bar, and closes; the rest follows at the next start.
 - **The stick dead zone** is taken round the stick's middle: small diagonals stay diagonals.
 - **The graphics driver** is PS5_Mesa main of 10 November 2026 with Crux2's patches: a cached pipeline that lost a stage is compiled again instead of crashing at every start. Newer payload SDK (upstream's v0.45), libsmb2 and libnfs.
-- Every cover of the library is fetched in the background with "Download covers" on.
+- Every cover of the library is fetched in the background with "Download Covers" on.
 
 #### Fixed
 

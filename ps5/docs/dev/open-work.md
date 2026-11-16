@@ -63,13 +63,20 @@ the gun, and waits for users' reports (an issue with the boot log's `sinden:` li
 
 After build 27 (not in a test build yet):
 
-- "GPU on a separate core", on by default (`tuning.cpp`): boot log `tuning: the title's threads, but
+- "GPU On Separate Core", on by default (`tuning.cpp`): boot log `tuning: the title's threads, but
   the GPU's, on processors 0x1fc3 (0)`, `tuning: the graphics driver's recording thread on
   processors 0xc (0)`, and with the software renderer `the software renderer's thread on processors
-  0x30 (0)`; a result other than 0 is a refusal. To compare with "Measure the game in the boot log":
+  0x30 (0)`; a result other than 0 is a refusal. To compare with "Log Performance Measurements":
   the same scene with it on and off (`test: window` lines). Threaded recording itself was never
   reported on from the console either: this turns it on for everyone, so it is the first thing to
   check, with both renderers.
+- The settings board (`ui_board.cpp`), the menu over a game laid out anew, the details page's save
+  states and Game Settings tab. Checked on the PC only (`tests/settings-board`, the screenshot run,
+  scripted walks through the board, search, undo and pins). On the console: the board's size at
+  4K and at 140% interface scale, L3 and R3 on the DualSense (not pressed by anything before), the
+  live window over a running game in Graphics and Display, the quick settings changed from the menu
+  over a game, and whether building every row each frame (about 250, as the old page built its 40)
+  costs a frame anywhere (the boot log's slow-frame lines).
 
 ## Known limits, by how the emulator is built
 
@@ -77,7 +84,7 @@ After build 27 (not in a test build yet):
   `drawGameOverlay`) shows only while the read that waits is the read-ahead's. The core runs on
   the interface's thread, and a sector the read-ahead doesn't have yet blocks it in
   `CDROM::WaitForReadToComplete` (`src/core/cdrom.cpp`): no frame, no panel, until the share
-  answers. With "Load network games into memory" (the default) a game reads nothing from the
+  answers. With "Preload Network Images To RAM" (the default) a game reads nothing from the
   share while it plays, except streamed games and a multi-disc game's later discs. A way out:
   let the emulated drive wait for a slow network read as `CDROM::WaitForSlowMedia` does for USB
   drives; it changes the emulation's timing, so it needs a test build of its own. With the logs
@@ -102,6 +109,14 @@ Offered to the owner and not asked for, or found in OGBox and not ported:
   - The rumble strength's test buzz (05f29b3): the strength is there (build 27), without it.
 
 ## Decisions on record
+
+- **Settings are one board of ten areas, nothing behind an "advanced" page** (the owner's choice of
+  the redesign, 2026-11-16). Every row is still made by its builder; `ui_board_table.inc` places it
+  and, for the title's own, names it in SwanStation's manner (Title Case, "(Restart)", Enabled and
+  Disabled). **SwanStation's options keep SwanStation's names and descriptions word for word**; what
+  the title adds goes in a note beside them (`Option::note`), never into the description. A new
+  setting gets a line in the table (the PC test fails without one) and, when its default changes, a
+  new `def` there.
 
 - **HDR's param.json attribute (0x20000000) is declared only while HDR is on**, from the next
   start, so the TV is not put into HDR for anyone who leaves it off (OGBox declares it always).
