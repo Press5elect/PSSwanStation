@@ -35,7 +35,7 @@ std::string rootDir;
 std::string appDir;
 bool hdrDeclared;
 // Counts the builds handed over; the About page and the boot log show it.
-const int BuildNumber = 27;
+const int BuildNumber = 28;
 // The day the build was configured (ps5/CMakeLists.txt).
 const char *const BuildDate = FE_BUILD_DATE;
 

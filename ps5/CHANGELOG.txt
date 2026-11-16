@@ -1,6 +1,16 @@
 PSSwanStation - what changed
 ============================
 
+Build 28
+  Changed
+  - GPU on a separate core (Settings, System, Console tuning; on): the
+    graphics driver records its work on a thread of its own, and that
+    thread and the software renderer's each run on a processor core of
+    their own (processors 2-3 and 4-5), with the rest of PSSwanStation
+    kept off those cores. As OGBox's "GPU on separate cores" and Crux2's
+    driver core. From the next start; safe start (L1 and R1 held) turns it
+    off. The boot log's "tuning:" lines say where each thread runs.
+
 Build 27
   Added
   - Network shares from the console (Settings, Games and saving, Network

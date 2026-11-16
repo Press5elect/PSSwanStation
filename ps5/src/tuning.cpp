@@ -14,8 +14,11 @@
 #include <cstdlib>
 #include <pthread.h>
 
+#include <cstring>
+
 #if defined(SWANSTATION_PS5)
 extern "C" int scePthreadSetprio(pthread_t thread, int priority);
+extern "C" int32_t scePthreadSetaffinity(pthread_t thread, uint64_t mask);
 // RADV's VideoOut WSI (PS5 Mesa with Crux2 0011): the most images presented
 // and not yet shown before an acquire waits. Weak: a driver without it leaves
 // the swapchain at three images, as before.
@@ -228,11 +231,39 @@ void setThread(Role role)
 		diag::mark("tuning: a %s thread runs at %d (%#x)", nameOf(role), wanted, (unsigned)result);
 }
 
+// ------------------------------------------------------------------ the GPU's cores
+// "GPU on a separate core" (after OGBox's "GPU on separate cores" and Crux2's
+// DriverOwnCore): the title has logical processors 0-12, two to a core. The
+// graphics driver's recording thread gets core 1 (processors 2-3) and the
+// software renderer's thread core 2 (processors 4-5); the thread that starts
+// the title is kept to the others first, and every thread made after it
+// starts where its maker runs, so nothing else of the title's is on those
+// two cores. A Zen 2 core running two threads splits its queues between
+// them: a GPU thread that shares its core has half of one.
+namespace
+{
+constexpr uint64_t RecorderMask = 0xCu, RendererMask = 0x30u, OthersMask = 0x1FC3u;
+bool ownCores = false;
+
+void keepTo(uint64_t mask, const char *what)
+{
+#if defined(SWANSTATION_PS5)
+	const int result = scePthreadSetaffinity(pthread_self(), mask);
+#else
+	const int result = 0;
+#endif
+	diag::mark("tuning: %s on processors %#llx (%#x)", what, (unsigned long long)mask, (unsigned)result);
+}
+}
+
 // ------------------------------------------------------------------ the driver
 void applyDriverSettings()
 {
 	const options::Frontend& f = options::frontend();
-	if (f.driverThread)
+	ownCores = f.gpuOwnCore;
+	if (ownCores)
+		keepTo(OthersMask, "the title's threads, but the GPU's,");
+	if (f.driverThread || f.gpuOwnCore)
 		setenv("RADV_THREADED_RECORDING", "1", 1);
 	const int spin = spinMicroseconds(f.gpuWaitSpin), sleep = sleepMicroseconds(f.gpuWaitSleep);
 	if (f.gpuWaitSpin != 0)
@@ -248,7 +279,7 @@ void applyDriverSettings()
 		diag::mark("display: variable refresh is asked for (Display output)");
 	}
 	diag::mark("tuning: the graphics driver %s; the GPU wait spins %d us, then sleeps %d us between checks; "
-			"sound and controls %s", f.driverThread ? "records on its own thread" : "records on the frame's thread",
+			"sound and controls %s", f.gpuOwnCore ? "records on its own thread, on a core of its own" : f.driverThread ? "records on its own thread" : "records on the frame's thread",
 			spin, sleep, f.threadPriorities ? "run before the emulator" : "at the emulator's priority");
 }
 
@@ -349,4 +380,20 @@ void gameEnded()
 	setDepth(DepthKeptUp);
 }
 
+}
+
+// A GPU thread as it starts: the graphics driver's recording thread (the driver
+// calls this weakly, radv_threaded_layer.c) and the software renderer's
+// (src/core/gpu_backend.cpp).
+extern "C" void ps5_title_thread_named(const char *name)
+{
+	const bool recorder = name && std::strcmp(name, "RADV recorder") == 0;
+	const bool renderer = name && std::strcmp(name, "GPU backend") == 0;
+	if (!fe::tuning::ownCores || (!recorder && !renderer))
+	{
+		fe::diag::mark("tuning: thread started: %s", name ? name : "(unnamed)");
+		return;
+	}
+	fe::tuning::keepTo(recorder ? fe::tuning::RecorderMask : fe::tuning::RendererMask,
+			recorder ? "the graphics driver's recording thread" : "the software renderer's thread");
 }

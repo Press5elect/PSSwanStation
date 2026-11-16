@@ -468,6 +468,10 @@ struct Frontend
 	// driver's own), and the boot log's measuring of the game.
 	bool threadPriorities = false;
 	bool driverThread = false;
+	// The GPU's threads (the graphics driver's recording thread, which this
+	// turns on, and the software renderer's thread) each on a processor core
+	// of their own, the rest of the title off those cores (tuning.cpp).
+	bool gpuOwnCore = true;
 	int gpuWaitSpin = 0;
 	int gpuWaitSleep = 0;
 	bool measure = false;

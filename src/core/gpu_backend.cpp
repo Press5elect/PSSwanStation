@@ -290,8 +290,16 @@ void GPUBackend::Sync(bool allow_sleep)
   }
 }
 
+#if defined(SWANSTATION_PS5)
+// PSSwanStation: the title places this thread (ps5/src/tuning.cpp, "GPU on a separate core").
+extern "C" void ps5_title_thread_named(const char* name);
+#endif
+
 void GPUBackend::GPUThreadEntryPoint(void* userdata)
 {
+#if defined(SWANSTATION_PS5)
+  ps5_title_thread_named("GPU backend");
+#endif
   static_cast<GPUBackend*>(userdata)->RunGPULoop();
 }
 

@@ -61,6 +61,16 @@ the gun, and waits for users' reports (an issue with the boot log's `sinden:` li
   tracker's time), the GunCon following the gun in a game, and its buttons. The tracker was
   measured on drawn frames only (sinden-lightgun.md, "The tracker").
 
+After build 27 (not in a test build yet):
+
+- "GPU on a separate core", on by default (`tuning.cpp`): boot log `tuning: the title's threads, but
+  the GPU's, on processors 0x1fc3 (0)`, `tuning: the graphics driver's recording thread on
+  processors 0xc (0)`, and with the software renderer `the software renderer's thread on processors
+  0x30 (0)`; a result other than 0 is a refusal. To compare with "Measure the game in the boot log":
+  the same scene with it on and off (`test: window` lines). Threaded recording itself was never
+  reported on from the console either: this turns it on for everyone, so it is the first thing to
+  check, with both renderers.
+
 ## Known limits, by how the emulator is built
 
 - **A share that stalls during play**: the panel ("Waiting for the network share (N s)",

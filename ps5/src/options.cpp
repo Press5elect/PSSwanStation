@@ -347,6 +347,7 @@ std::vector<Field> fields()
 		{ "states_on_usb", nullptr, &c.statesOnUsb, 0, 1 },
 		{ "thread_priorities", nullptr, &c.threadPriorities, 0, 1 },
 		{ "driver_thread", nullptr, &c.driverThread, 0, 1 },
+		{ "gpu_own_core", nullptr, &c.gpuOwnCore, 0, 1 },
 		{ "gpu_wait_spin", &c.gpuWaitSpin, nullptr, 0, 3 },
 		{ "gpu_wait_sleep", &c.gpuWaitSleep, nullptr, 0, 3 },
 		{ "measure", nullptr, &c.measure, 0, 1 },

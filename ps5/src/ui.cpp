@@ -2698,10 +2698,14 @@ void frontendItems(int kind, std::vector<Item>& items)
 				"videos and copies after it: no crackle or late buttons while the emulator is busy. Off: every "
 				"thread is equal, as before. Used from the next start of PSSwanStation; still being tried on the "
 				"console, so it is off unless you turn it on.", {}));
-		items.push_back(toggle("Graphics driver on its own thread", &f.driverThread,
-				"The graphics driver records its work on a thread of its own, beside the emulator's. It helps when "
-				"the picture is heavy (a high resolution, the hardware renderer's extras). Used from the next "
-				"start of PSSwanStation.", {}));
+		items.push_back(toggle("GPU on a separate core", &f.gpuOwnCore,
+				"The graphics driver records its work on a thread of its own, and that thread and the software "
+				"renderer's each run on a processor core of their own, with the rest of PSSwanStation kept off "
+				"those cores. Used from the next start of PSSwanStation.", {}));
+		if (!f.gpuOwnCore)
+			items.push_back(toggle("Graphics driver on its own thread", &f.driverThread,
+					"With \"GPU on a separate core\" off: the graphics driver still records its work on a thread "
+					"of its own, wherever the console runs it. Used from the next start of PSSwanStation.", {}));
 		items.push_back(choice("Wait for the GPU: checks", f.gpuWaitSpin,
 				{ "1500 \xc2\xb5s (the driver's)", "500 \xc2\xb5s", "250 \xc2\xb5s", "3000 \xc2\xb5s" },
 				"How long the graphics driver keeps checking whether the GPU has finished before it sleeps. "
@@ -5378,6 +5382,15 @@ void frame()
 			options::saveFrontend();
 			storage::syncHdr(appDir + "sce_sys/param.json", false);
 			diag::mark("safe start: HDR output is off from the next start");
+		}
+		// The GPU's own cores and the driver's thread, which are set up as the
+		// title starts.
+		if (o.gpuOwnCore || o.driverThread)
+		{
+			o.gpuOwnCore = false;
+			o.driverThread = false;
+			options::saveFrontend();
+			diag::mark("safe start: \"GPU on a separate core\" is off from the next start");
 		}
 		if (o.displayMode != 0)
 		{
