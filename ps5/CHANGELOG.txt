@@ -1,6 +1,19 @@
 PSSwanStation - what changed
 ============================
 
+Build 29
+  Fixed
+  - Covers by serial did not reach every game: a game the libretro
+    collection had no cover for in an earlier build was remembered as
+    having none and never asked for again, so psx-covers was not tried for
+    it; and a game whose file is not named as Redump names it had no serial
+    until it was played. Such a game is now asked for at psx-covers once,
+    by the serial it ran under, the game database's, or, on the console or a
+    USB drive, the one read from its disc image; a serial psx-covers has no
+    cover for is remembered by itself. The boot log says what the library
+    walk found ("covers: the library looked through: ...") and when Download
+    Covers is off.
+
 Build 28
   Added
   - Settings redesigned as one board: Console, Graphics, Display, Audio,

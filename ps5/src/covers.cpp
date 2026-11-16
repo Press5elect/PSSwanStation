@@ -18,9 +18,13 @@
 	(thumbnails.libretro.com), which is tried when the first does not answer.
 	When neither has the game's box art, xlenore's psx-covers collection is
 	asked by the disc's serial (raw.githubusercontent.com/xlenore/psx-covers/
-	main/covers/default/<serial>.jpg), the serial the game ran under before or
-	the one the game database gives its file name; the picture is saved as
-	<file name>.jpg.
+	main/covers/default/<serial>.jpg), the serial the game ran under before,
+	the one the game database gives its file name, or, for a game on the
+	console or a USB drive under a name of its own, the one read from its
+	disc image; the picture is saved as <file name>.jpg. A name the libretro
+	collection does not have does not keep a game from psx-covers: a serial
+	psx-covers has no cover for is remembered by itself ("serial:<serial>"
+	in not-found.txt).
 	One worker thread, one request at a time, through the platform's HTTP
 	client (the console's libSceHttp2).
 
@@ -75,20 +79,31 @@ struct Job
 	std::string base;
 	int kind = 0;
 	std::string serial;		// for the fallback by serial (box art only), or empty
+	bool serialOnly = false;	// the libretro collection is known not to have it
 };
 
 // The fallback for box art: xlenore's psx-covers, by the disc's serial.
 constexpr const char *SerialCoverUrl = "https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/default/";
 
 // The serial a game's cover can be asked for by: the one it ran under before,
-// else the one the game database gives its file name (Redump's names). On the
-// main thread only (host::knownSerial is not locked).
-std::string serialFor(const std::string& path, const std::string& fileTitle)
+// else the one the game database gives its file name (Redump's names), else,
+// with `readDisc`, the one in the disc image itself (a game on the console or
+// a USB drive; a share's is not read, so that it is not woken for a cover).
+std::string serialFor(const std::string& path, const std::string& fileTitle, bool readDisc = false)
 {
 	std::string serial = path.empty() ? std::string() : host::knownSerial(path);
 	if (serial.empty())
 		serial = gamedb::serialByName(fileTitle);
+	if (serial.empty() && readDisc && !path.empty() && path.compare(0, 6, "smb://") != 0
+			&& path.compare(0, 6, "nfs://") != 0 && path.compare(0, 6, "ftp://") != 0
+			&& lowercase(path).find(".m3u") == std::string::npos)
+		serial = host::readSerial(path);
 	return serial;
+}
+
+std::string serialKey(const std::string& serial)
+{
+	return "serial:" + serial;
 }
 
 std::mutex mutex;
@@ -315,7 +330,17 @@ FetchResult fetchBySerial(const std::string& serial, const std::string& base)
 		}
 		return FetchSaved;
 	}
-	return status == 404 || status == 200 ? FetchNotFound : FetchUnavailable;
+	if (status != 404 && status != 200)
+	{
+		static bool said;
+		if (!said)
+		{
+			said = true;
+			diag::mark("covers: psx-covers did not answer for %s (%d); asked again at the next start", serial.c_str(), status);
+		}
+		return FetchUnavailable;
+	}
+	return FetchNotFound;
 }
 
 bool haveCover(const library::Game& game)
@@ -327,6 +352,13 @@ bool haveCover(const library::Game& game)
 }
 
 void request(const std::string& base, int kind, const std::string& serial = "");
+
+// What a walk through the library found, said once at its end.
+struct WalkTally
+{
+	int withCover = 0, without = 0, withSerial = 0;
+	bool said = false;
+} walkTally;
 
 // Nothing is asked for: the library's next game without a cover is. The
 // list is made again when the library changes.
@@ -346,23 +378,44 @@ void walkOn()
 					walk.push_back(std::move(game));
 		walkAt = 0;
 		walkSize = walk.size();
+		walkTally = WalkTally();
 	}
 	// ES-DE's folders are listed first: a cover there is not fetched again.
 	if (!options::frontend().covers || offline || host::running() || !media::ready())
+	{
+		static bool offSaid;
+		if (!offSaid && !options::frontend().covers)
+		{
+			offSaid = true;
+			diag::mark("covers: Download Covers is disabled: none is fetched");
+		}
 		return;
+	}
 	while (walkAt < walk.size())
 	{
 		const library::Game& game = walk[walkAt];
 		walkAt++;
 		if (haveCover(game))
+		{
+			walkTally.withCover++;
 			continue;
+		}
 		const int before = pending.load();
-		// On the worker's thread: the game database's serial alone (it is read-only
-		// after the start; the serials games ran under are the main thread's).
-		request(game.fileTitle, BoxArt, gamedb::serialByName(game.fileTitle));
+		// The serial it ran under, the game database's, or its disc's (no game
+		// runs while the walk goes on).
+		const std::string serial = serialFor(game.discs.empty() ? game.path : game.discs.front(), game.fileTitle, true);
+		walkTally.without++;
+		walkTally.withSerial += !serial.empty();
+		request(game.fileTitle, BoxArt, serial);
 		if (pending.load() != before)
 			return;	// one at a time: what the library asks for meanwhile goes first
+	}	if (!walkTally.said && !walk.empty())
+	{
+		walkTally.said = true;
+		diag::mark("covers: the library looked through: %d game(s) with a cover, %d without (%d of them with a serial to "
+				"ask psx-covers by)", walkTally.withCover, walkTally.without, walkTally.withSerial);
 	}
+
 }
 
 void worker()
@@ -385,6 +438,17 @@ void worker()
 			job = queue.front();
 			queue.pop_front();
 		}
+		if (job.serialOnly)
+		{
+			// The libretro collection is known not to have it: psx-covers alone.
+			const FetchResult bySerial = offline ? FetchUnavailable : fetchBySerial(job.serial, job.base);
+			if (bySerial == FetchSaved)
+				currentGeneration++;
+			else if (bySerial == FetchNotFound)
+				rememberNotFound(serialKey(job.serial));
+			pending--;
+			continue;
+		}
 		int result = offline ? -1 : fetch(Sources[source], job.base, job.kind);
 		if (result == FetchUnavailable && !offline && platform::httpAvailable() && source + 1 < SourceCount)
 		{
@@ -399,6 +463,8 @@ void worker()
 			const FetchResult bySerial = fetchBySerial(job.serial, job.base);
 			if (bySerial == FetchSaved || bySerial == FetchSaveFailed)
 				result = bySerial;
+			else if (bySerial == FetchNotFound)
+				rememberNotFound(serialKey(job.serial));
 		}
 		if (result == FetchSaved)
 		{
@@ -429,13 +495,19 @@ void request(const std::string& base, int kind, const std::string& serial)
 	std::lock_guard<std::mutex> lock(mutex);
 	loadNotFound();
 	const std::string key = notFoundKey(base, kind);
-	if (!asked.insert(key).second || notFound.count(key) != 0)
+	// A name the libretro collection does not have may still have a cover by
+	// its serial, which psx-covers is asked for once.
+	const bool byNameMissed = notFound.count(key) != 0;
+	const bool serialOnly = byNameMissed && kind == BoxArt && !serial.empty() && notFound.count(serialKey(serial)) == 0;
+	if (byNameMissed && !serialOnly)
+		return;
+	if (!asked.insert(key).second)
 		return;
 	// A cover before the pictures themes add: the library shows covers first.
 	if (kind == BoxArt)
-		queue.push_front({ base, kind, serial });
+		queue.push_front({ base, kind, serial, serialOnly });
 	else
-		queue.push_back({ base, kind, std::string() });
+		queue.push_back({ base, kind, std::string(), false });
 	pending++;
 	if (!started)
 	{

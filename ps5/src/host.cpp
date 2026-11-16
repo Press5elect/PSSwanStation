@@ -1039,8 +1039,12 @@ std::map<std::string, std::string>& serialsByPath()
 	return known;
 }
 
+// The cover worker asks too (covers.cpp), from its own thread.
+std::mutex serialsMutex;
+
 std::string lookupSerial(const std::string& path)
 {
+	std::lock_guard<std::mutex> lock(serialsMutex);
 	const auto& known = serialsByPath();
 	const auto it = known.find(path);
 	return it == known.end() ? "" : it->second;
@@ -1050,6 +1054,7 @@ void rememberSerial(const std::string& path, const std::string& serial)
 {
 	if (path.empty() || serial.empty() || lookupSerial(path) == serial)
 		return;
+	std::lock_guard<std::mutex> lock(serialsMutex);
 	serialsByPath()[path] = serial;
 	const std::string file = rootDir + "data/game-ids.txt";
 	FILE *f = fopen(file.c_str(), "a");
