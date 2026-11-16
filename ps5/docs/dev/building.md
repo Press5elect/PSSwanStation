@@ -21,8 +21,8 @@ deps-src/            the libraries below
 | PS5_Mesa | `0f86253f674c` + 14 patches = `ead4d0f93427` | PS5_Mesa main of 2026-11-10, Crux2's RADV patches, OGBox's HDR10 framebuffers |
 | PS5_Vulkan | `7f492b4c6f67` + 5 patches = `f274af151e40` | Its Mesa pin is the revision above; the payload SDK at `3345cde` (upstream's v0.45) |
 | PS5_VKHomebrewUI | `2188642afbcc` + 1 patch = `b05fe83e74f4` | `ps5/tools/build.sh` checks this revision |
-| libsmb2 | `177a9de` | sahlberg/libsmb2 master |
-| libnfs | `331d391` | sahlberg/libnfs master |
+| libsmb2 | `161b89e` | sahlberg/libsmb2 master |
+| libnfs | `e5a697b` | sahlberg/libnfs master |
 | rcheevos | `v12.5.0` | RetroAchievements/rcheevos |
 | glslang | `16.6.0` | KhronosGroup/glslang (the in-title compiler for shader presets) |
 | mbedTLS | `v3.6.7`, folder `mbedtls-3.6.7`, with submodules | Mbed-TLS/mbedtls (3.6 LTS; 4.x changes the API) |

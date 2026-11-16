@@ -33,6 +33,10 @@ Build 28
   - Every page, message and the phone and web control panel name settings
     as the board does; the manual's settings reference is made from the
     board itself.
+  - Newer libsmb2 (161b89e: refused connects completed, open files and
+    folders freed when a connection closes, malformed directory entries
+    refused, a share shutting down reported as an I/O error) and libnfs
+    (e5a697b: UDP addresses passed at their own length, a monotonic clock).
   - GPU on a separate core (Settings, System, Console tuning; on): the
     graphics driver records its work on a thread of its own, and that
     thread and the software renderer's each run on a processor core of
