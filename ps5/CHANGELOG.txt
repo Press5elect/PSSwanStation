@@ -13,6 +13,12 @@ Build 29
     cover for is remembered by itself. The boot log says what the library
     walk found ("covers: the library looked through: ...") and when Download
     Covers is off.
+  - Covers for files not named as Redump names them: a serial written in
+    the file name ("[SLUS-01334]", "SLUS_013.34") is used, and the name is
+    also tried as Redump would have it: tags in square brackets dropped,
+    GoodTools' "(U)", "(E)" and "(J)" read as "(USA)", "(Europe)" and
+    "(Japan)", and version and translation tags ("(v1.1)", "(English v1.0)")
+    dropped, for the libretro collection and the game database alike.
 
 Build 28
   Added

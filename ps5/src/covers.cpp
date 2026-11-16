@@ -44,6 +44,7 @@
 #include "tuning.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cerrno>
 #include <condition_variable>
@@ -89,11 +90,18 @@ constexpr const char *SerialCoverUrl = "https://raw.githubusercontent.com/xlenor
 // else the one the game database gives its file name (Redump's names), else,
 // with `readDisc`, the one in the disc image itself (a game on the console or
 // a USB drive; a share's is not read, so that it is not woken for a cover).
+std::string redumpLike(const std::string& base);
+std::string serialInName(const std::string& name);
+
 std::string serialFor(const std::string& path, const std::string& fileTitle, bool readDisc = false)
 {
 	std::string serial = path.empty() ? std::string() : host::knownSerial(path);
 	if (serial.empty())
+		serial = serialInName(fileTitle);
+	if (serial.empty())
 		serial = gamedb::serialByName(fileTitle);
+	if (serial.empty() && !redumpLike(fileTitle).empty())
+		serial = gamedb::serialByName(redumpLike(fileTitle));
 	if (serial.empty() && readDisc && !path.empty() && path.compare(0, 6, "smb://") != 0
 			&& path.compare(0, 6, "nfs://") != 0 && path.compare(0, 6, "ftp://") != 0
 			&& lowercase(path).find(".m3u") == std::string::npos)
@@ -192,12 +200,93 @@ void rememberNotFound(const std::string& base)
 	}
 }
 
+// A file name as Redump would have it, for names of other sets: tags in
+// square brackets dropped ("[SLUS-01334]", "[!]"), GoodTools' regions as
+// Redump's ("(U)" "(USA)", "(E)" "(Europe)", "(J)" "(Japan)"), and every other
+// tag in brackets dropped but a region and a disc ("(v1.1)", "(English
+// v1.0)"). Empty when that changes nothing.
+std::string redumpLike(const std::string& base)
+{
+	std::string plain;
+	int depth = 0;
+	for (char c : base)
+	{
+		if (c == '[')
+			depth++;
+		else if (c == ']' && depth > 0)
+			depth--;
+		else if (depth == 0)
+			plain += c;
+	}
+	const size_t open = plain.find(" (");
+	std::string title = trim(open == std::string::npos ? plain : plain.substr(0, open));
+	std::string kept;
+	for (size_t at = plain.find('('); at != std::string::npos; at = plain.find('(', at + 1))
+	{
+		const size_t close = plain.find(')', at);
+		if (close == std::string::npos)
+			break;
+		std::string tag = plain.substr(at + 1, close - at - 1);
+		if (tag == "U" || tag == "US")
+			tag = "USA";
+		else if (tag == "E" || tag == "EU")
+			tag = "Europe";
+		else if (tag == "J" || tag == "JP")
+			tag = "Japan";
+		const bool region = tag.find("USA") != std::string::npos || tag.find("Europe") != std::string::npos
+				|| tag.find("Japan") != std::string::npos || tag == "World" || tag == "Asia";
+		const bool disc = tag.compare(0, 5, "Disc ") == 0;
+		if (region || disc)
+			kept += " (" + tag + ")";
+	}
+	const std::string out = title + kept;
+	return title.empty() || out == base ? std::string() : out;
+}
+
+// A serial written into a file name: "[SLUS-01334]", "(SLPS-01853)",
+// "SLUS_013.34", "SLUS01334". Empty when there is none.
+std::string serialInName(const std::string& name)
+{
+	for (size_t i = 0; i + 9 <= name.size(); i++)
+	{
+		if (i > 0 && std::isalnum((unsigned char)name[i - 1]))
+			continue;
+		bool letters = true;
+		for (size_t k = 0; k < 4; k++)
+			letters = letters && name[i + k] >= 'A' && name[i + k] <= 'Z';
+		if (!letters || (name[i] != 'S' && name[i] != 'P'))
+			continue;
+		size_t j = i + 4;
+		if (j < name.size() && (name[j] == '-' || name[j] == '_' || name[j] == ' '))
+			j++;
+		std::string digits;
+		while (j < name.size() && digits.size() < 5
+				&& (std::isdigit((unsigned char)name[j]) || (name[j] == '.' && digits.size() == 3)))
+		{
+			if (name[j] != '.')
+				digits += name[j];
+			j++;
+		}
+		if (digits.size() == 5 && (j >= name.size() || !std::isdigit((unsigned char)name[j])))
+			return name.substr(i, 4) + "-" + digits;
+	}
+	return "";
+}
+
 // The names to try for a file name: itself, then without a "(Disc N)" tag
 // (the collection has the first disc under either), then with each region
-// when the name has none.
+// when the name has none; then the same for the name as Redump would have it.
 std::vector<std::string> namesFor(const std::string& base)
 {
 	std::vector<std::string> names{ base };
+	const std::string redump = redumpLike(base);
+	if (!redump.empty())
+	{
+		names.push_back(redump);
+		if (redump.find('(') == std::string::npos)
+			for (const char *region : { " (USA)", " (Europe)", " (Japan)" })
+				names.push_back(redump + region);
+	}
 	const size_t disc = base.find(" (Disc ");
 	if (disc != std::string::npos)
 	{
